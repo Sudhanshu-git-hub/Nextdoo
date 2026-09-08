@@ -127,7 +127,18 @@ const requeueStuckReminders: Job = {
   },
 };
 
+const purgeAuthenticationAttempts: Job = {
+  name: 'authentication_attempts.purge', intervalMs: 5 * MINUTE,
+  async run() {
+    const rows = await db.execute(raw`delete from authentication_attempts where key in (
+      select key from authentication_attempts where expires_at <= now() order by expires_at limit 1000 for update skip locked
+    ) returning key`);
+    return { processed: rows.length };
+  },
+};
+
 export const JOBS: Job[] = [
+  purgeAuthenticationAttempts,
   { name: 'mail.deliver', intervalMs: 10000, run: () => deliverMail(1) },
   dispatchReminders,
   requeueStuckReminders,

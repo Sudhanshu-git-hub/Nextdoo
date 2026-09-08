@@ -6,6 +6,11 @@ import { db } from './runtime';
 
 /** Bounded, durable at-least-once SMTP delivery; external exactly-once is NOT claimed. */
 export async function deliverMail(limit = 10): Promise<{ processed: number; sent: number; failed: number }> {
+  await db.execute(sql`update mail_deliveries set status='FAILED',last_error='LEASE_EXPIRED',lease_token=null,lease_until=null
+    where status='PROCESSING' and lease_until < now() and attempts >= 5`);
+  await db.execute(sql`update mail_deliveries set encrypted_message='' where expires_at <= now() and status in ('SENT','FAILED','EXPIRED')`);
+  await db.execute(sql`update mail_deliveries set status='EXPIRED',encrypted_message='',lease_token=null,lease_until=null
+    where expires_at <= now() and status in ('PENDING','PROCESSING') and (lease_until is null or lease_until < now())`);
   const smtp = process.env.SMTP_URL, secret = process.env.AUTH_SECRET;
   if (!smtp || !secret) return { processed: 0, sent: 0, failed: 0 };
   const url = new URL(smtp);
@@ -19,11 +24,6 @@ export async function deliverMail(limit = 10): Promise<{ processed: number; sent
   });
   limit = Math.max(0, Math.min(10, Math.floor(limit)));
   const lease = randomUUID();
-  await db.execute(sql`update mail_deliveries set status='FAILED',last_error='LEASE_EXPIRED',lease_token=null,lease_until=null
-    where status='PROCESSING' and lease_until < now() and attempts >= 5`);
-  await db.execute(sql`update mail_deliveries set encrypted_message='' where expires_at <= now() and status in ('SENT','FAILED','EXPIRED')`);
-  await db.execute(sql`update mail_deliveries set status='EXPIRED',encrypted_message='',lease_token=null,lease_until=null
-    where expires_at <= now() and status in ('PENDING','PROCESSING') and (lease_until is null or lease_until < now())`);
   const rows = await db.execute(sql`with claim as (
     select id from mail_deliveries where expires_at > now() and attempts < 5
       and ((status='PENDING' and next_attempt_at <= now()) or (status='PROCESSING' and lease_until < now()))

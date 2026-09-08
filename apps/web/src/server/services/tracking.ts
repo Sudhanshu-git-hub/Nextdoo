@@ -72,7 +72,7 @@ export async function buildScoringInput(workspaceId: string, taskId: string): Pr
     dueAt: task.dueAt,
     completedAt: task.completedAt,
     estimateMinutes: task.estimateMinutes,
-    actualMinutes: task.actualMinutes > 0 ? task.actualMinutes : null,
+    actualMinutes: task.actualMinutes * 60 + task.actualSecondsRemainder > 0 ? task.actualMinutes + task.actualSecondsRemainder / 60 : null,
     expectedOccurrences: expected,
     completedOccurrences: completed,
     rescheduleCount: task.rescheduleCount,
@@ -163,6 +163,7 @@ export async function evaluateTask(
         measuredWeight: String(result.measuredWeight),
         calculationVersion: CALCULATION_VERSION,
         inputHash,
+        inputSnapshot: JSON.parse(JSON.stringify(input)) as Record<string, unknown>,
         recalculated: options.recalculated ?? false,
       })
       .returning();

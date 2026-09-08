@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { sql } from 'drizzle-orm';
+import { newRequestId } from '@/server/observability';
 import { getDb } from '@/server/db';
 
 export const runtime = 'nodejs';
@@ -18,6 +19,6 @@ export async function GET() {
   }
   return NextResponse.json(
     { status: healthy ? 'ok' : 'degraded', checks, timestamp: new Date().toISOString() },
-    { status: healthy ? 200 : 503 },
+    { status: healthy ? 200 : 503, headers: { 'X-Request-Id': newRequestId(), 'Cache-Control': 'no-store' } },
   );
 }

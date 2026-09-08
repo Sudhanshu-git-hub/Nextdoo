@@ -106,6 +106,7 @@ test('login backoff survives client IP changes', async ({ page }) => {
 });
 
 test('security headers protect the rendered login page', async ({ page }) => {
+  expect((await page.request.get('/api/v1/health')).headers()['x-request-id']).toBeTruthy();
   const response = await page.goto('/login');
   expect(response!.headers()['content-security-policy']).toContain("'nonce-");
   expect(response!.headers()['content-security-policy']).not.toContain("script-src 'self' 'unsafe-inline'");

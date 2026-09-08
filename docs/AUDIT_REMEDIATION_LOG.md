@@ -93,3 +93,24 @@ arbitrary current file. Missing files or unknown/mismatched legacy sources stop
 deployment. Legacy metadata upgrade and the full verification passed: 269 tests,
 9 E2E/API scenarios, all gates. Evidence: migrations-red/verify, checksum-upgrade.
 This does not replace backup/restore, rollback rehearsal or hosted PG16 CI gates.
+
+## Duration precision, calculation evidence and final housekeeping
+
+Four short 30-second timer sessions previously credited zero minutes. Two failing
+timer regressions now preserve fractional seconds across sessions and retain manual
+annotations in tracking history. Migration 0009 adds a bounded seconds remainder;
+existing whole-minute data remains intact. Task versions/sync and scoring use the
+precise total. Historical discarded time is **not** invented or silently backfilled.
+A failing provenance regression now stores immutable input snapshots for new scores;
+legacy hashes remain without fabricated inputs. Source-event UI, corrections and
+backfill workflows are still separate incomplete PRD features.
+
+Additional regression-first hardening: expired mail ciphertext is scrubbed even
+when SMTP is disabled; bounded housekeeping removes expired authentication quota
+records; API keys survive all three HeadersInit forms/casing; health responses carry
+request IDs. A qualification test confirms delete/restore already increments versions
+and stale PATCH still conflicts. No new DELETE CAS rule was invented: the PRD's
+explicit CAS requirement is PATCH, and sync's delete-wins policy remains intact.
+Full verification: 278 tests and 9 E2E/API scenarios passed, all gates. DB-free core
+subset remains 157 passing. Evidence: precision-red/verify, provenance-red,
+disabled-provider-red, housekeeping-red, health-red, final-unit.

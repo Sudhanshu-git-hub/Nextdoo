@@ -228,6 +228,7 @@ export const tasks = pgTable(
     estimateMinutes: integer('estimate_minutes'),
     /** Derived from timer sessions plus audited manual adjustments. */
     actualMinutes: integer('actual_minutes').notNull().default(0),
+    actualSecondsRemainder: integer('actual_seconds_remainder').notNull().default(0),
     position: numeric('position', { precision: 30, scale: 10 }).notNull().default('0'),
     /** Counter feeding the RESCHEDULED outcome. */
     rescheduleCount: integer('reschedule_count').notNull().default(0),
@@ -246,6 +247,7 @@ export const tasks = pgTable(
     uniqueIndex('tasks_occurrence_unique').on(t.recurrenceRuleId, t.occurrenceKey),
     check('tasks_no_self_parent', sql`${t.parentTaskId} IS DISTINCT FROM ${t.id}`),
     check('tasks_estimate_nonneg', sql`${t.estimateMinutes} IS NULL OR ${t.estimateMinutes} >= 0`),
+    check('tasks_actual_seconds_remainder_check', sql`${t.actualSecondsRemainder} >= 0 AND ${t.actualSecondsRemainder} < 60`),
     check('tasks_actual_nonneg', sql`${t.actualMinutes} >= 0`),
     check('tasks_title_len', sql`char_length(${t.title}) BETWEEN 1 AND 500`),
   ],
@@ -404,6 +406,7 @@ export const trackingResults = pgTable(
     calculationVersion: integer('calculation_version').notNull().default(1),
     /** Hash of inputs; unchanged ACTIVE inputs are a no-op, history is retained. */
     inputHash: varchar('input_hash', { length: 64 }).notNull(),
+    inputSnapshot: jsonb('input_snapshot').$type<Record<string, unknown>>(),
     recalculated: boolean('recalculated').notNull().default(false),
     supersededAt: timestamp('superseded_at', { withTimezone: true }),
     ...timestamps,

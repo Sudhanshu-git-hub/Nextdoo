@@ -70,3 +70,27 @@ it('SMTP failure persists bounded retries and a terminal failure without claimin
     expect(row!.last_error).toBe('SMTP_DELIVERY_FAILED');
   } finally { vi.stubEnv('SMTP_URL', `smtp://127.0.0.1:${port}`); }
 });
+
+it('scrubs expired secret payloads even after the SMTP provider is disabled', async () => {
+  const id = randomUUID();
+  await db.execute(query`insert into mail_deliveries(id,kind,encrypted_message,expires_at) values(${id},'verify-email','expired-secret',now()-interval '1 minute')`);
+  const smtp = process.env.SMTP_URL;
+  try {
+    delete process.env.SMTP_URL;
+    await deliverMail();
+    const [row] = await db.execute(query`select * from mail_deliveries where id=${id}`);
+    expect(row!.encrypted_message).toBe(''); expect(row!.status).toBe('EXPIRED');
+  } finally { if (smtp !== undefined) process.env.SMTP_URL = smtp; }
+});
+
+it('authentication housekeeping removes only expired quota/backoff records', async () => {
+  const { JOBS } = await import('./jobs');
+  const expired = randomUUID(), live = randomUUID();
+  await db.execute(query`insert into authentication_attempts(key,attempts,blocked_until,expires_at) values
+    (${expired},1,now(),now()-interval '1 minute'),(${live},1,now(),now()+interval '1 hour')`);
+  const job = JOBS.find((j) => j.name === 'authentication_attempts.purge');
+  expect(job).toBeDefined();
+  await job!.run();
+  expect(await db.execute(query`select key from authentication_attempts where key=${expired}`)).toHaveLength(0);
+  expect(await db.execute(query`select key from authentication_attempts where key=${live}`)).toHaveLength(1);
+});

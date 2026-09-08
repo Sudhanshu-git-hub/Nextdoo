@@ -50,3 +50,11 @@ it('paid grace access ends at its stored deadline', async () => {
     expect(await getPlan(actor.userId)).toBe('PRO');
   }
 });
+
+it('delete/restore advance versions and cannot make a stale PATCH valid again', async () => {
+  const { actor, task } = await fixture();
+  await deleteTask(actor, task.id);
+  const restored = await restoreTask(actor, task.id);
+  expect(restored.version).toBe(task.version + 2);
+  await expect(updateTask(actor, task.id, { version: task.version, title: 'Stale edit' })).rejects.toMatchObject({ code: 'RESOURCE_VERSION_CONFLICT' });
+});

@@ -50,6 +50,7 @@ function serialise(task: TaskRow) {
     timeZone: task.timeZone,
     estimateMinutes: task.estimateMinutes,
     actualMinutes: task.actualMinutes,
+    actualSeconds: task.actualMinutes * 60 + task.actualSecondsRemainder,
     position: Number(task.position),
     rescheduleCount: task.rescheduleCount,
     version: task.version,

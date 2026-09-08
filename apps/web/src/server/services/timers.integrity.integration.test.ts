@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { timerSessions } from '@nextdoo/db';
+import { timerSessions, trackingEvents } from '@nextdoo/db';
 import { requireTestDatabase } from '../../../../../tests/database';
 import { getDb } from '../db';
 import { registerUser } from './accounts';
@@ -61,4 +61,20 @@ describe('timer integrity', () => {
     expect(updated.actualMinutes).toBe(15); expect(updated.version).toBe(task.version + 1);
     expect((await pullChanges(actor.workspaceId, cursor, 100)).changes).toEqual(expect.arrayContaining([expect.objectContaining({ entityId: task.id, version: updated.version, payload: expect.objectContaining({ actualMinutes: 15 }) })]));
   });
+});
+
+it('repeated sub-minute sessions preserve seconds instead of rounding each session away', async () => {
+  const { actor, task } = await fixture();
+  for (let i = 0; i < 4; i++) {
+    const timer = await startTimer(actor, task.id, 'short', time(i));
+    await updateTimer(actor, timer.id, 'stop', new Date(new Date(time(i)).getTime() + 30000).toISOString());
+  }
+  expect((await loadTask(actor.workspaceId, task.id)).actualMinutes).toBe(2);
+});
+
+it('manual time preserves the submitted annotation in durable tracking history', async () => {
+  const { actor, task } = await fixture();
+  await logTime(actor, task.id, 3, 'Recovered work note');
+  const rows = await getDb().select().from(trackingEvents).where(eq(trackingEvents.taskId, task.id));
+  expect(rows.find((r) => r.type === 'TIME_LOGGED')?.payload).toMatchObject({ note: 'Recovered work note' });
 });

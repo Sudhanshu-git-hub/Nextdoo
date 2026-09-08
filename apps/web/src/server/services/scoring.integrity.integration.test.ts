@@ -62,3 +62,12 @@ describe('scoring history integrity', () => {
     } finally { vi.useRealTimers(); }
   });
 });
+
+it('stores immutable calculation inputs rather than an unrecoverable hash alone', async () => {
+  const { actor, task } = await fixture({ estimateMinutes: 30 });
+  const done = await completeTask(actor, task.id, task.version);
+  const result = await getResultForTask(actor.workspaceId, task.id);
+  await updateTask(actor, task.id, { version: done.version, estimateMinutes: 60 });
+  const [original] = await getDb().select().from(trackingResults).where(eq(trackingResults.id, result!.id));
+  expect((original as unknown as { inputSnapshot?: unknown }).inputSnapshot).toMatchObject({ estimateMinutes: 30, completed: true });
+});

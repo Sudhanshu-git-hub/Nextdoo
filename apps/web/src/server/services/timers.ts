@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
-import { AppError, notFound } from '@nextdoo/contracts';
+import { AppError, logTimeSchema, notFound } from '@nextdoo/contracts';
 import { tasks, timerSessions, type Database } from '@nextdoo/db';
 import { getDb, withTransaction } from '../db';
 import { withWorkspaceTransaction } from './transactions';
@@ -79,10 +79,10 @@ export async function startTimer(actor: TimerActor, taskId: string, deviceId: st
           accumulatedSeconds: elapsedSeconds(prior, now) - prior.manualAdjustmentSeconds,
           lastResumedAt: null, lastTransitionAt: now, updatedAt: new Date(), version: sql`${timerSessions.version} + 1`,
         }).where(eq(timerSessions.id, prior.id));
-        const minutes = Math.floor(elapsedSeconds(prior, now) / 60);
-        await applyDurationToTask(tx, { ...actor, workspaceId: prior.workspaceId }, prior.taskId, minutes);
+        const seconds = elapsedSeconds(prior, now), minutes = seconds / 60;
+        await applyDurationToTask(tx, { ...actor, workspaceId: prior.workspaceId }, prior.taskId, seconds);
         await appendTrackingEvent(tx, { workspaceId: prior.workspaceId, taskId: prior.taskId, type: 'TIME_LOGGED', actorId: actor.userId,
-          occurredAt: now, payload: { minutes, source: 'timer-overlap' }, idempotencyKey: `timer-stop:${prior.id}` });
+          occurredAt: now, payload: { minutes, seconds, source: 'timer-overlap' }, idempotencyKey: `timer-stop:${prior.id}` });
       }
     }
     const [created] = await tx.insert(timerSessions).values({
@@ -96,10 +96,10 @@ export async function startTimer(actor: TimerActor, taskId: string, deviceId: st
     if (!created) throw new AppError('INTERNAL_ERROR', 'Timer could not be started.');
     await appendTrackingEvent(tx, { workspaceId: actor.workspaceId, taskId, type: 'TASK_STARTED', actorId: actor.userId, occurredAt: now, deviceId });
     if (incomingOlder) {
-      const minutes = Math.floor(created.accumulatedSeconds / 60);
-      await applyDurationToTask(tx, actor, taskId, minutes);
+      const seconds = created.accumulatedSeconds, minutes = seconds / 60;
+      await applyDurationToTask(tx, actor, taskId, seconds);
       await appendTrackingEvent(tx, { workspaceId: actor.workspaceId, taskId, type: 'TIME_LOGGED', actorId: actor.userId,
-        occurredAt: canonical.startedAt, payload: { minutes, source: 'timer-overlap' }, idempotencyKey: `timer-stop:${created.id}` });
+        occurredAt: canonical.startedAt, payload: { minutes, seconds, source: 'timer-overlap' }, idempotencyKey: `timer-stop:${created.id}` });
     }
     await publishEvent(tx, { eventType: 'timer.started', workspaceId: actor.workspaceId, actorId: actor.userId, entityType: 'timer_session', entityId: created.id });
     return serialise(created);
@@ -163,15 +163,15 @@ export async function updateTimer(actor: TimerActor, timerId: string, action: 'p
     }
 
     if (action === 'stop') {
-      const minutes = Math.floor(elapsedSeconds(updated, now) / 60);
-      await applyDurationToTask(tx, actor, row.taskId, minutes);
+      const seconds = elapsedSeconds(updated, now), minutes = seconds / 60;
+      await applyDurationToTask(tx, actor, row.taskId, seconds);
       await appendTrackingEvent(tx, {
         workspaceId: actor.workspaceId,
         taskId: row.taskId,
         type: 'TIME_LOGGED',
         actorId: actor.userId,
         occurredAt: now,
-        payload: { minutes, source: 'timer' },
+        payload: { minutes, seconds, source: 'timer' },
         idempotencyKey: `timer-stop:${timerId}`,
       });
       await publishEvent(tx, {
@@ -191,7 +191,8 @@ export async function updateTimer(actor: TimerActor, timerId: string, action: 'p
 }
 
 /** Manual time entry, audited because it changes a measured value (PRD §6.7). */
-export async function logTime(actor: TimerActor, taskId: string, minutes: number, _note?: string) {
+export async function logTime(actor: TimerActor, taskId: string, minutes: number, note?: string) {
+  logTimeSchema.parse({ taskId, minutes, note });
   await withTimerTransaction(actor, async (tx) => {
     const rows = await tx
       .select({ id: tasks.id, status: tasks.status })
@@ -200,13 +201,13 @@ export async function logTime(actor: TimerActor, taskId: string, minutes: number
       .limit(1);
     if (!rows[0] || rows[0].status === 'DELETED') throw notFound('task', taskId);
 
-    await applyDurationToTask(tx, actor, taskId, minutes);
+    await applyDurationToTask(tx, actor, taskId, minutes * 60);
     await appendTrackingEvent(tx, {
       workspaceId: actor.workspaceId,
       taskId,
       type: 'TIME_LOGGED',
       actorId: actor.userId,
-      payload: { minutes, source: 'manual' },
+      payload: { minutes, seconds: minutes * 60, note: note ?? null, source: 'manual' },
     });
     await writeAudit(tx, {
       workspaceId: actor.workspaceId,
@@ -220,10 +221,11 @@ export async function logTime(actor: TimerActor, taskId: string, minutes: number
   });
 }
 
-async function applyDurationToTask(tx: Database, actor: TimerActor, taskId: string, minutes: number): Promise<void> {
-  if (minutes <= 0) return;
+async function applyDurationToTask(tx: Database, actor: TimerActor, taskId: string, seconds: number): Promise<void> {
+  if (seconds <= 0) return;
   const [updated] = await tx.update(tasks)
-    .set({ actualMinutes: sql`${tasks.actualMinutes} + ${minutes}`, updatedAt: new Date(), version: sql`${tasks.version} + 1` })
+    .set({ actualMinutes: sql`${tasks.actualMinutes} + floor((${tasks.actualSecondsRemainder}::bigint + ${seconds})::numeric / 60)::integer`,
+      actualSecondsRemainder: sql`(${tasks.actualSecondsRemainder}::bigint + ${seconds}) % 60`, updatedAt: new Date(), version: sql`${tasks.version} + 1` })
     .where(and(eq(tasks.id, taskId), eq(tasks.workspaceId, actor.workspaceId))).returning();
   if (!updated) throw notFound('task', taskId);
   await recordSyncChange(tx, { workspaceId: actor.workspaceId, entityType: 'task', entityId: taskId, operation: 'update', payload: serialiseTask(updated), version: updated.version });
