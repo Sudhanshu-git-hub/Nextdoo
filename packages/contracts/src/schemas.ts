@@ -164,10 +164,23 @@ export const rescheduleTaskSchema = z.object({
   reason: z.string().max(500).optional(),
 });
 
+/** Compare ISO instants without discarding sub-millisecond fractions (offsets remain supported). */
+function orderedInstants(start: string, end: string): boolean {
+  const a = new Date(start).getTime(), b = new Date(end).getTime();
+  if (a !== b) return a <= b;
+  const af = /\.(\d+)/.exec(start)?.[1] ?? '', bf = /\.(\d+)/.exec(end)?.[1] ?? '';
+  const width = Math.max(af.length, bf.length);
+  return af.padEnd(width, '0') <= bf.padEnd(width, '0');
+}
+export const TASK_SORT_FIELDS = ['createdAt', 'dueAt', 'priority', 'estimateMinutes', 'project', 'position'] as const;
 export const taskQuerySchema = z.object({
   workspaceId: uuid,
   parentTaskId: uuid.optional(),
   dependencyOfTaskId: uuid.optional(),
+  sortBy: z.enum(TASK_SORT_FIELDS).optional(),
+  sortOrder: z.enum(['asc', 'desc']).optional(),
+  priority: z.enum(TASK_PRIORITY).optional(),
+  hasDueDate: z.preprocess((v) => v === 'true' ? true : v === 'false' ? false : v, z.boolean()).optional(),
   status: z.enum(TASK_STATUS).optional(),
   projectId: uuid.optional(),
   tagId: uuid.optional(),
@@ -177,8 +190,9 @@ export const taskQuerySchema = z.object({
   dueAfter: isoDateTime.optional(),
   includeArchived: z.preprocess((v) => v === 'true' ? true : v === 'false' ? false : v, z.boolean()).default(false),
   limit: z.coerce.number().int().min(1).max(100).default(50),
-  cursor: z.string().max(500).optional(),
-});
+  cursor: z.string().max(2048).optional(),
+}).refine((q) => !q.dueAfter || !q.dueBefore || orderedInstants(q.dueAfter, q.dueBefore), { message: 'Due range start must not be after its end' })
+  .refine((q) => q.hasDueDate !== false || (!q.dueAfter && !q.dueBefore), { message: 'Unscheduled tasks cannot be combined with a due range' });
 
 // ---------------------------------------------------------------- projects, sections, tags
 

@@ -234,7 +234,7 @@ At that milestone, full validation was **322 tests in 36 files, 34 browser/API s
 existing gates green and zero dependency findings. Task cursors now preserve database
 microseconds. Dependency commands remain online-only and are explicitly rejected
 by generic sync; this is not completion of offline relationships or all core tasks.
-Task lifecycle/recovery UI, filtering/sorting and bulk operations remain next work.
+At that milestone, task lifecycle/recovery UI, filtering/sorting and bulk operations remained next work; see the continuations below.
 
 
 ## Phase 1 task archive, deletion and recovery
@@ -245,7 +245,27 @@ New controls send versions and retain retry identity; legacy bodyless delete/res
 remain compatible. Only explicit deleted-status queries expose recoverable Trash
 content, and the 30-day cutoff remains enforced server-side.
 
-Current full validation: **329 tests across 37 files and 39 browser/API scenarios**,
+At that milestone, full validation was **329 tests across 37 files and 39 browser/API scenarios**,
 all existing gates green, zero dependency findings. No new migration was added.
 Deploy the API before the UI; older servers cannot provide its lifecycle concurrency
-protection. Filtering/sorting and safe bulk operations are the next Phase 1 slices.
+protection. Filtering/sorting follows below; safe bulk operations remain next.
+
+
+## Task filtering and sorting continuation
+
+`TASK_FILTERING_MILESTONE.md` documents the online-only `/tasks` browser and
+compatible optional `sortBy`, `sortOrder`, `priority` and `hasDueDate` query fields.
+The new view combines existing filters, applies browser-local inclusive due days,
+and sorts with exact database keys and nulls last. Inbox/Today remain unchanged.
+
+Current full validation: **349 tests across 38 files and 44 browser/API scenarios**,
+all existing gates green and zero dependency findings. No migration/dependency was
+added. The new real-DB regression file is `services/task-query.integration.test.ts`;
+the browser suite is `e2e/task-query.spec.ts`.
+
+Deploy API support before the UI. New cursors bind workspace/filter/order and allow
+changing page size; legacy newest-first cursors remain an unbound compatibility
+exception. Cursors are unsigned, not authorization, and mutable sorts are live
+rather than snapshot pagination. Mixed-version cursor routing and production-scale
+query-plan/load qualification are not established. Next: safe bulk operations,
+separate from this read-only query increment and from broader Phase 1 completion.

@@ -148,3 +148,11 @@ This slice does not deliver full offline operation, Calendar/billing integration
 attachments, Windows desktop or Phase 2 collaboration. Production security,
 retention, provider, load, observability and restore qualification remain open.
 Scoped automated accessibility evidence is not full WCAG certification.
+
+
+## Subsequent filtering/sorting continuation
+
+The filtering/sorting work above is now delivered in
+[TASK_FILTERING_MILESTONE.md](TASK_FILTERING_MILESTONE.md). The results in this
+lifecycle report remain historical; the continuation records the latest validation
+and limits. Safe bulk operations remain a separate next increment.

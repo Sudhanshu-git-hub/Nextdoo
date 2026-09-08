@@ -1,9 +1,9 @@
+import { taskOrder } from '../task-order';
 import { createTag } from './projects';
-import { and, desc, eq, getTableColumns, gt, gte, inArray, isNotNull, isNull, lt, lte, or, sql } from 'drizzle-orm';
+import { and, eq, getTableColumns, gt, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import {
   AppError,
-  isoDateTime,
-  uuid,
+  taskQuerySchema,
   taskVersionSchema,
   type CreateTaskInput,
   type TaskQueryInput,
@@ -624,6 +624,8 @@ export async function queryTasks(
   workspaceId: string,
   query: TaskQueryInput,
 ): Promise<{ data: SerialisedTask[]; nextCursor: string | null; hasMore: boolean }> {
+  query = taskQuerySchema.parse(query);
+  const order = taskOrder(workspaceId, query);
   const db = getDb();
   // Deleted content is exposed only by an explicit recovery query, never normal lists.
   const conditions = [eq(tasks.workspaceId, workspaceId), ...(query.status === 'DELETED'
@@ -641,39 +643,28 @@ export async function queryTasks(
   if (query.status) conditions.push(eq(tasks.status, query.status));
   else if (!query.includeArchived) conditions.push(inArray(tasks.status, ['ACTIVE', 'COMPLETED']));
 
+  if (query.priority) conditions.push(eq(tasks.priority, query.priority));
+  if (query.hasDueDate !== undefined) conditions.push(query.hasDueDate ? isNotNull(tasks.dueAt) : isNull(tasks.dueAt));
   if (query.tagId) conditions.push(inArray(tasks.id, db.select({ id: taskTags.taskId }).from(taskTags).where(eq(taskTags.tagId, query.tagId))));
   if (query.unfiled && query.projectId) throw new AppError('VALIDATION_FAILED', 'Choose unfiled tasks or a project, not both.');
   if (query.unfiled) conditions.push(isNull(tasks.projectId));
   if (query.projectId) conditions.push(eq(tasks.projectId, query.projectId));
-  if (query.dueBefore) conditions.push(lte(tasks.dueAt, new Date(query.dueBefore)));
-  if (query.dueAfter) conditions.push(gte(tasks.dueAt, new Date(query.dueAfter)));
+  if (query.dueBefore) conditions.push(sql`${tasks.dueAt} <= ${query.dueBefore}::timestamptz`);
+  if (query.dueAfter) conditions.push(sql`${tasks.dueAt} >= ${query.dueAfter}::timestamptz`);
   if (query.q) {
     conditions.push(
       sql`to_tsvector('simple', coalesce(${tasks.title},'') || ' ' || coalesce(${tasks.description},'')) @@ plainto_tsquery('simple', ${query.q})`,
     );
   }
 
-  // Keyset pagination on (createdAt, id) — stable under concurrent inserts.
-  if (query.cursor) {
-    try {
-      const decoded = JSON.parse(Buffer.from(query.cursor, 'base64url').toString('utf8')) as {
-        c: string;
-        i: string;
-      };
-      isoDateTime.parse(decoded.c); uuid.parse(decoded.i);
-      conditions.push(
-        or(sql`${tasks.createdAt} < ${decoded.c}::timestamptz`, and(sql`${tasks.createdAt} = ${decoded.c}::timestamptz`, lt(tasks.id, decoded.i)))!,
-      );
-    } catch {
-      throw new AppError('VALIDATION_FAILED', 'Malformed pagination cursor.');
-    }
-  }
+  if (order.after) conditions.push(order.after);
 
   const rows = await db
-    .select({ ...getTableColumns(tasks), cursorCreatedAt: sql<string>`to_char(${tasks.createdAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')` })
+    .select({ ...getTableColumns(tasks), cursorKey: order.selection })
     .from(tasks)
+    .leftJoin(projects, and(eq(projects.id, tasks.projectId), eq(projects.workspaceId, workspaceId), isNull(projects.deletedAt)))
     .where(and(...conditions))
-    .orderBy(desc(tasks.createdAt), desc(tasks.id))
+    .orderBy(...order.orderBy)
     .limit(query.limit + 1);
 
   const hasMore = rows.length > query.limit;
@@ -681,7 +672,7 @@ export async function queryTasks(
   const last = page[page.length - 1];
   const nextCursor =
     hasMore && last
-      ? Buffer.from(JSON.stringify({ c: last.cursorCreatedAt, i: last.id })).toString('base64url')
+      ? order.cursor(last)
       : null;
 
   return { data: page.map(serialise), nextCursor, hasMore };

@@ -129,7 +129,7 @@ function ProjectTasks({ workspaceId, project, back, manage }: { workspaceId: str
   const page = useTaskPages(workspaceId, `status=ACTIVE&projectId=${project.id}`);
   const [view, setView] = useState<'list' | 'board' | 'analytics'>('list');
   return <>
-    <div className="row"><button onClick={back}>Back to projects</button><button onClick={manage}>Project settings</button><Link className="history-link" href="/task-history">Task history</Link></div><h1>{project.name}</h1>
+    <div className="row"><button onClick={back}>Back to projects</button><button onClick={manage}>Project settings</button><Link className="history-link" href="/tasks">Browse tasks</Link> · <Link className="history-link" href="/task-history">Task history</Link></div><h1>{project.name}</h1>
     {project.status === 'ARCHIVED' && <div className="banner banner-warn" role="status">This project is archived. Existing tasks and reminders stay unchanged; new assignments require restoring the project.</div>}
     <p className="subtitle">Active tasks. Open a task to edit its project, tags, date or estimate.</p>
     <div className="row" role="group" aria-label="Project task view" style={{ marginBottom: 18 }}>
