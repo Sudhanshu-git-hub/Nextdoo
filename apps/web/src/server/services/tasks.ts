@@ -1,3 +1,4 @@
+import { createTag } from './projects';
 import { and, desc, eq, gte, inArray, isNull, lt, lte, or, sql } from 'drizzle-orm';
 import {
   AppError,
@@ -8,7 +9,7 @@ import {
   versionConflict,
 } from '@nextdoo/contracts';
 import { nextStatus } from '@nextdoo/core';
-import { tasks, taskTags, syncTombstones } from '@nextdoo/db';
+import { projects, tasks, taskTags, syncTombstones } from '@nextdoo/db';
 import { getDb } from '../db';
 import { newId } from '../ids';
 import { appendTrackingEvent, publishEvent, recordSyncChange, writeAudit } from './events';
@@ -83,7 +84,18 @@ export async function createTask(actor: TaskActor, input: CreateTaskInput, optio
   return withWorkspaceTransaction(actor.workspaceId, async (tx) => {
     if (input.recurrenceRule) throw new AppError('VALIDATION_FAILED', 'Recurring task creation is not implemented yet. No task was created.');
     await enforceTaskLimit(actor.userId, actor.workspaceId);
+    if (input.projectName !== undefined) {
+      if (input.projectId) throw new AppError('VALIDATION_FAILED', 'Choose a project ID or a project name, not both.');
+      const matches = await tx.select({ id: projects.id }).from(projects).where(and(
+        eq(projects.workspaceId, actor.workspaceId), eq(projects.status, 'ACTIVE'), isNull(projects.deletedAt),
+        sql`lower(${projects.name}) = lower(${input.projectName})`,
+      )).limit(2);
+      if (matches.length !== 1) throw new AppError('VALIDATION_FAILED', 'Project name is missing or ambiguous. Create it in Projects, or remove +project and assign it with the task editor. No task was created.');
+      input = { ...input, projectId: matches[0]!.id };
+    }
     await assertTaskReferences(tx, actor.workspaceId, input);
+    const tagIds = await resolveTags(actor.workspaceId, input.tagIds, input.tagNames);
+    input = { ...input, tagIds };
     // Parent must live in the same workspace — prevents cross-tenant nesting.
     if (input.parentTaskId) {
       const parent = await tx
@@ -148,7 +160,7 @@ export async function createTask(actor: TaskActor, input: CreateTaskInput, optio
       entityType: 'task',
       entityId: id,
       operation: 'create',
-      payload: serialise(created) as unknown as Record<string, unknown>,
+      payload: { ...serialise(created), tagIds: input.tagIds },
       version: created.version,
       deviceId: actor.deviceId ?? null,
     });
@@ -169,7 +181,7 @@ export async function createTask(actor: TaskActor, input: CreateTaskInput, optio
       requestId: actor.requestId ?? null,
     });
 
-    return serialise(created);
+    return { ...serialise(created), tagIds: input.tagIds };
   });
 }
 
@@ -192,6 +204,7 @@ export async function updateTask(
     if (current.version !== input.version) throw versionConflict('task', taskId);
 
     await assertTaskReferences(tx, actor.workspaceId, input, current.projectId);
+    if (input.tagNames !== undefined) input = { ...input, tagIds: await resolveTags(actor.workspaceId, input.tagIds ?? [], input.tagNames) };
     const patch: Partial<typeof tasks.$inferInsert> = { updatedAt: new Date() };
     if (input.projectId !== undefined && input.projectId !== current.projectId && input.sectionId === undefined) patch.sectionId = null;
     if (input.title !== undefined) patch.title = input.title;
@@ -244,7 +257,7 @@ export async function updateTask(
       entityType: 'task',
       entityId: taskId,
       operation: 'update',
-      payload: serialise(updated) as unknown as Record<string, unknown>,
+      payload: { ...serialise(updated), ...(input.tagIds !== undefined ? { tagIds: input.tagIds } : {}) } as unknown as Record<string, unknown>,
       version: updated.version,
       deviceId: actor.deviceId ?? null,
     });
@@ -255,7 +268,7 @@ export async function updateTask(
       entityType: 'task',
       entityId: taskId,
       correlationId: actor.requestId ?? null,
-      payload: { fields: Object.keys(patch).filter((k) => k !== 'updatedAt') },
+      payload: { fields: [...Object.keys(patch).filter((k) => k !== 'updatedAt'), ...(input.tagIds !== undefined ? ['tagIds'] : [])] },
     });
 
     await scheduleTrackingEvaluation(actor.workspaceId, taskId);
@@ -603,6 +616,8 @@ export async function queryTasks(
   else if (!query.includeArchived) conditions.push(inArray(tasks.status, ['ACTIVE', 'COMPLETED']));
 
   if (query.tagId) conditions.push(inArray(tasks.id, db.select({ id: taskTags.taskId }).from(taskTags).where(eq(taskTags.tagId, query.tagId))));
+  if (query.unfiled && query.projectId) throw new AppError('VALIDATION_FAILED', 'Choose unfiled tasks or a project, not both.');
+  if (query.unfiled) conditions.push(isNull(tasks.projectId));
   if (query.projectId) conditions.push(eq(tasks.projectId, query.projectId));
   if (query.dueBefore) conditions.push(lte(tasks.dueAt, new Date(query.dueBefore)));
   if (query.dueAfter) conditions.push(gte(tasks.dueAt, new Date(query.dueAfter)));
@@ -656,4 +671,21 @@ async function cancelRemindersForTask(taskId: string): Promise<void> {
 async function rescheduleRelativeReminders(taskId: string, dueAt: Date | null): Promise<void> {
   const { rescheduleRelativeReminders: reschedule } = await import('./reminders');
   await reschedule(taskId, dueAt);
+}
+
+/** Called only inside the enclosing workspace mutation transaction. */
+async function resolveTags(workspaceId: string, ids: string[], names: string[] = []): Promise<string[]> {
+  const result = new Set(ids);
+  for (const name of new Set(names.map((n) => n.trim().toLowerCase()))) result.add((await createTag(workspaceId, name)).id);
+  if (result.size > 50) throw new AppError('VALIDATION_FAILED', 'A task can have at most 50 tags.');
+  return [...result];
+}
+
+/** One consistent editable snapshot: tags and version share the workspace lock. */
+export async function getTaskDetails(workspaceId: string, taskId: string) {
+  return withWorkspaceTransaction(workspaceId, async (db) => {
+    const task = await loadTask(workspaceId, taskId);
+    const links = await db.select({ id: taskTags.tagId }).from(taskTags).where(eq(taskTags.taskId, taskId));
+    return { ...serialise(task), tagIds: links.map((l) => l.id) };
+  });
 }

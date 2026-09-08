@@ -1,7 +1,7 @@
 import { withWorkspaceTransaction } from './transactions';
 import { enforceProjectLimit } from './entitlements';
 import { and, asc, eq, isNull } from 'drizzle-orm';
-import { notFound } from '@nextdoo/contracts';
+import { createTagSchema, notFound } from '@nextdoo/contracts';
 import { projects, sections, tags } from '@nextdoo/db';
 import { getDb } from '../db';
 import { newId } from '../ids';
@@ -71,17 +71,16 @@ export async function listTags(workspaceId: string) {
 }
 
 export async function createTag(workspaceId: string, name: string, color?: string) {
-  const db = getDb();
-  const [created] = await db
-    .insert(tags)
-    .values({ id: newId(), workspaceId, name: name.toLowerCase(), color: color ?? null })
-    .onConflictDoNothing()
-    .returning();
-  if (created) return created;
-  const existing = await db
-    .select()
-    .from(tags)
-    .where(and(eq(tags.workspaceId, workspaceId), eq(tags.name, name.toLowerCase())))
-    .limit(1);
-  return existing[0]!;
+  const input = createTagSchema.parse({ workspaceId, name, color });
+  name = input.name.toLowerCase();
+  return withWorkspaceTransaction(workspaceId, async (db) => {
+    const [created] = await db.insert(tags).values({ id: newId(), workspaceId, name, color: color ?? null }).onConflictDoNothing().returning();
+    if (created) {
+      await recordSyncChange(db, { workspaceId, entityType: 'tag', entityId: created.id, operation: 'create', payload: { id: created.id, name, color: created.color }, version: 1 });
+      return created;
+    }
+    const [existing] = await db.select().from(tags).where(and(eq(tags.workspaceId, workspaceId), eq(tags.name, name))).limit(1);
+    if (!existing) throw notFound('tag', name);
+    return existing;
+  });
 }

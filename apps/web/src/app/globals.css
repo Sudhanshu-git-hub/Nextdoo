@@ -191,3 +191,12 @@ th { color: var(--text-dim); font-weight: 550; font-size: 12px; text-transform: 
 .muted { color: var(--text-dim); font-size: 13px; }
 .row { display: flex; gap: 9px; align-items: center; flex-wrap: wrap; }
 .spread { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+
+/* Task editing uses the browser's modal focus containment and Escape semantics. */
+.task-edit-button { background: transparent; border: 0; padding: 3px 0; color: inherit; text-align: left; min-height: 28px; }
+.task-edit-button:hover { text-decoration: underline; background: transparent; }
+.task-editor { width: min(640px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 12px; padding: 24px; }
+.task-editor::backdrop { background: rgb(0 0 0 / .65); }
+.task-editor label { margin-top: 12px; }
+.task-editor input[type=checkbox] { width: auto; margin-right: 8px; }
+.task-editor fieldset { margin-top: 12px; }

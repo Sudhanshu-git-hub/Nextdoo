@@ -1,6 +1,6 @@
 import { updateTaskSchema } from '@nextdoo/contracts';
 import { authedRoute, parseBody } from '@/server/http';
-import { deleteTask, loadTask, serialiseTask, updateTask } from '@/server/services/tasks';
+import { deleteTask, getTaskDetails, updateTask } from '@/server/services/tasks';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -10,7 +10,7 @@ type Params = { params: Promise<{ id: string }> };
 export async function GET(request: Request, { params }: Params) {
   const { id } = await params;
   return authedRoute({ routeName: 'tasks.get' }, async (_r, ctx) =>
-    serialiseTask(await loadTask(ctx.auth.workspaceId, id)),
+    getTaskDetails(ctx.auth.workspaceId, id),
   )(request);
 }
 

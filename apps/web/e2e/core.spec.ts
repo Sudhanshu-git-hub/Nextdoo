@@ -143,7 +143,7 @@ test('exports have request IDs, no-store headers and a durable per-account quota
 });
 
 for (const structured of ['#important', '+Work']) {
-  test(`unsupported structured capture retains original ${structured} intent`, async ({ page }) => {
+  test(`structured capture retains original ${structured} intent until explicit confirmation`, async ({ page }) => {
     await page.goto('/register');
     await page.getByLabel('Email', { exact: true }).fill(`structured-${randomUUID()}@test.local`);
     await page.getByLabel('Password', { exact: true }).fill('e2e-only-password-123');
@@ -151,9 +151,20 @@ for (const structured of ['#important', '+Work']) {
     await expect(page).toHaveURL(/\/today$/);
     const text = `Prepare ${randomUUID()} today at 11:59pm for 30 minutes ${structured}`;
     await page.locator('#capture').fill(text); await page.locator('#capture').press('Enter');
-    await expect(page.getByRole('alert').filter({ hasText: 'Tag and project capture' })).toHaveText('Tag and project capture cannot be saved yet. No task was created; your original text is kept in the input.');
+    await expect(page.getByRole('group', { name: 'Confirm interpreted task details' })).toBeVisible();
     await expect(page.locator('#capture')).toHaveValue(text);
     const bundle = await (await page.request.get('/api/v1/account/export')).json();
     expect(bundle.tasks).toEqual([]);
+    await page.getByRole('button', { name: 'Save as shown', exact: true }).click();
+    if (structured === '+Work') {
+      await expect(page.getByRole('alert').filter({ hasText: 'Project name' })).toContainText('No task was created.');
+      await expect(page.locator('#capture')).toHaveValue(text);
+      expect((await (await page.request.get('/api/v1/account/export')).json()).tasks).toEqual([]);
+    } else {
+      await expect(page.locator('#capture')).toHaveValue('');
+      const saved = await (await page.request.get('/api/v1/account/export')).json();
+      expect(saved.tasks).toHaveLength(1); expect(saved.taskTags).toHaveLength(1);
+      expect(saved.tags).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'important' })]));
+    }
   });
 }

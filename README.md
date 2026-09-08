@@ -13,6 +13,7 @@ An outcome-oriented task and time-management platform for Web and Windows Deskto
 Recovered implementation with verified incremental quality/security repairs. **Not a release-complete MVP.**
 
 - [Development and verification](docs/DEVELOPMENT.md)
+- [Online workflow milestone and validation](docs/ONLINE_WORKFLOW_PHASE.md)
 - [Audit-remediation report and release blockers](docs/AUDIT_REMEDIATION_REPORT.md)
 - [Implementation log and remaining limitations](docs/IMPLEMENTATION_LOG.md)
 

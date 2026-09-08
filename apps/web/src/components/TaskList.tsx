@@ -1,12 +1,13 @@
 'use client';
 
+import { TaskEditor } from './TaskEditor';
 import { useState } from 'react';
 import { api, ApiError, type Task } from '@/lib/api';
 
 /**
- * Task list with optimistic completion (PRD §6.9).
+ * Task list with acknowledged completion (PRD §6.9).
  *
- * On failure the optimistic change is rolled back and the reason is surfaced —
+ * On failure the existing task stays visible and the reason is surfaced —
  * a version conflict tells the user the task changed elsewhere rather than
  * silently discarding their click.
  */
@@ -25,6 +26,7 @@ export function TaskList({
   emptyBody: string;
   onChanged: () => void;
 }) {
+  const [editing, setEditing] = useState<Task | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null);
   const [announcement, setAnnouncement] = useState('');
@@ -102,7 +104,7 @@ export function TaskList({
                   {done ? '✓' : ''}
                 </button>
                 <div className="task-main">
-                  <div className="task-title">{task.title}</div>
+                  <button type="button" className="task-title task-edit-button" aria-label={`Edit "${task.title}"`} onClick={() => setEditing(task)}>{task.title}</button>
                   <div className="task-meta">
                     {task.dueAt && (
                       <span className={overdue ? 'pill pill-late' : 'pill'}>
@@ -132,6 +134,7 @@ export function TaskList({
           );
         })}
       </ul>
+      {editing && <TaskEditor key={editing.id} task={editing} onClose={() => setEditing(null)} onSaved={onChanged} />}
       <div aria-live="polite" className="sr-only">{announcement}</div>
     </>
   );

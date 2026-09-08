@@ -1,5 +1,8 @@
 'use client';
 
+import { useTaskPages } from '@/lib/use-task-pages';
+import { TaskList } from '@/components/TaskList';
+import { TaskPagination } from '@/components/TaskPagination';
 import { useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 
@@ -7,6 +10,7 @@ interface Project { id: string; name: string; color: string | null; description:
 
 /** Projects (PRD §8.3). Creation enforces the plan limit server-side. */
 export function ProjectsView({ workspaceId, initialProjects }: { workspaceId: string; initialProjects: Project[] }) {
+  const [selected, setSelected] = useState<Project | null>(null);
   const [projects, setProjects] = useState<Project[]>(initialProjects);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -39,6 +43,7 @@ export function ProjectsView({ workspaceId, initialProjects }: { workspaceId: st
     }
   }
 
+  if (selected) return <ProjectTasks key={selected.id} project={selected} workspaceId={workspaceId} back={() => setSelected(null)} />;
   return (
     <>
       <div className="page-head">
@@ -93,7 +98,7 @@ export function ProjectsView({ workspaceId, initialProjects }: { workspaceId: st
                     background: project.color ?? 'var(--accent)', display: 'inline-block',
                   }}
                 />
-                <strong>{project.name}</strong>
+                <button onClick={() => setSelected(project)} aria-label={`Open ${project.name}`}><strong>{project.name}</strong></button>
               </div>
               {project.description && <p className="muted" style={{ marginTop: 6 }}>{project.description}</p>}
             </div>
@@ -102,4 +107,14 @@ export function ProjectsView({ workspaceId, initialProjects }: { workspaceId: st
       )}
     </>
   );
+}
+
+function ProjectTasks({ workspaceId, project, back }: { workspaceId: string; project: Project; back: () => void }) {
+  const page = useTaskPages(workspaceId, `status=ACTIVE&projectId=${project.id}`);
+  return <>
+    <button onClick={back}>Back to projects</button><h1>{project.name}</h1>
+    <p className="subtitle">Active tasks. Open a task to edit its project, tags, date or estimate.</p>
+    <TaskList tasks={page.tasks} loading={page.loading && !page.tasks.length} error={page.tasks.length ? null : page.error} emptyTitle="No active tasks" emptyBody="Assign a task to this project from Inbox or capture with its +project name." onChanged={page.reload} />
+    <TaskPagination {...page} error={page.tasks.length ? page.error : null} count={page.tasks.length} onMore={page.loadMore} onRetry={page.tasks.length ? page.loadMore : page.reload} />
+  </>;
 }

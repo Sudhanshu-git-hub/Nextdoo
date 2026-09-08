@@ -131,9 +131,9 @@ and stop point are in `AUDIT_REMEDIATION_REPORT.md`. Fresh SQL migrations 0000â€
 plus replay, 278 tests and 11 E2E/API scenarios passed locally. Apply forward
 migrations before starting services. The sync sequence trigger serializes writes
 through commit; production throughput remains unmeasured. Legacy pause history and
-previously discarded seconds cannot be fabricated. Unsupported recurrence/tag/project
-capture now preserves original input with an explicit error; those workflows were
-not implemented.
+previously discarded seconds cannot be fabricated. Unsupported recurrence capture preserves original input with an explicit error.
+The later online workflow milestone now supports confirmed tags/existing projects
+and task editing; see `ONLINE_WORKFLOW_PHASE.md` for its bounded acceptance.
 
 These results do not establish production readiness. Remote PG16 CI, breached-
 password checking, managed secrets/key rotation, load, accessibility, backup restore,
@@ -172,3 +172,13 @@ contains the audited 0000â€“0008 baseline. A mismatch requires investigation, no
 editing the ledger/manifest until the warning disappears. Keep the entire migrations
 directory (including that manifest) in deployment artifacts. Test DB accounts need
 CREATE DATABASE permission for the isolated concurrent-migration regression suite.
+
+
+## Online workflow milestone
+
+See `ONLINE_WORKFLOW_PHASE.md`: confirmed tag/project capture, version-safe task
+editing, navigable project task lists, and continuation controls for Today/Inbox/
+Projects/Focus. Current verification is 285 tests and 16 E2E/API scenarios; editor
+keyboard and scoped axe checks pass. Existing API conventions are preserved by
+explicit user choice. Full task-management, cursor lifetime/virtualization, offline
+and production-release gates are not implied by this milestone.

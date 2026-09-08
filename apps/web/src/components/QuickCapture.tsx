@@ -16,6 +16,7 @@ export function QuickCapture({ workspaceId, onCreated }: { workspaceId: string; 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState('');
+  const mutation = useRef<{ body: string; key: string } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // `N` focuses capture from anywhere, unless the user is already typing.
@@ -48,7 +49,7 @@ export function QuickCapture({ workspaceId, onCreated }: { workspaceId: string; 
         body: JSON.stringify({ text: value, timeZone }),
       });
 
-      if (result.requiresConfirmation) {
+      if (result.requiresConfirmation || result.tags?.value.length || result.project) {
         setParsed(result);
         setAnnouncement('Please confirm the interpreted details before saving.');
         return;
@@ -65,14 +66,7 @@ export function QuickCapture({ workspaceId, onCreated }: { workspaceId: string; 
     setBusy(true);
     setError(null);
     try {
-      if (result.tags?.value.length || result.project) {
-        setError('Tag and project capture cannot be saved yet. No task was created; your original text is kept in the input.');
-        return;
-      }
-      await api('/tasks', {
-        method: 'POST',
-        headers: { 'Idempotency-Key': crypto.randomUUID() },
-        body: JSON.stringify({
+      const body = JSON.stringify({
           workspaceId,
           title: result.title,
           dueAt: result.dueAt?.value ?? null,
@@ -80,9 +74,13 @@ export function QuickCapture({ workspaceId, onCreated }: { workspaceId: string; 
           priority: result.priority?.value ?? 'NONE',
           timeZone,
           tagIds: [],
+          tagNames: result.tags?.value ?? [],
+          projectName: result.project?.value,
           recurrenceRule: result.recurrence ? { ...result.recurrence.value, timeZone } : null,
-        }),
-      });
+        });
+      if (mutation.current?.body !== body) mutation.current = { body, key: crypto.randomUUID() };
+      await api('/tasks', { method: 'POST', headers: { 'Idempotency-Key': mutation.current.key }, body });
+      mutation.current = null;
       setText('');
       setParsed(null);
       setAnnouncement(`Task added: ${result.title}`);
@@ -109,7 +107,7 @@ export function QuickCapture({ workspaceId, onCreated }: { workspaceId: string; 
             id="capture"
             ref={inputRef}
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => { setText(e.target.value); setParsed(null); }}
             placeholder="Add a task…  e.g. Prepare Q3 report tomorrow at 2pm for 90 minutes"
             aria-describedby="capture-hint"
             autoComplete="off"
@@ -121,7 +119,7 @@ export function QuickCapture({ workspaceId, onCreated }: { workspaceId: string; 
         </div>
         <p id="capture-hint" className="muted" style={{ marginTop: 6 }}>
           Press <span className="kbd">N</span> to focus. Dates, durations and <span className="kbd">!p1</span> are supported.
-          Tag/project and recurring capture are recognized but cannot be saved yet.
+          Use #tags and +existing-project with confirmation. Recurring capture is not available yet.
         </p>
       </form>
 
@@ -141,6 +139,8 @@ export function QuickCapture({ workspaceId, onCreated }: { workspaceId: string; 
                   ({Math.round(parsed.dueAt.confidence * 100)}% confident)
                 </span>
               )}
+              {parsed.tags && <p>Tags: {parsed.tags.value.join(", ")}</p>}
+              {parsed.project && <p>Project: {parsed.project.value} (must already exist)</p>}
               {parsed.estimateMinutes && <span> · Estimate {parsed.estimateMinutes.value} min</span>}
             </div>
           </div>

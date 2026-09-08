@@ -128,6 +128,8 @@ export const createTaskSchema = z.object({
   timeZone: timeZone.nullish(),
   estimateMinutes: z.number().int().min(0).max(60 * 24 * 31).nullish(),
   tagIds: z.array(uuid).max(50).default([]),
+  tagNames: z.array(z.string().trim().min(1).max(60)).max(50).optional(),
+  projectName: z.string().trim().min(1).max(200).optional(),
   recurrenceRule: recurrenceRuleSchema.nullish(),
   clientMutationId: uuid.optional(),
 });
@@ -144,6 +146,7 @@ export const updateTaskSchema = z
     estimateMinutes: z.number().int().min(0).max(60 * 24 * 31).nullish(),
     position: z.number().optional(),
     tagIds: z.array(uuid).max(50).optional(),
+    tagNames: z.array(z.string().trim().min(1).max(60)).max(50).optional(),
     /** Optimistic lock. Required so a stale client cannot clobber newer state. */
     version: z.number().int().min(1),
   })
@@ -166,6 +169,7 @@ export const taskQuerySchema = z.object({
   status: z.enum(TASK_STATUS).optional(),
   projectId: uuid.optional(),
   tagId: uuid.optional(),
+  unfiled: z.preprocess((v) => v === 'true' ? true : v === 'false' ? false : v, z.boolean()).optional(),
   q: z.string().trim().max(200).optional(),
   dueBefore: isoDateTime.optional(),
   dueAfter: isoDateTime.optional(),
