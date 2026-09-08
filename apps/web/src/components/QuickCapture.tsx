@@ -65,6 +65,10 @@ export function QuickCapture({ workspaceId, onCreated }: { workspaceId: string; 
     setBusy(true);
     setError(null);
     try {
+      if (result.tags?.value.length || result.project) {
+        setError('Tag and project capture cannot be saved yet. No task was created; your original text is kept in the input.');
+        return;
+      }
       await api('/tasks', {
         method: 'POST',
         headers: { 'Idempotency-Key': crypto.randomUUID() },
@@ -106,7 +110,7 @@ export function QuickCapture({ workspaceId, onCreated }: { workspaceId: string; 
             ref={inputRef}
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder="Add a task…  e.g. Prepare Q3 report tomorrow at 2pm for 90 minutes #finance"
+            placeholder="Add a task…  e.g. Prepare Q3 report tomorrow at 2pm for 90 minutes"
             aria-describedby="capture-hint"
             autoComplete="off"
             disabled={busy}
@@ -116,8 +120,8 @@ export function QuickCapture({ workspaceId, onCreated }: { workspaceId: string; 
           </button>
         </div>
         <p id="capture-hint" className="muted" style={{ marginTop: 6 }}>
-          Press <span className="kbd">N</span> to focus. Dates, durations, <span className="kbd">#tags</span>,{' '}
-          <span className="kbd">+project</span> and <span className="kbd">!p1</span> are understood.
+          Press <span className="kbd">N</span> to focus. Dates, durations and <span className="kbd">!p1</span> are supported.
+          Tag/project and recurring capture are recognized but cannot be saved yet.
         </p>
       </form>
 

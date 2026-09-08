@@ -141,3 +141,19 @@ test('exports have request IDs, no-store headers and a durable per-account quota
   expect(fourth.status()).toBe(429); expect(fourth.headers()['retry-after']).toBeTruthy();
   expect(first.headers()['x-request-id']).toBeTruthy();
 });
+
+for (const structured of ['#important', '+Work']) {
+  test(`unsupported structured capture retains original ${structured} intent`, async ({ page }) => {
+    await page.goto('/register');
+    await page.getByLabel('Email', { exact: true }).fill(`structured-${randomUUID()}@test.local`);
+    await page.getByLabel('Password', { exact: true }).fill('e2e-only-password-123');
+    await page.getByRole('button', { name: 'Create account', exact: true }).click();
+    await expect(page).toHaveURL(/\/today$/);
+    const text = `Prepare ${randomUUID()} today at 11:59pm for 30 minutes ${structured}`;
+    await page.locator('#capture').fill(text); await page.locator('#capture').press('Enter');
+    await expect(page.getByRole('alert').filter({ hasText: 'Tag and project capture' })).toHaveText('Tag and project capture cannot be saved yet. No task was created; your original text is kept in the input.');
+    await expect(page.locator('#capture')).toHaveValue(text);
+    const bundle = await (await page.request.get('/api/v1/account/export')).json();
+    expect(bundle.tasks).toEqual([]);
+  });
+}

@@ -114,3 +114,15 @@ explicit CAS requirement is PATCH, and sync's delete-wins policy remains intact.
 Full verification: 278 tests and 9 E2E/API scenarios passed, all gates. DB-free core
 subset remains 157 passing. Evidence: precision-red/verify, provenance-red,
 disabled-provider-red, housekeeping-red, health-red, final-unit.
+
+## Capture intent preservation
+
+Two real browser regressions reproduced silently discarded `#tag` and `+project`
+intent. Capture now explicitly refuses those unsupported structured saves and keeps
+the original input, rather than pretending the fields were persisted. Help text
+no longer advertises unsupported saving. This does not implement a tag/project
+selection workflow. During implementation, typecheck caught the nullable ParsedField
+shape; the error locator was narrowed to exclude Next's unrelated route announcer,
+without relaxing the expected error, original-input or zero-created-task assertions.
+Final full verification passed: 278 tests and 11 E2E/API scenarios, all gates.
+Evidence: structured-capture-red/verify.
