@@ -28,10 +28,10 @@ export function TodayView({ workspaceId }: { workspaceId: string }) {
       );
       setTasks(response.data);
       setStale(false);
-      void cacheTasks(response.data);
+      void cacheTasks(workspaceId, response.data);
     } catch (caught) {
       // Fall back to the local cache so the view still works offline.
-      const cached = await readCachedTasks<Task>();
+      const cached = await readCachedTasks<Task>(workspaceId);
       if (cached.length) {
         setTasks(cached.filter((t) => t.status === 'ACTIVE'));
         setStale(true);

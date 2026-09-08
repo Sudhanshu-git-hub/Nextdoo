@@ -53,3 +53,25 @@ test('focus displays a numeric server-based clock through pause and resume', asy
   await page.getByRole('button', { name: 'Stop and save', exact: true }).click();
   await expect(page.getByText('No timer running', { exact: true })).toBeVisible();
 });
+
+test('switching accounts cannot expose another workspace cache during a network failure', async ({ page, context }) => {
+  const register = async () => {
+    await page.goto('/register');
+    await page.getByLabel('Email', { exact: true }).fill(`cache-${randomUUID()}@test.local`);
+    await page.getByLabel('Password', { exact: true }).fill('e2e-only-password-123');
+    await page.getByRole('button', { name: 'Create account', exact: true }).click();
+    await expect(page).toHaveURL(/\/today$/);
+  };
+  await register();
+  const secret = `Private ${randomUUID()}`;
+  await page.locator('#capture').fill(`${secret} today at 11:59pm for 30 minutes`);
+  await page.locator('#capture').press('Enter');
+  await expect(page.getByRole('button', { name: `Complete "${secret}"`, exact: true })).toBeVisible();
+  // Same browser/IndexedDB, but a different authenticated account. Fault only
+  // the task API: account creation and authentication still use the real server.
+  await context.clearCookies();
+  await page.route('**/api/v1/tasks?**', (route) => route.abort('failed'));
+  await register();
+  await expect(page.getByText(/Could not load your tasks|Showing your last saved copy/)).toBeVisible();
+  await expect(page.getByText(secret, { exact: true })).toHaveCount(0);
+});

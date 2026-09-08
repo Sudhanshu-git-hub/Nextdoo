@@ -109,20 +109,23 @@ async function refreshCount(): Promise<void> {
   }
 }
 
-export async function cacheTasks(tasks: unknown[]): Promise<void> {
+export async function cacheTasks(workspaceId: string, tasks: Array<{ workspaceId: string }>): Promise<void> {
   try {
     const db = await openDb();
     const transaction = db.transaction(STORE_TASKS, 'readwrite');
     const store = transaction.objectStore(STORE_TASKS);
-    for (const task of tasks) store.put(task);
+    for (const task of tasks) if (task.workspaceId === workspaceId) store.put(task);
   } catch {
     /* cache is best-effort */
   }
 }
 
-export async function readCachedTasks<T>(): Promise<T[]> {
+export async function readCachedTasks<T extends { workspaceId: string }>(workspaceId: string): Promise<T[]> {
   try {
-    return await tx<T[]>(STORE_TASKS, 'readonly', (s) => s.getAll() as IDBRequest<T[]>);
+    const records = await tx<T[]>(STORE_TASKS, 'readonly', (s) => s.getAll() as IDBRequest<T[]>);
+    // A browser profile is not an account boundary. Never expose legacy rows
+    // without workspace provenance, or rows from another authenticated account.
+    return records.filter((record) => record.workspaceId === workspaceId);
   } catch {
     return [];
   }

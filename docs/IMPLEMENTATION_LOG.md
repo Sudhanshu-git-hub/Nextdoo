@@ -110,3 +110,12 @@ only through final account/workspace cascade and prevents live-account workspace
 deletion from bypassing immutability. Direct tracking UPDATE/DELETE still fail.
 No provider or billing-retention integration added. Full verification passed:
 **228 tests, 3 E2E**, lint/typecheck/coverage/build.
+
+### Browser cache isolation
+
+Final security review reproduced the accepted audit's browser-cache disclosure
+with two real accounts in the same browser and a failed task request. Task cache
+reads/writes now require workspace provenance; unscoped legacy records are not
+rendered. The browser regression failed before and passes after. Full verification
+passed: **228 tests, 4 E2E**, lint/typecheck/coverage/build. This is a security repair,
+not completion of offline capture/queue/conflict UX.
