@@ -155,3 +155,11 @@ complete planning/settings, full offline operation, external Calendar/billing,
 attachments, desktop or Phase 2 collaboration. Production-scale sort query plans,
 load/observability/restore/provider qualification remain open. Scoped axe is not
 full WCAG certification; a clean dependency audit is not security certification.
+
+
+## Subsequent atomic bulk delivery
+
+The separately scoped bulk work is now delivered in
+[TASK_BULK_MILESTONE.md](TASK_BULK_MILESTONE.md). Filtering validation above remains
+historical. The current Phase 1 completion ledger is
+[PHASE1_COMPLETION_PLAN.md](PHASE1_COMPLETION_PLAN.md); the wider MVP is still open.

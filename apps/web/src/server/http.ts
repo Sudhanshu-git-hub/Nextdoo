@@ -101,7 +101,8 @@ export function authedRoute<T>(
 
       const perform = async () => {
         const match = /^\/api\/v1\/(?:tasks|projects|sections|timers|reminders)\/([^/]+)/.exec(new URL(request.url).pathname);
-        if (match) {
+        // Static bulk command is not a task UUID. Keep all resource-ID validation otherwise.
+        if (match && !(options.routeName === 'tasks.bulk' && new URL(request.url).pathname === '/api/v1/tasks/bulk')) {
           let id: string;
           try { id = decodeURIComponent(match[1]!); } catch { throw new AppError('VALIDATION_FAILED', 'Invalid resource identifier.'); }
           uuid.parse(id);

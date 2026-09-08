@@ -258,7 +258,7 @@ compatible optional `sortBy`, `sortOrder`, `priority` and `hasDueDate` query fie
 The new view combines existing filters, applies browser-local inclusive due days,
 and sorts with exact database keys and nulls last. Inbox/Today remain unchanged.
 
-Current full validation: **349 tests across 38 files and 44 browser/API scenarios**,
+At that milestone, full validation was **349 tests across 38 files and 44 browser/API scenarios**,
 all existing gates green and zero dependency findings. No migration/dependency was
 added. The new real-DB regression file is `services/task-query.integration.test.ts`;
 the browser suite is `e2e/task-query.spec.ts`.
@@ -267,5 +267,23 @@ Deploy API support before the UI. New cursors bind workspace/filter/order and al
 changing page size; legacy newest-first cursors remain an unbound compatibility
 exception. Cursors are unsigned, not authorization, and mutable sorts are live
 rather than snapshot pagination. Mixed-version cursor routing and production-scale
-query-plan/load qualification are not established. Next: safe bulk operations,
-separate from this read-only query increment and from broader Phase 1 completion.
+query-plan/load qualification are not established. Atomic bulk operations follow below, separate from that read-only query increment.
+
+
+## Atomic bulk and Phase 1 closeout continuation
+
+`TASK_BULK_MILESTONE.md` documents `POST /api/v1/tasks/bulk` and the online selection
+controls in Browse tasks. User-confirmed all-or-nothing semantics use the existing
+workspace transaction and idempotency ledger, not partial-result sync behavior.
+Selections are bounded to 100 explicit IDs/versions; reschedule must provide a new
+date or explicit null. Deploy API support before enabling the controls.
+
+Current full validation: **363 tests across 39 files and 50 browser/API scenarios**,
+all existing gates green, zero dependency findings. No migrations or dependencies
+added. New regression files: `services/task-bulk.integration.test.ts` (14 tests)
+and `e2e/task-bulk.spec.ts` (6 scenarios).
+
+The user's request to finish Phase 1 is tracked in `PHASE1_COMPLETION_PLAN.md`.
+It records still-missing features, acceptance evidence, sequencing, product choices
+and real provider/Windows/operational prerequisites. The bulk milestone does not
+complete Phase 1, and mock-only integrations must not be presented as accepted.

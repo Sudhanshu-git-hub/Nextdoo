@@ -352,3 +352,17 @@ export type UpdateTaskRelationsInput = z.infer<typeof updateTaskRelationsSchema>
 export const taskVersionSchema = z.object({ version: z.number().int().min(1) });
 /** Preserve legacy bodyless delete/restore; new clients always send version. */
 export const optionalTaskVersionSchema = z.object({ version: z.number().int().min(1).optional() });
+
+/** Explicit bounded selection only; never interpret a filter as an authorized write set. */
+export const MAX_BULK_TASKS = 100;
+const bulkSelection = {
+  workspaceId: uuid,
+  tasks: z.array(z.object({ id: uuid, version: z.number().int().min(1) }).strict()).min(1).max(MAX_BULK_TASKS)
+    .refine((rows) => new Set(rows.map((r) => r.id.toLowerCase())).size === rows.length, { message: 'Select each task only once' }),
+};
+export const bulkTaskSchema = z.discriminatedUnion('operation', [
+  z.object({ ...bulkSelection, operation: z.literal('complete') }).strict(),
+  z.object({ ...bulkSelection, operation: z.literal('archive') }).strict(),
+  z.object({ ...bulkSelection, operation: z.literal('reschedule'), dueAt: isoDateTime.nullable(), reason: z.string().max(500).optional() }).strict(),
+]);
+export type BulkTaskInput = z.infer<typeof bulkTaskSchema>;

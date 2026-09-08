@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { useState, type FormEvent } from 'react';
-import { TaskList } from '@/components/TaskList';
+import { TaskBulkList } from '@/components/TaskBulkList';
 import { TaskPagination } from '@/components/TaskPagination';
 import { useTaskPages } from '@/lib/use-task-pages';
 
@@ -12,6 +12,7 @@ export function TaskBrowserView({ workspaceId, projects, tags }: { workspaceId: 
   const [draft, setDraft] = useState(defaults);
   const [applied, setApplied] = useState(defaults);
   const [filters, setFilters] = useState('status=ACTIVE&sortBy=createdAt&sortOrder=desc');
+  const [bulkPending, setBulkPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const page = useTaskPages(workspaceId, filters);
   function field(key: keyof typeof defaults, value: string) { setDraft((d) => ({ ...d, [key]: value })); setError(null); }
@@ -43,6 +44,7 @@ export function TaskBrowserView({ workspaceId, projects, tags }: { workspaceId: 
     <p className="subtitle">Search across your workspace. Filters combine; apply them to start a fresh result list. This view requires a connection.</p>
     <p><Link className="history-link" href="/task-history">Task history</Link> includes recently deleted tasks and recovery controls.</p>
     <form className="card" aria-label="Task filters" onSubmit={apply} style={{ marginBottom: 20 }}>
+      <fieldset disabled={bulkPending} style={{ border: 0, margin: 0, padding: 0 }}>
       <div className="task-filter-grid">
         <div><label htmlFor="filter-search-words">Search words</label><input id="filter-search-words" type="search" maxLength={200} value={draft.q} onChange={(e) => field('q', e.target.value)} aria-describedby="task-search-help" /></div>
         <div><label htmlFor="filter-status">Status</label><select id="filter-status" value={draft.status} onChange={(e) => field('status', e.target.value)}><option value="ACTIVE">Active</option><option value="COMPLETED">Completed</option><option value="ARCHIVED">Archived</option><option value="">Active and completed</option></select></div>
@@ -61,11 +63,12 @@ export function TaskBrowserView({ workspaceId, projects, tags }: { workspaceId: 
       {error && <div role="alert" className="banner banner-error">{error}</div>}
       <div className="row"><button className="btn-primary" type="submit">Apply filters</button><button type="button" onClick={reset}>Reset filters</button></div>
       <p role="status">{JSON.stringify(draft) !== JSON.stringify(applied) ? 'Unapplied changes — results still use the previous filters.' : 'Filters applied.'}</p>
+      </fieldset>
     </form>
     {/* Key a concrete results boundary so changing queries also removes old list/editor fragments. */}
     <section key={`${workspaceId}:${filters}`} aria-label="Task results">
-    <TaskList tasks={page.tasks} loading={page.loading && !page.tasks.length} error={page.tasks.length ? null : page.error} emptyTitle="No matching tasks" emptyBody="Try fewer filters or reset to active tasks across the workspace." onChanged={page.reload} />
-    <TaskPagination {...page} error={page.tasks.length ? page.error : null} count={page.tasks.length} onMore={page.loadMore} onRetry={page.tasks.length ? page.loadMore : page.reload} />
+    <TaskBulkList onPendingChange={setBulkPending} tasks={page.tasks} loading={page.loading && !page.tasks.length} error={page.tasks.length ? null : page.error} emptyTitle="No matching tasks" emptyBody="Try fewer filters or reset to active tasks across the workspace." onChanged={page.reload} />
+    <fieldset disabled={bulkPending} style={{ border: 0, margin: 0, padding: 0 }}><TaskPagination {...page} error={page.tasks.length ? page.error : null} count={page.tasks.length} onMore={page.loadMore} onRetry={page.tasks.length ? page.loadMore : page.reload} /></fieldset>
     </section>
   </div>;
 }

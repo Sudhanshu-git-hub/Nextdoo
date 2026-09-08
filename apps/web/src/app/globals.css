@@ -218,3 +218,6 @@ th { color: var(--text-dim); font-weight: 550; font-size: 12px; text-transform: 
 .task-filter-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 14px; }
 .task-filter-grid label { min-width: 0; }
 .task-filter-grid input, .task-filter-grid select { display: block; width: 100%; min-width: 0; margin-top: 6px; }
+
+.bulk-selection { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.bulk-selection input { width: auto; margin: 0; }

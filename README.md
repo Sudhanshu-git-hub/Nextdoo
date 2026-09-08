@@ -13,6 +13,8 @@ An outcome-oriented task and time-management platform for Web and Windows Deskto
 Recovered implementation with verified incremental quality/security repairs. **Not a release-complete MVP.**
 
 - [Development and verification](docs/DEVELOPMENT.md)
+- [Phase 1 completion ledger and remaining work](docs/PHASE1_COMPLETION_PLAN.md)
+- [Atomic bulk task operations milestone](docs/TASK_BULK_MILESTONE.md)
 - [Phase 1 task filtering and sorting milestone](docs/TASK_FILTERING_MILESTONE.md)
 - [Phase 1 task archive, deletion and recovery milestone](docs/TASK_LIFECYCLE_MILESTONE.md)
 - [Phase 1 subtasks and dependencies milestone](docs/TASK_RELATIONSHIPS_MILESTONE.md)
@@ -27,11 +29,13 @@ The PRD remains the source of truth; routes, schemas and green unit tests alone 
 
 ## Latest Phase 1 increment
 
-**Browse tasks** (`/tasks`, linked from Inbox and project tasks) adds workspace-wide
-search, combined filters and six ascending/descending sorts with precision-safe
-pagination. Inbox/Today behavior is unchanged; the new browser is online-only.
+**Browse tasks** (`/tasks`, linked from Inbox and project tasks) supports combined
+filters, six sorts, and now confirmed **all-or-nothing bulk complete/archive/reschedule**
+for up to 100 explicitly selected tasks. Versions and retry identity protect against
+partial writes or duplicate acknowledged operations. These workflows are online-only.
 
-Validation: **349 tests in 38 files, 44 browser/API scenarios**, all existing gates
-passing and zero dependency findings. See the filtering milestone for cursor
-compatibility, live-pagination limitations and rollout guidance. Safe bulk actions
-are next; Phase 1 and production qualification remain incomplete.
+Validation: **363 tests in 39 files, 50 browser/API scenarios**, all existing gates
+passing and zero dependency findings. See the bulk milestone for boundaries and
+rollout guidance. **Phase 1 remains incomplete**: the completion ledger explicitly
+tracks recurrence, offline/Windows, provider integrations and operational acceptance
+rather than treating core tasks as the whole MVP.
