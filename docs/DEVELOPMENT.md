@@ -118,3 +118,19 @@ not the PRD's signed, expiring CSV/JSON export job.
 `pnpm dev:worker` runs the current worker; supply DATABASE_URL explicitly. Do not
 run it against customer data until retention and dispatch behavior is qualified.
 See `docs/IMPLEMENTATION_LOG.md` for approved security repairs, evidence and remaining scope.
+
+
+## Repair verification (2026-09-08)
+
+The prioritized integrity repairs and final evidence are in `REPAIR_REPORT.md`.
+Fresh SQL migrations 0000–0006 plus replay, 233 tests and five real browser E2E
+passed locally. Apply forward migrations before starting the repaired services.
+The sync sequence trigger serializes sync writes globally through commit; measure
+throughput before production rollout. Legacy timer pause timestamps cannot be
+fully reconstructed from the previous schema. Unsupported recurrence creation now
+fails explicitly and capture retains the original text; scheduling was not added.
+
+These results do not certify all audit findings fixed or the app production-ready.
+In particular, authentication/origin/logging hardening, unused offline-queue
+isolation and real provider delivery remain outstanding. Remote PostgreSQL 16 CI,
+load, backup restore and end-to-end provider behavior are not claimed verified.

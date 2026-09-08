@@ -30,8 +30,10 @@ standard Playwright browser. Local DB is PostgreSQL 18.4 UTF-8; CI specifies 16.
 
 ## Phase 2
 
-Pending. Add failing regressions before changing affected behavior; tenant isolation
-is a release blocker. Do not interpret Phase 1's green baseline as security acceptance.
+The seven prioritized repair groups below are implemented and verified, with
+regressions added before repairs. This is not closure of the entire baseline audit
+or a production security certification. See `docs/REPAIR_REPORT.md` for remaining
+audit findings, deployment caveats, validation evidence and the stop point.
 
 ### Tenant isolation repair
 
@@ -131,3 +133,21 @@ A real browser regression also failed before capture forwarded the parsed rule;
 it now shows the unsupported message and preserves the original input text.
 Provider dispatch is still not implemented; the dispatcher regression claims zero
 rows and verifies binding only. Full verification: **233 tests, 5 E2E**, all gates.
+
+
+## Final verification and stop point
+
+Final verification ran against **fresh `nextdoo_verify_20260908`**, not just the
+repair database. Migrations 0000–0006 applied successfully; the second run was a
+no-op. `pnpm verify` passed: 233 tests in 18 files, five real Chromium E2E tests,
+core coverage thresholds, lint, typecheck and production build. Full audit remains
+zero across all severities. `git diff --check` found one inherited test whitespace
+line introduced by Phase 1 cleanup; it was removed before the final documentation
+commit. No functional test assertions were removed or weakened.
+
+Stop here: no subsequent product milestone was started. Full audit closure is NOT
+claimed; the separate authentication-hardening finding and offline queue/provider/
+production gaps are explicitly carried forward in `docs/REPAIR_REPORT.md`.
+
+After resuming the interrupted documentation turn, `pnpm verify` was repeated
+successfully (233 tests, 5 E2E, all gates); evidence: `final-resume-verify.log`.

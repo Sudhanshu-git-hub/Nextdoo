@@ -226,7 +226,7 @@ describe('task service (integration)', () => {
     // The database enforces append-only via a trigger, not just convention.
     await expect(
       db.execute(
-         
+
         (await import('drizzle-orm')).sql`update tracking_events set type = 'TASK_CREATED' where task_id = ${task.id}`,
       ),
     ).rejects.toThrow();
