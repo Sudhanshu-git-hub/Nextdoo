@@ -41,3 +41,13 @@ online and sync mutations, and inconsistent conflict snapshots. **6 failed befor
 repair; all 9 pass after.** Scoped replay/collision/conflict targets and added shared
 reference authorization. Full verification passed: 202 tests, 2 browser E2E,
 coverage thresholds, lint, typecheck and production build.
+
+### Atomic HTTP idempotency
+
+Added five regression cases; **four failed before repair** (concurrent creates,
+changed request identity, missing keys, partial-commit rollback). Transaction-local
+service context now lets the wrapper commit domain state and response ledger
+atomically under a per-user/key PostgreSQL advisory lock. Canonical request hashing
+includes method/path/query/body. Legacy response-only ledger entries are rejected
+rather than guessed or silently reexecuted. Full verification: **207 tests and
+2 E2E passed**, lint/typecheck/coverage/build passed.

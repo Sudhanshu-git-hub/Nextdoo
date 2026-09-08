@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { createDb, type Database } from '@nextdoo/db';
 import { getEnv } from './env';
 
@@ -8,7 +9,18 @@ import { getEnv } from './env';
  */
 const globalForDb = globalThis as unknown as { __nextdooDb?: ReturnType<typeof createDb> };
 
+const transactionContext = new AsyncLocalStorage<Database>();
+
+/** All nested service calls participate in the caller's atomic unit of work. */
+export function withTransaction<T>(fn: (db: Database) => Promise<T>): Promise<T> {
+  const active = transactionContext.getStore();
+  if (active) return fn(active);
+  return getDb().transaction((tx) => transactionContext.run(tx as unknown as Database, () => fn(tx as unknown as Database)));
+}
+
 export function getDb(): Database {
+  const active = transactionContext.getStore();
+  if (active) return active;
   if (!globalForDb.__nextdooDb) {
     globalForDb.__nextdooDb = createDb(getEnv().DATABASE_URL, { max: 10 });
   }
