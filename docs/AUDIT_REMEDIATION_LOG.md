@@ -33,3 +33,30 @@ and replay of a rejected/conflicted server mutation cannot become a success ack.
 Full verification passed: 251 tests, seven browser E2E, all other gates. New storage
 tests use fake-indexeddb; existing real browser cache-isolation regression still
 passes. Full offline capture/pull/recovery UI is deliberately not activated.
+
+## Honest delivery and worker recovery
+
+Five delivery regressions failed before repair. WEB reminders now write a durable
+in-app notification and status in one transaction; simultaneous passes cannot
+produce two records. Inactive tasks cancel; unsupported EMAIL/DESKTOP reminder
+channels fail explicitly (no claim of web push/native delivery). The alternate
+web dispatcher shares the worker implementation. Unhandled outbox events remain
+unpublished with a durable blocked reason rather than being discarded as sent.
+
+Configured auth email now queues encrypted durable messages. Migration 0008 stores
+leases, retry deadlines, expiry and failure state; account purge cascades messages.
+The worker uses Nodemailer 10.0.1, certificate verification and required TLS in
+production, bounded timeouts, stable Message-ID and five attempts. Three real TCP
+SMTP tests cover acknowledgement/concurrent passes, expired-lease recovery and
+terminal failure. This is at-least-once SMTP: an ACK followed by process failure
+before the ledger update can duplicate delivery; external exactly-once is not
+claimed. Production provider/domain/inbox delivery still needs qualification.
+
+A failing shutdown regression proves the pool was closed before in-flight jobs;
+shutdown now drains them. Two additional failing notification-boundary regressions
+prevent account enumeration when SMTP is missing and prevent provider failure from
+denying account deletion. Secret-bearing payloads/errors are not logged by worker.
+Full verification passed: 262 tests, seven E2E, all gates; full dependency audit 0.
+Node type definitions updated to 22.20.1 to resolve the inherited Vite peer warning.
+Evidence: delivery-red/verify, smtp-tests, drain-red, notification-failure-red,
+delivery-audit. No later provider/product integrations were fabricated.

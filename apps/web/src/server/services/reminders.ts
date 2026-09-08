@@ -1,10 +1,9 @@
 import { and, eq, inArray, isNotNull, lte, sql } from 'drizzle-orm';
 import { AppError, notFound } from '@nextdoo/contracts';
-import { notifications, reminders, tasks } from '@nextdoo/db';
+import { deliverDueReminders, reminders, tasks } from '@nextdoo/db';
 import { getDb } from '../db';
 import { newId } from '../ids';
 import { logger } from '../observability';
-import { publishEvent } from './events';
 
 /**
  * Reminder lifecycle (PRD §6.6).
@@ -15,7 +14,6 @@ import { publishEvent } from './events';
  *  - A reminder more than 24h overdue expires instead of firing late.
  */
 
-const EXPIRY_GRACE_MS = 24 * 3_600_000;
 
 export interface ReminderActor {
   userId: string;
@@ -130,68 +128,7 @@ export async function listDueReminders(userId: string) {
  * double-deliver the same reminder.
  */
 export async function dispatchDueReminders(limit = 100): Promise<{ sent: number; expired: number }> {
-  const db = getDb();
-  const now = new Date();
-  const expiryCutoff = new Date(now.getTime() - EXPIRY_GRACE_MS);
-
-  const expired = await db
-    .update(reminders)
-    .set({ status: 'EXPIRED', updatedAt: now })
-    .where(and(eq(reminders.status, 'SCHEDULED'), lte(reminders.scheduledAt, expiryCutoff)))
-    .returning({ id: reminders.id });
-
-  let sent = 0;
-  await db.transaction(async (tx) => {
-    const claimed = await tx.execute(sql`
-      SELECT r.id, r.task_id, r.user_id, r.workspace_id, r.channel, t.title
-      FROM reminders r
-      JOIN tasks t ON t.id = r.task_id
-      WHERE r.status = 'SCHEDULED'
-        AND r.scheduled_at <= ${now.toISOString()}::timestamptz
-        AND t.status = 'ACTIVE'
-      ORDER BY r.scheduled_at
-      LIMIT ${limit}
-      FOR UPDATE OF r SKIP LOCKED
-    `);
-
-    const rows = claimed as unknown as Array<{
-      id: string;
-      task_id: string;
-      user_id: string;
-      workspace_id: string;
-      channel: string;
-      title: string;
-    }>;
-
-    for (const row of rows) {
-      await tx
-        .update(reminders)
-        .set({ status: 'SENT', sentAt: now, attempts: sql`${reminders.attempts} + 1`, updatedAt: now })
-        .where(eq(reminders.id, row.id));
-
-      await tx.insert(notifications).values({
-        id: newId(),
-        userId: row.user_id,
-        workspaceId: row.workspace_id,
-        type: 'reminder',
-        title: row.title,
-        body: 'This task is due.',
-        taskId: row.task_id,
-      });
-
-      await publishEvent(tx, {
-        eventType: 'reminder.sent',
-        workspaceId: row.workspace_id,
-        actorId: null,
-        entityType: 'reminder',
-        entityId: row.id,
-      });
-      sent += 1;
-    }
-  });
-
-  if (sent || expired.length) logger.info('reminders.dispatched', { sent, expired: expired.length });
-  return { sent, expired: expired.length };
+  return deliverDueReminders(getDb(), limit);
 }
 
 /** Relative reminders follow due-date changes in the caller's task transaction. */

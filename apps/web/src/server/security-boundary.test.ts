@@ -21,6 +21,8 @@ it('production logging redacts credentials inside URLs and driver error strings'
 });
 it('unconfigured production mail never logs raw credentials or claims delivery', async () => {
   vi.stubEnv('NODE_ENV', 'production');
+  vi.stubEnv('DATABASE_URL', process.env.DATABASE_URL ?? 'postgres://unused/unit');
+  vi.stubEnv('AUTH_SECRET', process.env.AUTH_SECRET ?? 'unit-test-not-used-to-connect-123456789');
   const logs = vi.spyOn(console, 'log').mockImplementation(() => {});
   await expect(sendMail('reset-password', 'private@test.local', 'https://app.test/reset?token=SECRET')).rejects.toMatchObject({ code: 'PROVIDER_UNAVAILABLE' });
   expect(JSON.stringify(logs.mock.calls)).not.toContain('SECRET');

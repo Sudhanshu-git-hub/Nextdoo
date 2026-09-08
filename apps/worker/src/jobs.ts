@@ -1,13 +1,14 @@
+import { deliverMail } from './mail-delivery';
 import { and, eq, isNotNull, isNull, lt, lte, sql as raw } from 'drizzle-orm';
-import { authTokens, idempotencyKeys, reminders, users, purgeAccount } from '@nextdoo/db';
+import { authTokens, idempotencyKeys, reminders, users, purgeAccount, deliverDueReminders } from '@nextdoo/db';
 import { db, logger, type Job, type JobResult } from './runtime';
 
 /**
  * Background jobs (PRD §15).
  *
- * Every job is idempotent and safe to run concurrently with another worker
- * instance: claims use `FOR UPDATE ... SKIP LOCKED` so two workers never
- * process the same row.
+ * Durable work lives in PostgreSQL, not in setInterval memory. WEB notification
+ * writes commit with acknowledgements; SMTP uses row leases and bounded retries.
+ * Unhandled outbox events remain pending, not falsely published.
  */
 
 const MINUTE = 60_000;
@@ -25,38 +26,8 @@ const dispatchReminders: Job = {
   name: 'reminders.dispatch',
   intervalMs: 30_000,
   async run(): Promise<JobResult> {
-    const now = new Date();
-    const staleBefore = new Date(now.getTime() - 24 * HOUR);
-    // Drizzle's raw `sql` does not bind Date objects; pass ISO strings and let
-    // Postgres cast them to timestamptz.
-    const nowIso = now.toISOString();
-    const staleIso = staleBefore.toISOString();
-
-    const claimed = await db.execute(raw`
-      with due as (
-        select id from reminders
-        where status = 'SCHEDULED'
-          and scheduled_at <= ${nowIso}::timestamptz
-        order by scheduled_at
-        limit 100
-        for update skip locked
-      )
-      update reminders r
-      -- Explicit cast: a CASE over string literals is text, and Postgres will
-      -- not coerce that into the reminder_status enum implicitly.
-      set status = (case when r.scheduled_at < ${staleIso}::timestamptz then 'EXPIRED' else 'SENT' end)::reminder_status,
-          sent_at = case when r.scheduled_at < ${staleIso}::timestamptz then null else ${nowIso}::timestamptz end,
-          updated_at = ${nowIso}::timestamptz
-      from due
-      where r.id = due.id
-      returning r.id, r.task_id, r.user_id, r.channel, r.status
-    `);
-
-    const rows = claimed as unknown as Array<{ id: string; status: string; channel: string }>;
-    const sent = rows.filter((r) => r.status === 'SENT').length;
-    const expired = rows.filter((r) => r.status === 'EXPIRED').length;
-
-    return { processed: rows.length, details: { sent, expired } };
+    const result = await deliverDueReminders(db);
+    return { processed: result.sent + result.expired + result.failed + result.canceled, details: result };
   },
 };
 
@@ -70,25 +41,12 @@ const relayOutbox: Job = {
   name: 'outbox.relay',
   intervalMs: 10_000,
   async run(): Promise<JobResult> {
-    const claimed = await db.execute(raw`
-      with batch as (
-        select id from outbox
-        where published_at is null and attempts < 10
-        order by occurred_at
-        limit 200
-        for update skip locked
-      )
-      update outbox o
-      set published_at = now(), attempts = o.attempts + 1
-      from batch
-      where o.id = batch.id
-      returning o.id, o.event_type
-    `);
-
-    const rows = claimed as unknown as Array<{ event_type: string }>;
-    // No external bus is configured yet; marking published is what makes the
-    // relay observable and keeps the table from growing unbounded.
-    return { processed: rows.length };
+    // No consumers are registered: preserving the event is mandatory. A pending
+    // backlog is actionable; fabricated published_at timestamps destroy evidence.
+    const blocked = await db.execute(raw`update outbox set last_error='NO_CONSUMER_REGISTERED'
+      where published_at is null and last_error is null returning id`);
+    if (blocked.length) logger.warn('outbox.consumer_unavailable', { pending: blocked.length });
+    return { processed: 0, details: { blocked: blocked.length } };
   },
 };
 
@@ -115,7 +73,7 @@ const purgeAccounts: Job = {
       } catch (error) {
         logger.error('account.purge_failed', {
           userId: user.id,
-          error: error instanceof Error ? error.message : 'unknown',
+          errorType: error instanceof Error ? error.name : 'unknown',
         });
       }
     }
@@ -170,6 +128,7 @@ const requeueStuckReminders: Job = {
 };
 
 export const JOBS: Job[] = [
+  { name: 'mail.deliver', intervalMs: 10000, run: () => deliverMail(1) },
   dispatchReminders,
   requeueStuckReminders,
   relayOutbox,

@@ -1,3 +1,4 @@
+import { logger } from '../observability';
 import { and, desc, eq, inArray, isNotNull, isNull, like, lte, or } from 'drizzle-orm';
 import { AppError } from '@nextdoo/contracts';
 import {
@@ -153,7 +154,8 @@ export interface DeletionStatus {
  * data instantly.
  */
 export async function requestAccountDeletion(userId: string, password: string): Promise<DeletionStatus> {
-  return withAccountTransaction(userId, async (db) => {
+  let email: string | undefined;
+  const result = await withAccountTransaction(userId, async (db) => {
 
   const [user] = await db
     .select({ passwordHash: users.passwordHash, email: users.email, deletionRequestedAt: users.deletionRequestedAt })
@@ -182,10 +184,15 @@ export async function requestAccountDeletion(userId: string, password: string): 
     entityId: userId,
     metadata: { purgeAfter: purgeAfter.toISOString() },
   });
-  await sendMail('account-deletion', user.email, absoluteUrl('/login'));
+  email = user.email;
 
   return { scheduled: true, requestedAt: requestedAt.toISOString(), purgeAfter: purgeAfter.toISOString() };
   });
+  if (email) {
+    try { await sendMail('account-deletion', email, absoluteUrl('/login')); }
+    catch { logger.warn('account.deletion_notice_unavailable', { userId }); }
+  }
+  return result;
 }
 
 /** Signing in during the grace window cancels the deletion. */

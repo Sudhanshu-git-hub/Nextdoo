@@ -2,7 +2,8 @@ import { and, eq, gt, isNull, lt } from 'drizzle-orm';
 import { AppError } from '@nextdoo/contracts';
 import { authTokens, users } from '@nextdoo/db';
 import { getDb, withTransaction } from '../db';
-import { withAccountTransaction } from '../account-security';
+import { withAccountTransaction, deletionExpired } from '../account-security';
+import { features } from '../env';
 import { newId } from '../ids';
 import { generateToken, hashToken, hashPassword, revokeAllSessions } from '../auth';
 import { absoluteUrl, sendMail } from '../mailer';
@@ -115,15 +116,16 @@ export async function verifyEmail(token: string): Promise<void> {
  * enumeration oracle.
  */
 export async function requestPasswordReset(email: string): Promise<void> {
+  if (process.env.NODE_ENV === 'production' && !features().email) throw new AppError('PROVIDER_UNAVAILABLE', 'Email delivery is not configured.');
   const db = getDb();
   const rows = await db
-    .select({ id: users.id, email: users.email })
+    .select({ id: users.id, email: users.email, status: users.status, deletionRequestedAt: users.deletionRequestedAt })
     .from(users)
     .where(and(eq(users.email, email.toLowerCase()), isNull(users.deletedAt)))
     .limit(1);
 
   const user = rows[0];
-  if (!user) {
+  if (!user || user.status !== 'ACTIVE' || deletionExpired(user.deletionRequestedAt)) {
     logger.info('auth.reset_requested_unknown_email');
     return;
   }
@@ -134,7 +136,8 @@ export async function requestPasswordReset(email: string): Promise<void> {
 }
 
 export async function resetPassword(token: string, newPassword: string): Promise<void> {
-  return withTransaction( async (db) => {
+  let email: string | undefined;
+  await withTransaction( async (db) => {
   const userId = await consumeToken(token, 'PASSWORD_RESET');
 
   const passwordHash = await hashPassword(newPassword);
@@ -150,8 +153,12 @@ export async function resetPassword(token: string, newPassword: string): Promise
   await revokeAllSessions(userId);
 
   await writeAuditLog({ userId, action: 'account.password_reset', entityType: 'user', entityId: userId });
-  if (rows[0]) await sendMail('password-changed', rows[0].email);
+  email = rows[0]?.email;
   });
+  if (email) {
+    try { await sendMail('password-changed', email); }
+    catch { logger.warn('auth.password_changed_notice_unavailable'); }
+  }
 }
 
 /** Housekeeping for the worker: consumed and expired tokens are not evidence. */

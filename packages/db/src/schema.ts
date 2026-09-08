@@ -777,3 +777,29 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
   sections: many(sections),
   tasks: many(tasks),
 }));
+
+
+/** Durable authentication backoff; identities are HMACs, never raw addresses. */
+export const authenticationAttempts = pgTable('authentication_attempts', {
+  key: varchar('key', { length: 64 }).primaryKey(),
+  attempts: integer('attempts').notNull(),
+  blockedUntil: timestamp('blocked_until', { withTimezone: true }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+}, (t) => [index('authentication_attempts_expiry').on(t.expiresAt)]);
+
+/** Encrypted mail payloads; user purge cascades their private contents. */
+export const mailDeliveries = pgTable('mail_deliveries', {
+  id: uuid('id').primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  kind: varchar('kind', { length: 40 }).notNull(),
+  encryptedMessage: text('encrypted_message').notNull(),
+  status: varchar('status', { length: 16 }).notNull().default('PENDING'),
+  attempts: integer('attempts').notNull().default(0),
+  nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
+  leaseToken: uuid('lease_token'),
+  leaseUntil: timestamp('lease_until', { withTimezone: true }),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  sentAt: timestamp('sent_at', { withTimezone: true }),
+  lastError: varchar('last_error', { length: 80 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index('mail_delivery_due').on(t.status, t.nextAttemptAt)]);

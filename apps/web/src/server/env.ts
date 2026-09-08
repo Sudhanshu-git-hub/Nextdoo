@@ -22,7 +22,7 @@ const envSchema = z.object({
   S3_BUCKET: z.string().optional(),
   S3_ACCESS_KEY_ID: z.string().optional(),
   S3_SECRET_ACCESS_KEY: z.string().optional(),
-  /** SMTP transport. When absent, mail is logged instead of sent. */
+  /** SMTP transport for the durable worker. Missing production transport fails closed. */
   SMTP_URL: z.string().optional(),
   MAIL_FROM: z.string().default('NEXTDOO <no-reply@nextdoo.local>'),
   /** Log level for structured output. */

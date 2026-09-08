@@ -1,3 +1,7 @@
+import { eq, sql } from 'drizzle-orm';
+import { sealSecret, users } from '@nextdoo/db';
+import { getDb } from './db';
+import { newId } from './ids';
 import { AppError } from '@nextdoo/contracts';
 import { logger } from './observability';
 import { features, getEnv } from './env';
@@ -5,9 +9,9 @@ import { features, getEnv } from './env';
 /**
  * Outbound email (PRD §6.2).
  *
- * No SMTP provider is configured in development, so messages are logged instead
- * of sent. The link is printed deliberately: without it there is no way to
- * complete a verification or reset flow locally.
+ * Configured SMTP is queued durably and encrypted; the worker delivers it.
+ * Without SMTP, only development/test may log a local link. Production fails
+ * explicitly; it never logs credential URLs or claims provider delivery.
  *
  * Subjects and bodies never contain task content — only the action being
  * confirmed.
@@ -47,7 +51,7 @@ function render(kind: MailKind, url: string | null): Mail['subject'] extends nev
 }
 
 export async function sendMail(kind: MailKind, to: string, url: string | null = null): Promise<void> {
-  const { subject } = render(kind, url);
+  const { subject, text } = render(kind, url);
 
   if (!features().email) {
     if (process.env.NODE_ENV === 'production') throw new AppError('PROVIDER_UNAVAILABLE', 'Email delivery is not configured.');
@@ -57,8 +61,15 @@ export async function sendMail(kind: MailKind, to: string, url: string | null = 
     return;
   }
 
-  // A real transport plugs in here; the interface above is all the callers know.
-  logger.info('mail.sent', { kind, to, subject });
+  const env = getEnv();
+  const [owner] = await getDb().select({ id: users.id }).from(users).where(eq(users.email, to.toLowerCase()));
+  const id = newId();
+  const message = sealSecret(JSON.stringify({ to, from: env.MAIL_FROM, subject, text, url }), env.AUTH_SECRET, 'mail');
+  const expiresAt = new Date(Date.now() + (kind === 'reset-password' ? 30 * 60000 : 24 * 3600000));
+  await getDb().execute(sql`insert into mail_deliveries(id,user_id,kind,encrypted_message,expires_at)
+    values(${id},${owner?.id ?? null},${kind},${message},${expiresAt.toISOString()}::timestamptz)`);
+  logger.info('mail.queued', { deliveryId: id, kind });
+
 }
 
 export function absoluteUrl(path: string): string {

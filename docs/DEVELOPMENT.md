@@ -134,3 +134,26 @@ These results do not certify all audit findings fixed or the app production-read
 In particular, authentication/origin/logging hardening, unused offline-queue
 isolation and real provider delivery remain outstanding. Remote PostgreSQL 16 CI,
 load, backup restore and end-to-end provider behavior are not claimed verified.
+
+### Audit-remediation delivery configuration
+
+Auth email now has a real SMTP worker adapter. Supply the same `AUTH_SECRET` to web
+and worker (mail ciphertext uses a distinct HKDF purpose), `SMTP_URL` to both, and
+`MAIL_FROM` to web. Apply migration 0008 before running either. Never put actual
+credentials in source control or chat. Production SMTP requires TLS and normal
+certificate validation; provision sender/domain authentication separately.
+
+`mail.deliver` claims one message per tick, with durable leases, expiry, retry and
+terminal failure. The queue payload is encrypted and scrubbed after delivery or
+expiry. SMTP acknowledgement is not proof of inbox arrival; crash-after-ACK can
+redeliver the same Message-ID. Provision a shutdown grace period longer than the
+bounded SMTP connection/greeting/socket timeouts. Inspect `mail_deliveries` status,
+`last_error`, due time and attempts for failures; do not print decrypted reset links.
+Missing production SMTP fails explicitly; deletion/credential changes are not
+rolled back just because their subsequent notification is unavailable.
+
+WEB reminder SENT currently means a durable **in-app notification row**, not web
+push. EMAIL/DESKTOP reminder delivery is unsupported and marked FAILED. General
+outbox consumers are still absent: rows remain unpublished with
+`NO_CONSUMER_REGISTERED` and the worker warns. Do not enable external consumers or
+claim reliable product notification delivery until their integration gates pass.
