@@ -157,3 +157,13 @@ push. EMAIL/DESKTOP reminder delivery is unsupported and marked FAILED. General
 outbox consumers are still absent: rows remain unpublished with
 `NO_CONSUMER_REGISTERED` and the worker warns. Do not enable external consumers or
 claim reliable product notification delivery until their integration gates pass.
+
+### Migration safety
+
+The forward-only runner serializes deployments with a PostgreSQL session lock and
+checksums applied SQL. Do not edit or delete previously applied migrations; add a
+new forward migration. For pre-checksum installations, `legacy-checksums.json`
+contains the audited 0000–0008 baseline. A mismatch requires investigation, not
+editing the ledger/manifest until the warning disappears. Keep the entire migrations
+directory (including that manifest) in deployment artifacts. Test DB accounts need
+CREATE DATABASE permission for the isolated concurrent-migration regression suite.

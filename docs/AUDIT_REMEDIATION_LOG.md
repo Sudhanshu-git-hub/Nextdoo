@@ -81,3 +81,15 @@ API client supplies a key while preserving explicitly provided retry identity.
 Two real HTTP E2E regressions also cover timer replay and request-ID/no-store/durable
 export quotas. Full verification passed: 267 tests, 9 E2E/API scenarios, all gates.
 Evidence: boundaries-red/verify, contracts-red/additional, project-cap-red-corrected.
+
+## Migration deployment integrity
+
+Two failing real-PostgreSQL regressions demonstrated concurrent-runner races and
+silent acceptance of changed applied SQL. The runner now takes a session advisory
+lock before touching the ledger, verifies every applied file before applying new
+ones, and stores SHA-256 checksums transactionally. Existing checksum-less ledgers
+bootstrap only against the checked-in audited 0000–0008 legacy manifest, not an
+arbitrary current file. Missing files or unknown/mismatched legacy sources stop
+deployment. Legacy metadata upgrade and the full verification passed: 269 tests,
+9 E2E/API scenarios, all gates. Evidence: migrations-red/verify, checksum-upgrade.
+This does not replace backup/restore, rollback rehearsal or hosted PG16 CI gates.
