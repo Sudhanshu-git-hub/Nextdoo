@@ -100,7 +100,7 @@ export function authedRoute<T>(
       const ctx: RouteContext = { requestId, auth, ip };
 
       const perform = async () => {
-        const match = /^\/api\/v1\/(?:tasks|projects|timers|reminders)\/([^/]+)/.exec(new URL(request.url).pathname);
+        const match = /^\/api\/v1\/(?:tasks|projects|sections|timers|reminders)\/([^/]+)/.exec(new URL(request.url).pathname);
         if (match) {
           let id: string;
           try { id = decodeURIComponent(match[1]!); } catch { throw new AppError('VALIDATION_FAILED', 'Invalid resource identifier.'); }

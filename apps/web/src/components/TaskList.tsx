@@ -1,7 +1,7 @@
 'use client';
 
 import { TaskEditor } from './TaskEditor';
-import { useState } from 'react';
+import { useState, type DragEvent, type ReactNode } from 'react';
 import { api, ApiError, type Task } from '@/lib/api';
 
 /**
@@ -18,6 +18,8 @@ export function TaskList({
   emptyTitle,
   emptyBody,
   onChanged,
+  onTaskDrag,
+  taskActions,
 }: {
   tasks: Task[];
   loading: boolean;
@@ -25,6 +27,8 @@ export function TaskList({
   emptyTitle: string;
   emptyBody: string;
   onChanged: () => void;
+  onTaskDrag?: (task: Task, event: DragEvent<HTMLLIElement>) => void;
+  taskActions?: (task: Task) => ReactNode;
 }) {
   const [editing, setEditing] = useState<Task | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -92,7 +96,7 @@ export function TaskList({
           const done = task.status === 'COMPLETED';
           const overdue = !done && task.dueAt && new Date(task.dueAt) < new Date();
           return (
-            <li key={task.id}>
+            <li key={task.id} data-task-id={task.id} draggable={!!onTaskDrag} onDragStart={onTaskDrag ? (event) => onTaskDrag(task, event) : undefined}>
               <div className={`task-row${done ? ' done' : ''}`}>
                 <button
                   className="check"
@@ -123,6 +127,7 @@ export function TaskList({
                       <span title="Times this task moved date">moved {task.rescheduleCount}×</span>
                     )}
                   </div>
+                  {taskActions?.(task)}
                   {rowError?.id === task.id && (
                     <div className="banner banner-error" role="alert" style={{ marginTop: 8, marginBottom: 0 }}>
                       {rowError.message}

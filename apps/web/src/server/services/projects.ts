@@ -1,7 +1,8 @@
+import { sectionPositionBetween } from '../section-position';
 import { withWorkspaceTransaction } from './transactions';
 import { enforceProjectLimit } from './entitlements';
 import { and, asc, eq, isNull } from 'drizzle-orm';
-import { createProjectSchema, createTagSchema, projectVersionSchema, updateProjectSchema, versionConflict, type UpdateProjectInput, notFound } from '@nextdoo/contracts';
+import { AppError, createSectionSchema, updateSectionSchema, type CreateSectionInput, type UpdateSectionInput, createProjectSchema, createTagSchema, projectVersionSchema, updateProjectSchema, versionConflict, type UpdateProjectInput, notFound } from '@nextdoo/contracts';
 import { projects, sections, tags, type Database } from '@nextdoo/db';
 import { getDb } from '../db';
 import { newId } from '../ids';
@@ -36,27 +37,21 @@ export async function createProject(
       .returning();
     if (!created) throw notFound('project', 'new');
 
-    // Every project gets a default section so the board view is never empty.
-    await tx.insert(sections).values({
-      id: newId(),
-      workspaceId: actor.workspaceId,
-      projectId: created.id,
-      name: 'To do',
-      position: '0',
-    });
-
     await recordProjectChange(tx, actor, created, 'created', ['name', 'description', 'color']);
+    // The default section commits and syncs with its parent project.
+    await createSection(actor, { projectId: created.id, name: 'To do', position: 0 });
     return created;
   });
 }
 
 export async function listSections(workspaceId: string, projectId: string) {
+  await loadProject(workspaceId, projectId);
   const db = getDb();
   return db
     .select()
     .from(sections)
     .where(and(eq(sections.workspaceId, workspaceId), eq(sections.projectId, projectId), isNull(sections.deletedAt)))
-    .orderBy(asc(sections.position));
+    .orderBy(asc(sections.position), asc(sections.id));
 }
 
 export async function listTags(workspaceId: string) {
@@ -131,4 +126,53 @@ async function recordProjectChange(db: Database, actor: ProjectActor, row: Proje
   await writeAudit(db, { workspaceId: actor.workspaceId, actorId: actor.userId, action: `project.${action}`,
     targetType: 'project', targetId: row.id, requestId: actor.requestId, metadata: { fields, version: row.version },
   });
+}
+
+
+export async function createSection(actor: ProjectActor, input: CreateSectionInput) {
+  input = createSectionSchema.parse(input);
+  return withWorkspaceTransaction(actor.workspaceId, async (db) => {
+    const project = await loadProject(actor.workspaceId, input.projectId);
+    if (project.status !== 'ACTIVE') throw new AppError('VALIDATION_FAILED', 'Restore the project before changing its sections.');
+    const siblings = await listSections(actor.workspaceId, project.id);
+    const position = input.position === undefined ? sectionPositionBetween(siblings.at(-1)?.position ?? null, null) : input.position.toFixed(10);
+    const [row] = await db.insert(sections).values({ id: newId(), workspaceId: actor.workspaceId, projectId: project.id, name: input.name, position }).returning();
+    if (!row) throw notFound('section', 'new');
+    await recordSectionChange(db, actor, row, 'created', ['name', 'position']);
+    return row;
+  });
+}
+
+export async function updateSection(actor: ProjectActor, id: string, input: UpdateSectionInput) {
+  input = updateSectionSchema.parse(input);
+  return withWorkspaceTransaction(actor.workspaceId, async (db) => {
+    const [current] = await db.select().from(sections).where(and(eq(sections.id, id), eq(sections.workspaceId, actor.workspaceId), isNull(sections.deletedAt))).limit(1);
+    if (!current) throw notFound('section', id);
+    if (current.version !== input.version) throw versionConflict('section', id);
+    const project = await loadProject(actor.workspaceId, current.projectId);
+    if (project.status !== 'ACTIVE') throw new AppError('VALIDATION_FAILED', 'Restore the project before changing its sections.');
+    const patch: Partial<typeof sections.$inferInsert> = {};
+    if (input.name !== undefined) patch.name = input.name;
+    if (input.position !== undefined) patch.position = input.position.toFixed(10);
+    if (input.beforeId !== undefined) {
+      if (input.beforeId === id) throw new AppError('VALIDATION_FAILED', 'A section cannot be moved before itself.');
+      const others = (await listSections(actor.workspaceId, project.id)).filter((s) => s.id !== id);
+      const target = input.beforeId === null ? others.length : others.findIndex((s) => s.id === input.beforeId);
+      if (target < 0) throw notFound('section', input.beforeId!);
+      patch.position = sectionPositionBetween(others[target - 1]?.position ?? null, others[target]?.position ?? null);
+    }
+    const [row] = await db.update(sections).set({ ...patch, version: current.version + 1, updatedAt: new Date() })
+      .where(and(eq(sections.id, id), eq(sections.workspaceId, actor.workspaceId), eq(sections.version, input.version))).returning();
+    if (!row) throw versionConflict('section', id);
+    await recordSectionChange(db, actor, row, 'updated', Object.keys(patch));
+    return row;
+  });
+}
+
+async function recordSectionChange(db: Database, actor: ProjectActor, row: typeof sections.$inferSelect, action: 'created' | 'updated', fields: string[]) {
+  await recordSyncChange(db, { workspaceId: actor.workspaceId, entityType: 'section', entityId: row.id, operation: action === 'created' ? 'create' : 'update',
+    version: row.version, payload: { ...row, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(), deletedAt: null },
+  });
+  await publishEvent(db, { workspaceId: actor.workspaceId, actorId: actor.userId, entityType: 'section', entityId: row.id, eventType: `section.${action}`, correlationId: actor.requestId, payload: { projectId: row.projectId, fields, version: row.version } });
+  await writeAudit(db, { workspaceId: actor.workspaceId, actorId: actor.userId, action: `section.${action}`, targetType: 'section', targetId: row.id, requestId: actor.requestId, metadata: { projectId: row.projectId, fields, version: row.version } });
 }

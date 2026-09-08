@@ -178,15 +178,31 @@ CREATE DATABASE permission for the isolated concurrent-migration regression suit
 
 See `ONLINE_WORKFLOW_PHASE.md`: confirmed tag/project capture, version-safe task
 editing, navigable project task lists, and continuation controls for Today/Inbox/
-Projects/Focus. Current verification is 285 tests and 16 E2E/API scenarios; editor
+Projects/Focus. At that milestone, verification was 285 tests and 16 E2E/API scenarios; editor
 keyboard and scoped axe checks pass. Existing API conventions are preserved by
 explicit user choice. Full task-management, cursor lifetime/virtualization, offline
 and production-release gates are not implied by this milestone.
 
 ## Project lifecycle continuation
 
-`PROJECT_LIFECYCLE_MILESTONE.md` describes the latest online-workflow delivery:
+`PROJECT_LIFECYCLE_MILESTONE.md` describes the preceding online-workflow delivery:
 project metadata, non-destructive archive/restore, versioned/idempotent API writes,
-and plan-safe restoration. Current full validation: 290 tests, 19 E2E/API scenarios,
+and plan-safe restoration. At that milestone, full validation was 290 tests, 19 E2E/API scenarios,
 all gates and zero dependency findings. Project settings have scoped keyboard/axe
 coverage; production and full-PRD qualification remain incomplete.
+
+
+## Project sections and board continuation
+
+`PROJECT_BOARD_MILESTONE.md` describes section creation/renaming, exact fractional
+single-section-row reorder, and loaded-page List/Board views with drag-and-drop and
+keyboard task moves. Existing task editing also supports cross-project movement.
+Section changes are versioned/idempotent, tenant scoped, and atomically synced,
+outboxed and audited; archived projects reject section writes. Default sections
+created with new projects now participate in those same transactional records.
+
+Current full validation: **301 tests across 33 files, 25 E2E/API scenarios**, all
+existing gates green, zero dependency findings. Board and editor keyboard/axe
+checks are scoped, not full WCAG qualification. See the report for exact API
+contracts, density limits, bounded paging and remaining production/PRD gaps.
+Deploy the API before the board UI; this is not mixed-version/offline qualification.

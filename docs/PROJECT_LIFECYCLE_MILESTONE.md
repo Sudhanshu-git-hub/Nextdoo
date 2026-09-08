@@ -92,3 +92,10 @@ The earlier cursor-expiry/virtualization/large-collection gaps and production
 security, retention, provider, observability, load and restore blockers remain.
 Scoped dialog axe checks are not full WCAG certification. No complete PRD milestone
 or production release is claimed.
+
+
+## Subsequent continuation
+
+The sections/reordering/board slice described above is now documented separately
+in [Project sections and board milestone](PROJECT_BOARD_MILESTONE.md). The counts
+and evidence in this lifecycle report remain the historical results for this slice.

@@ -197,11 +197,22 @@ export const updateProjectSchema = z.object({
 }).refine((v) => Object.entries(v).some(([key, value]) => key !== 'version' && value !== undefined), { message: 'No fields to update' });
 export type UpdateProjectInput = z.infer<typeof updateProjectSchema>;
 
+const sectionPosition = z.number().finite().min(-1e12).max(1e12);
 export const createSectionSchema = z.object({
   projectId: uuid,
   name: z.string().trim().min(1).max(200),
-  position: z.number().optional(),
+  position: sectionPosition.optional(),
 });
+export const sectionQuerySchema = z.object({ projectId: uuid });
+export const updateSectionSchema = z.object({
+  version: z.number().int().min(1),
+  name: z.string().trim().min(1).max(200).optional(),
+  position: sectionPosition.optional(),
+  beforeId: uuid.nullable().optional(),
+}).refine((v) => v.name !== undefined || v.position !== undefined || v.beforeId !== undefined, { message: 'No fields to update' })
+  .refine((v) => v.position === undefined || v.beforeId === undefined, { message: 'Choose a position or a beforeId, not both' });
+export type CreateSectionInput = z.infer<typeof createSectionSchema>;
+export type UpdateSectionInput = z.infer<typeof updateSectionSchema>;
 
 export const createTagSchema = z.object({
   workspaceId: uuid,

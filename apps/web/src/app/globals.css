@@ -200,3 +200,13 @@ th { color: var(--text-dim); font-weight: 550; font-size: 12px; text-transform: 
 .task-editor label { margin-top: 12px; }
 .task-editor input[type=checkbox] { width: auto; margin-right: 8px; }
 .task-editor fieldset { margin-top: 12px; }
+
+/* Loaded-page project board: scroll columns without overflowing the whole viewport. */
+.board-columns { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(300px, 360px); gap: 16px; overflow-x: auto; padding: 12px 2px 20px; }
+.board-column { min-width: 0; }
+.board-column h2 { overflow-wrap: anywhere; }
+.board-column .task-row { padding-inline: 0; }
+.board-movement { margin-top: 10px; }
+.board-movement select { min-width: 0; max-width: 190px; flex: 1; }
+.project-board > form input { flex: 1; min-width: 150px; }
+.project-board [tabindex="-1"]:focus { outline: 2px solid var(--accent); outline-offset: 3px; }
