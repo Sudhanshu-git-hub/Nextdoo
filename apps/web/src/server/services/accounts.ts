@@ -109,12 +109,13 @@ export async function getWorkspace(workspaceId: string) {
 export async function getPlan(userId: string): Promise<'FREE' | 'PRO' | 'TEAM' | 'ENTERPRISE'> {
   const db = getDb();
   const rows = await db
-    .select({ plan: subscriptions.plan, status: subscriptions.status })
+    .select({ plan: subscriptions.plan, status: subscriptions.status, currentPeriodEnd: subscriptions.currentPeriodEnd })
     .from(subscriptions)
     .where(eq(subscriptions.userId, userId))
     .limit(1);
   const sub = rows[0];
   if (!sub) return 'FREE';
+  if (sub.status === 'CANCELED' && sub.currentPeriodEnd && sub.currentPeriodEnd > new Date()) return sub.plan;
   // Only these states grant paid entitlements.
   const entitled = ['TRIALING', 'ACTIVE', 'GRACE_PERIOD', 'PAST_DUE'];
   return entitled.includes(sub.status) ? sub.plan : 'FREE';

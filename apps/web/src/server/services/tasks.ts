@@ -14,6 +14,8 @@ import { newId } from '../ids';
 import { appendTrackingEvent, publishEvent, recordSyncChange, writeAudit } from './events';
 import { scheduleTrackingEvaluation } from './tracking';
 import { assertTaskReferences } from './task-references';
+import { withWorkspaceTransaction } from './transactions';
+import { enforceTaskLimit } from './entitlements';
 
 /**
  * Task domain service (PRD §6.3).
@@ -73,12 +75,12 @@ export async function loadTask(workspaceId: string, taskId: string): Promise<Tas
   return row;
 }
 
-export async function createTask(actor: TaskActor, input: CreateTaskInput): Promise<SerialisedTask> {
-  const db = getDb();
-  const id = newId();
+export async function createTask(actor: TaskActor, input: CreateTaskInput, options: { id?: string } = {}): Promise<SerialisedTask> {
+  const id = options.id ?? newId();
   const now = new Date();
 
-  return db.transaction(async (tx) => {
+  return withWorkspaceTransaction(actor.workspaceId, async (tx) => {
+    await enforceTaskLimit(actor.userId, actor.workspaceId);
     await assertTaskReferences(tx, actor.workspaceId, input);
     // Parent must live in the same workspace — prevents cross-tenant nesting.
     if (input.parentTaskId) {
@@ -174,9 +176,8 @@ export async function updateTask(
   taskId: string,
   input: UpdateTaskInput,
 ): Promise<SerialisedTask> {
-  const db = getDb();
 
-  return db.transaction(async (tx) => {
+  return withWorkspaceTransaction(actor.workspaceId, async (tx) => {
     const rows = await tx
       .select()
       .from(tasks)
@@ -258,10 +259,9 @@ export async function completeTask(
   version: number,
   completedAt?: string,
 ): Promise<SerialisedTask> {
-  const db = getDb();
   const when = completedAt ? new Date(completedAt) : new Date();
 
-  const result = await db.transaction(async (tx) => {
+  return withWorkspaceTransaction(actor.workspaceId, async (tx) => {
     const rows = await tx
       .select()
       .from(tasks)
@@ -324,18 +324,15 @@ export async function completeTask(
       requestId: actor.requestId ?? null,
     });
 
+    await cancelRemindersForTask(taskId);
+    await scheduleTrackingEvaluation(actor.workspaceId, taskId);
     return serialise(updated);
   });
 
-  // Cancel pending reminders and recompute the execution result.
-  await cancelRemindersForTask(taskId);
-  await scheduleTrackingEvaluation(actor.workspaceId, taskId);
-  return result;
 }
 
 export async function reopenTask(actor: TaskActor, taskId: string, version: number): Promise<SerialisedTask> {
-  const db = getDb();
-  return db.transaction(async (tx) => {
+  return withWorkspaceTransaction(actor.workspaceId, async (tx) => {
     const rows = await tx
       .select()
       .from(tasks)
@@ -345,6 +342,7 @@ export async function reopenTask(actor: TaskActor, taskId: string, version: numb
     if (!current) throw notFound('task', taskId);
     if (current.version !== version) throw versionConflict('task', taskId);
     nextStatus(current.status, 'reopen');
+    await enforceTaskLimit(actor.userId, actor.workspaceId);
 
     const [updated] = await tx
       .update(tasks)
@@ -385,8 +383,7 @@ export async function rescheduleTask(
   dueAt: string | null,
   reason?: string,
 ): Promise<SerialisedTask> {
-  const db = getDb();
-  return db.transaction(async (tx) => {
+  return withWorkspaceTransaction(actor.workspaceId, async (tx) => {
     const rows = await tx
       .select()
       .from(tasks)
@@ -436,8 +433,7 @@ export async function rescheduleTask(
 }
 
 export async function archiveTask(actor: TaskActor, taskId: string, version: number): Promise<SerialisedTask> {
-  const db = getDb();
-  return db.transaction(async (tx) => {
+  return withWorkspaceTransaction(actor.workspaceId, async (tx) => {
     const rows = await tx
       .select()
       .from(tasks)
@@ -475,8 +471,7 @@ export async function archiveTask(actor: TaskActor, taskId: string, version: num
 
 /** Soft delete with a tombstone and a 30-day restore window (PRD §13.5). */
 export async function deleteTask(actor: TaskActor, taskId: string): Promise<void> {
-  const db = getDb();
-  await db.transaction(async (tx) => {
+  await withWorkspaceTransaction(actor.workspaceId, async (tx) => {
     const rows = await tx
       .select()
       .from(tasks)
@@ -484,6 +479,7 @@ export async function deleteTask(actor: TaskActor, taskId: string): Promise<void
       .limit(1);
     const current = rows[0];
     if (!current) throw notFound('task', taskId);
+    if (current.status === 'DELETED') return;
 
     const now = new Date();
     await tx
@@ -526,13 +522,12 @@ export async function deleteTask(actor: TaskActor, taskId: string): Promise<void
       targetId: taskId,
       requestId: actor.requestId ?? null,
     });
+    await cancelRemindersForTask(taskId);
   });
-  await cancelRemindersForTask(taskId);
 }
 
 export async function restoreTask(actor: TaskActor, taskId: string): Promise<SerialisedTask> {
-  const db = getDb();
-  return db.transaction(async (tx) => {
+  return withWorkspaceTransaction(actor.workspaceId, async (tx) => {
     const rows = await tx
       .select()
       .from(tasks)

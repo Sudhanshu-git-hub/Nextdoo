@@ -464,6 +464,7 @@ export const syncMutations = pgTable(
   'sync_mutations',
   {
     mutationId: uuid('mutation_id').primaryKey(),
+    requestHash: varchar('request_hash', { length: 64 }),
     workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
     deviceId: varchar('device_id', { length: 100 }).notNull(),
     entityType: varchar('entity_type', { length: 40 }).notNull(),

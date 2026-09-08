@@ -1,12 +1,14 @@
+import { createHash } from 'node:crypto';
 import { and, asc, eq, gt, sql } from 'drizzle-orm';
-import type { MutationInput, SyncPushInput } from '@nextdoo/contracts';
+import { AppError, createTaskSchema, updateTaskSchema, completeTaskSchema, type MutationInput, type SyncPushInput } from '@nextdoo/contracts';
 import { mergeEntity } from '@nextdoo/core';
-import { conflictSnapshots, syncChanges, syncMutations, syncTombstones, tasks } from '@nextdoo/db';
+import { conflictSnapshots, syncChanges, syncMutations, tasks } from '@nextdoo/db';
 import { getDb } from '../db';
 import { newId } from '../ids';
 import { logger } from '../observability';
-import { recordSyncChange } from './events';
-import { serialiseTask } from './tasks';
+import { serialiseTask, createTask, updateTask, completeTask, reopenTask, archiveTask, deleteTask, type TaskActor, type SerialisedTask } from './tasks';
+import { withTransaction } from '../db';
+import { withWorkspaceTransaction } from './transactions';
 import { assertTaskReferences } from './task-references';
 
 /**
@@ -32,7 +34,7 @@ export interface MutationResult {
 /** Fields a client may write. Anything else is ignored rather than trusted. */
 const WRITABLE_TASK_FIELDS = new Set([
   'title', 'description', 'projectId', 'sectionId', 'priority',
-  'dueAt', 'timeZone', 'estimateMinutes', 'position', 'status',
+  'dueAt', 'timeZone', 'estimateMinutes', 'position', 'status', 'tagIds', 'parentTaskId', 'completedAt',
 ]);
 
 function sanitiseTaskPayload(payload: Record<string, unknown>): Record<string, unknown> {
@@ -43,14 +45,32 @@ function sanitiseTaskPayload(payload: Record<string, unknown>): Record<string, u
   return out;
 }
 
-function toColumnValues(payload: Record<string, unknown>): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(payload)) {
-    if (k === 'dueAt') out[k] = v ? new Date(v as string) : null;
-    else if (k === 'position') out[k] = String(v);
-    else out[k] = v;
+function mutationHash(mutation: MutationInput): string {
+  const stable = (v: unknown): unknown => Array.isArray(v) ? v.map(stable)
+    : v !== null && typeof v === 'object' ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b)).map(([k, value]) => [k, stable(value)])) : v;
+  return createHash('sha256').update(JSON.stringify(stable({ operation: mutation.operation, entityType: mutation.entityType, entityId: mutation.entityId, baseVersion: mutation.baseVersion, payload: mutation.payload, createdAt: mutation.createdAt }))).digest('hex');
+}
+
+/** Sync changes are commands, never raw writes that bypass task invariants. */
+async function applyTaskPatch(actor: TaskActor, current: SerialisedTask, payload: Record<string, unknown>, occurredAt?: string): Promise<SerialisedTask> {
+  const { status, completedAt, ...fields } = payload;
+  let result = current;
+  if (status !== undefined && !['ACTIVE', 'COMPLETED', 'ARCHIVED', 'DELETED'].includes(String(status))) throw new AppError('VALIDATION_FAILED', 'Invalid task status.');
+  // Parent changes are not supported by the online update contract either.
+  if ('parentTaskId' in fields) throw new AppError('VALIDATION_FAILED', 'Parent cannot be changed through task updates.');
+  if (Object.keys(fields).length) result = await updateTask(actor, result.id, updateTaskSchema.parse({ ...fields, version: result.version }));
+  if (status !== undefined && status !== result.status) {
+    if (status === 'COMPLETED') {
+      const input = completeTaskSchema.parse({ version: result.version, completedAt: completedAt ?? occurredAt });
+      result = await completeTask(actor, result.id, result.version, input.completedAt);
+    } else if (status === 'ACTIVE') result = await reopenTask(actor, result.id, result.version);
+    else if (status === 'ARCHIVED') result = await archiveTask(actor, result.id, result.version);
+    else if (status === 'DELETED') {
+      await deleteTask(actor, result.id);
+      result = { ...result, status: 'DELETED', version: result.version + 1 };
+    }
   }
-  return out;
+  return result;
 }
 
 export async function pushMutations(
@@ -72,7 +92,7 @@ export async function pushMutations(
       results.push({
         mutationId: mutation.mutationId,
         status: 'rejected',
-        error: { code: 'INTERNAL_ERROR', detail: 'This change could not be applied and has been kept locally.' },
+        error: { code: error instanceof AppError ? error.code : error instanceof Error && error.name === 'ZodError' ? 'VALIDATION_FAILED' : 'INTERNAL_ERROR', detail: 'This change could not be applied and has been kept locally.' },
       });
     }
   }
@@ -86,16 +106,20 @@ async function applyMutation(
   deviceId: string,
   mutation: MutationInput,
 ): Promise<MutationResult> {
-  const db = getDb();
-
+  return withTransaction(async (db) => {
+    await db.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'mutation:' + mutation.mutationId}, 0))`);
+    return withWorkspaceTransaction(actor.workspaceId, async (tx) => {
   // Replay protection: return the original outcome verbatim.
-  const prior = await db
+  const prior = await tx
     .select()
     .from(syncMutations)
     .where(eq(syncMutations.mutationId, mutation.mutationId))
     .limit(1);
   if (prior[0] && prior[0].workspaceId !== actor.workspaceId) {
     return { mutationId: mutation.mutationId, status: 'rejected', error: { code: 'NOT_FOUND', detail: 'The requested resource is not available.' } };
+  }
+  if (prior[0] && prior[0].requestHash !== mutationHash(mutation)) {
+    return { mutationId: mutation.mutationId, status: 'rejected', error: { code: 'IDEMPOTENCY_CONFLICT', detail: 'This mutation ID cannot be replayed for this request.' } };
   }
   if (prior[0]) {
     return { mutationId: mutation.mutationId, status: 'duplicate', entity: prior[0].result as Record<string, unknown> };
@@ -109,7 +133,6 @@ async function applyMutation(
     };
   }
 
-  return db.transaction(async (tx) => {
     const rows = await tx
       .select()
       .from(tasks)
@@ -126,72 +149,26 @@ async function applyMutation(
         return { mutationId: mutation.mutationId, status: 'duplicate' as const, entity: result };
       }
       await assertTaskReferences(tx, actor.workspaceId, mutation.payload);
-      const payload = toColumnValues(sanitiseTaskPayload(mutation.payload));
-      const [created] = await tx
-        .insert(tasks)
-        .values({
-          id: mutation.entityId,
-          workspaceId: actor.workspaceId,
-          title: (payload.title as string) ?? 'Untitled task',
-          ...payload,
-          position: String(payload.position ?? Date.now()),
-        } as never)
-        .onConflictDoNothing()
-        .returning();
-
-      if (!created) {
-        const existing = await tx.select().from(tasks).where(and(eq(tasks.id, mutation.entityId), eq(tasks.workspaceId, actor.workspaceId))).limit(1);
-        if (!existing[0]) return { mutationId: mutation.mutationId, status: 'rejected' as const, error: { code: 'NOT_FOUND', detail: 'The requested resource is not available.' } };
-        const result = existing[0] ? (serialiseTask(existing[0]) as unknown as Record<string, unknown>) : {};
-        await recordMutation(tx, actor.workspaceId, deviceId, mutation, 'duplicate', result);
-        return { mutationId: mutation.mutationId, status: 'duplicate' as const, entity: result };
+      const input = createTaskSchema.parse({ ...mutation.payload, workspaceId: actor.workspaceId });
+      let created = await createTask({ ...actor, deviceId }, input, { id: mutation.entityId });
+      if (mutation.payload.status !== undefined || mutation.payload.position !== undefined) {
+        created = await applyTaskPatch({ ...actor, deviceId }, created, {
+          ...(mutation.payload.status !== undefined ? { status: mutation.payload.status, completedAt: mutation.payload.completedAt } : {}),
+          ...(mutation.payload.position !== undefined ? { position: mutation.payload.position } : {}),
+        }, mutation.createdAt);
       }
-
-      const result = serialiseTask(created) as unknown as Record<string, unknown>;
-      await recordSyncChange(tx, {
-        workspaceId: actor.workspaceId,
-        entityType: 'task',
-        entityId: created.id,
-        operation: 'create',
-        payload: result,
-        version: created.version,
-        deviceId,
-      });
+      const result = created as unknown as Record<string, unknown>;
       await recordMutation(tx, actor.workspaceId, deviceId, mutation, 'applied', result);
       return { mutationId: mutation.mutationId, status: 'applied' as const, entity: result };
     }
 
     // ---- delete
     if (mutation.operation === 'delete') {
-      if (!server) {
+      if (!server || server.status === 'DELETED') {
         await recordMutation(tx, actor.workspaceId, deviceId, mutation, 'duplicate', {});
         return { mutationId: mutation.mutationId, status: 'duplicate' as const };
       }
-      const now = new Date();
-      await tx
-        .update(tasks)
-        .set({ status: 'DELETED', deletedAt: now, updatedAt: now, version: sql`${tasks.version} + 1` })
-        .where(eq(tasks.id, mutation.entityId));
-      await tx
-        .insert(syncTombstones)
-        .values({
-          id: newId(),
-          workspaceId: actor.workspaceId,
-          entityType: 'task',
-          entityId: mutation.entityId,
-          deletedAt: now,
-          purgeAfter: new Date(now.getTime() + 30 * 86_400_000),
-        })
-        .onConflictDoNothing();
-      await recordSyncChange(tx, {
-        workspaceId: actor.workspaceId,
-        entityType: 'task',
-        entityId: mutation.entityId,
-        operation: 'delete',
-        payload: { id: mutation.entityId },
-        version: server.version + 1,
-        deviceId,
-      });
+      await deleteTask({ ...actor, deviceId }, mutation.entityId);
       await recordMutation(tx, actor.workspaceId, deviceId, mutation, 'applied', { id: mutation.entityId });
       return { mutationId: mutation.mutationId, status: 'applied' as const };
     }
@@ -256,23 +233,7 @@ async function applyMutation(
 
     let updatedEntity = serverSnapshot;
     if (Object.keys(merge.apply).length > 0) {
-      const [updated] = await tx
-        .update(tasks)
-        .set({ ...toColumnValues(merge.apply), updatedAt: new Date(), version: sql`${tasks.version} + 1` } as never)
-        .where(eq(tasks.id, mutation.entityId))
-        .returning();
-      if (updated) {
-        updatedEntity = serialiseTask(updated) as unknown as Record<string, unknown>;
-        await recordSyncChange(tx, {
-          workspaceId: actor.workspaceId,
-          entityType: 'task',
-          entityId: mutation.entityId,
-          operation: 'update',
-          payload: updatedEntity,
-          version: updated.version,
-          deviceId,
-        });
-      }
+      updatedEntity = await applyTaskPatch({ ...actor, deviceId }, serialiseTask(server), merge.apply, mutation.createdAt) as unknown as Record<string, unknown>;
     }
 
     const status = merge.status === 'conflict' ? ('conflict' as const) : ('applied' as const);
@@ -284,6 +245,7 @@ async function applyMutation(
       entity: updatedEntity,
       ...(status === 'conflict' ? { serverEntity: serverSnapshot } : {}),
     };
+    });
   });
 }
 
@@ -299,6 +261,7 @@ async function recordMutation(
     .insert(syncMutations)
     .values({
       mutationId: mutation.mutationId,
+      requestHash: mutationHash(mutation),
       workspaceId,
       deviceId,
       entityType: mutation.entityType,
@@ -358,47 +321,22 @@ export async function listConflicts(workspaceId: string) {
 }
 
 export async function resolveConflict(
-  workspaceId: string,
+  actor: TaskActor,
   conflictId: string,
   resolution: 'local' | 'server',
 ): Promise<void> {
-  const db = getDb();
-  await db.transaction(async (tx) => {
-    const rows = await tx
-      .select()
-      .from(conflictSnapshots)
-      .where(and(eq(conflictSnapshots.id, conflictId), eq(conflictSnapshots.workspaceId, workspaceId)))
-      .limit(1);
-    const snapshot = rows[0];
-    if (!snapshot) return;
-
+  const workspaceId = actor.workspaceId;
+  await withWorkspaceTransaction(workspaceId, async (tx) => {
+    const [snapshot] = await tx.select().from(conflictSnapshots)
+      .where(and(eq(conflictSnapshots.id, conflictId), eq(conflictSnapshots.workspaceId, workspaceId)));
+    if (!snapshot || snapshot.resolvedAt) return;
     if (resolution === 'local') {
       const [target] = await tx.select().from(tasks).where(and(eq(tasks.id, snapshot.entityId), eq(tasks.workspaceId, workspaceId)));
       if (!target || target.status === 'DELETED') return;
       await assertTaskReferences(tx, workspaceId, snapshot.localPayload as Record<string, unknown>, target.projectId);
-      const payload = toColumnValues(sanitiseTaskPayload(snapshot.localPayload as Record<string, unknown>));
-      if (Object.keys(payload).length) {
-        const [updated] = await tx
-          .update(tasks)
-          .set({ ...payload, updatedAt: new Date(), version: sql`${tasks.version} + 1` } as never)
-          .where(and(eq(tasks.id, snapshot.entityId), eq(tasks.workspaceId, workspaceId)))
-          .returning();
-        if (updated) {
-          await recordSyncChange(tx, {
-            workspaceId,
-            entityType: 'task',
-            entityId: snapshot.entityId,
-            operation: 'update',
-            payload: serialiseTask(updated) as unknown as Record<string, unknown>,
-            version: updated.version,
-          });
-        }
-      }
+      await applyTaskPatch(actor, serialiseTask(target), sanitiseTaskPayload(snapshot.localPayload as Record<string, unknown>));
     }
-
-    await tx
-      .update(conflictSnapshots)
-      .set({ resolvedAt: new Date(), resolution })
-      .where(eq(conflictSnapshots.id, conflictId));
+    await tx.update(conflictSnapshots).set({ resolvedAt: new Date(), resolution })
+      .where(and(eq(conflictSnapshots.id, conflictId), eq(conflictSnapshots.workspaceId, workspaceId)));
   });
 }

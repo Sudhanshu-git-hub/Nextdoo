@@ -76,7 +76,7 @@ describe('release-blocking tenant isolation', () => {
     const victim = await create(alice), id = randomUUID();
     await getDb().insert(conflictSnapshots).values({ id, workspaceId: bob.workspaceId, entityType: 'task', entityId: victim.id,
       localPayload: { title: 'attack' }, serverPayload: {}, expiresAt: new Date(Date.now() + 86400000) });
-    await resolveConflict(bob.workspaceId, id, 'local').catch(() => {});
+    await resolveConflict(bob, id, 'local').catch(() => {});
     expect((await loadTask(alice.workspaceId, victim.id)).title).toBe(victim.title);
   });
   it('normal object boundaries remain scoped, not just the replay path', async () => {

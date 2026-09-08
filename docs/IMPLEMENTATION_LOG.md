@@ -61,3 +61,15 @@ covers application, worker and raw SQL writers. **Throughput tradeoff:** sync wr
 serialize globally through commit; no claim of production load/SLO validation.
 Migration applied successfully and rerun was a no-op. Regression green and full
 verification passed: **208 tests, 2 E2E**, lint/typecheck/coverage/build.
+
+### Sync/domain parity and entitlement integrity
+
+Seven new regressions all failed before repair, now pass. Sync create/update/delete
+and conflict resolution call task domain operations instead of raw task writes;
+completion timestamps/history/scoring and reminder cancellation now share the
+transaction. Workspace mutation locks protect merge decisions and concurrent task
+limits, including online creates. Mutation-ID replay is serialized and bound to
+request identity (migration 0003); old identity-less records are conservatively
+rejected. Canceled subscriptions retain paid entitlements until currentPeriodEnd.
+No billing/provider integration added. Full verification passed: **215 tests,
+2 E2E**, lint/typecheck/coverage/build.
