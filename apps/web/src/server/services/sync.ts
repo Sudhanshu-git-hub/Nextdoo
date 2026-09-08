@@ -77,6 +77,7 @@ export async function pushMutations(
   actor: { userId: string; workspaceId: string },
   input: SyncPushInput,
 ): Promise<{ results: MutationResult[]; cursor: number }> {
+  if (input.workspaceId !== undefined && input.workspaceId !== actor.workspaceId) throw new AppError('FORBIDDEN', 'The queued workspace is not the authenticated workspace.');
   const results: MutationResult[] = [];
 
   for (const mutation of input.mutations) {
@@ -122,7 +123,7 @@ async function applyMutation(
     return { mutationId: mutation.mutationId, status: 'rejected', error: { code: 'IDEMPOTENCY_CONFLICT', detail: 'This mutation ID cannot be replayed for this request.' } };
   }
   if (prior[0]) {
-    return { mutationId: mutation.mutationId, status: 'duplicate', entity: prior[0].result as Record<string, unknown> };
+    return { mutationId: mutation.mutationId, status: prior[0].status === 'rejected' ? 'rejected' : prior[0].status === 'conflict' ? 'conflict' : 'duplicate', entity: prior[0].result as Record<string, unknown> };
   }
 
   if (mutation.entityType !== 'task') {

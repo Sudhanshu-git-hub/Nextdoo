@@ -14,7 +14,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <a className="skip-link" href="#main">Skip to main content</a>
       <Sidebar />
       <main className="main" id="main" tabIndex={-1}>{children}</main>
-      <OfflineBadge />
+      <OfflineBadge workspaceId={auth.workspaceId} />
     </div>
   );
 }

@@ -1,21 +1,22 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { pendingCount } from '@/lib/offline-queue';
+import { pendingCount, refreshCount } from '@/lib/offline-queue';
 
 /**
  * Offline state indicator (PRD §8.6).
  * Non-blocking and always shows how many changes are waiting, so the user
  * knows nothing has been lost.
  */
-export function OfflineBadge() {
+export function OfflineBadge({ workspaceId }: { workspaceId: string }) {
   const [online, setOnline] = useState(true);
   const [pending, setPending] = useState(0);
 
   useEffect(() => {
     const update = () => setOnline(navigator.onLine);
     update();
-    const poll = setInterval(() => setPending(pendingCount()), 1500);
+    void refreshCount(workspaceId).catch(() => {});
+    const poll = setInterval(() => setPending(pendingCount(workspaceId)), 1500);
     window.addEventListener('online', update);
     window.addEventListener('offline', update);
     return () => {
@@ -23,7 +24,7 @@ export function OfflineBadge() {
       window.removeEventListener('online', update);
       window.removeEventListener('offline', update);
     };
-  }, []);
+  }, [workspaceId]);
 
   if (online && pending === 0) return null;
 

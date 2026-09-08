@@ -243,6 +243,7 @@ export const mutationSchema = z.object({
 });
 
 export const syncPushSchema = z.object({
+  workspaceId: uuid.optional(),
   deviceId: z.string().min(1).max(100),
   mutations: z.array(mutationSchema).min(1).max(200),
 });
