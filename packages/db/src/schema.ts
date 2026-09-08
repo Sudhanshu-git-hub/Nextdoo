@@ -401,14 +401,14 @@ export const trackingResults = pgTable(
     explanation: text('explanation').notNull(),
     measuredWeight: numeric('measured_weight', { precision: 4, scale: 2 }).notNull(),
     calculationVersion: integer('calculation_version').notNull().default(1),
-    /** Hash of the inputs; identical inputs must not create a second row. */
+    /** Hash of inputs; unchanged ACTIVE inputs are a no-op, history is retained. */
     inputHash: varchar('input_hash', { length: 64 }).notNull(),
     recalculated: boolean('recalculated').notNull().default(false),
     supersededAt: timestamp('superseded_at', { withTimezone: true }),
     ...timestamps,
   },
   (t) => [
-    uniqueIndex('tracking_results_unique').on(t.taskId, t.occurrenceKey, t.calculationVersion, t.inputHash),
+    uniqueIndex('tracking_results_unique').on(t.taskId, sql`coalesce(${t.occurrenceKey}, '')`).where(sql`${t.supersededAt} IS NULL`),
     index('tracking_results_ws_created_idx').on(t.workspaceId, t.createdAt),
   ],
 );

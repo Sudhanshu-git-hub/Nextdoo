@@ -73,3 +73,13 @@ request identity (migration 0003); old identity-less records are conservatively
 rejected. Canceled subscriptions retain paid entitlements until currentPeriodEnd.
 No billing/provider integration added. Full verification passed: **215 tests,
 2 E2E**, lint/typecheck/coverage/build.
+
+### Scoring and reopen integrity
+
+Five regressions added; four failed before repair. Evaluations now lock before
+assembling inputs and serialize with workspace mutations. Migration 0004 retains
+historical results while enforcing exactly one active result per task/occurrence;
+returning to an old input appends a new historical row. Reopen and scoring-input
+edits reevaluate atomically, failures roll back rather than being swallowed, due
+cutoff changes invalidate cached inputs, and TR-06 includes skipped occurrences in
+the denominator. Full verification passed: **220 tests, 2 E2E**, all other gates.

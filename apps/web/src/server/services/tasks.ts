@@ -249,6 +249,7 @@ export async function updateTask(
       payload: { fields: Object.keys(patch).filter((k) => k !== 'updatedAt') },
     });
 
+    await scheduleTrackingEvaluation(actor.workspaceId, taskId);
     return serialise(updated);
   });
 }
@@ -372,6 +373,7 @@ export async function reopenTask(actor: TaskActor, taskId: string, version: numb
       entityType: 'task',
       entityId: taskId,
     });
+    await scheduleTrackingEvaluation(actor.workspaceId, taskId);
     return serialise(updated);
   });
 }
@@ -428,6 +430,7 @@ export async function rescheduleTask(
       entityType: 'task',
       entityId: taskId,
     });
+    await scheduleTrackingEvaluation(actor.workspaceId, taskId);
     return serialise(updated);
   });
 }
@@ -465,6 +468,7 @@ export async function archiveTask(actor: TaskActor, taskId: string, version: num
       payload: serialise(updated) as unknown as Record<string, unknown>,
       version: updated.version,
     });
+    await scheduleTrackingEvaluation(actor.workspaceId, taskId);
     return serialise(updated);
   });
 }
@@ -568,6 +572,7 @@ export async function restoreTask(actor: TaskActor, taskId: string): Promise<Ser
       entityType: 'task',
       entityId: taskId,
     });
+    await scheduleTrackingEvaluation(actor.workspaceId, taskId);
     return serialise(updated);
   });
 }

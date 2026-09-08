@@ -5,6 +5,7 @@ import { tasks, taskOccurrences, trackingEvents, trackingResults } from '@nextdo
 import { getDb } from '../db';
 import { newId } from '../ids';
 import { logger } from '../observability';
+import { withWorkspaceTransaction } from './transactions';
 
 /**
  * Tracking calculation pipeline (PRD §7.6).
@@ -29,6 +30,7 @@ function hashInputs(input: ScoringInput): string {
         co: input.completedOccurrences,
         r: input.rescheduleCount,
         s: input.skipped,
+        overdue: input.dueAt !== null && input.dueAt < (input.evaluatedAt ?? new Date()),
       }),
     )
     .digest('hex')
@@ -54,7 +56,7 @@ export async function buildScoringInput(workspaceId: string, taskId: string): Pr
       .from(taskOccurrences)
       .where(eq(taskOccurrences.recurrenceRuleId, task.recurrenceRuleId));
     if (occ.length) {
-      expected = occ.filter((o) => o.status !== 'SKIPPED').length;
+      expected = occ.length;
       completed = occ.filter((o) => o.status === 'COMPLETED').length;
     }
   }
@@ -101,12 +103,15 @@ export async function evaluateTask(
   taskId: string,
   options: { recalculated?: boolean } = {},
 ): Promise<StoredResult | null> {
+  return withWorkspaceTransaction(workspaceId, async (db) => {
+    // Lock the durable task before assembling inputs, not after computing them.
+    await db.select({ id: tasks.id }).from(tasks)
+      .where(and(eq(tasks.id, taskId), eq(tasks.workspaceId, workspaceId))).for('update');
   const input = await buildScoringInput(workspaceId, taskId);
   if (!input) return null;
 
   const result = calculateScore(input);
   const inputHash = hashInputs(input);
-  const db = getDb();
 
   const existing = await db
     .select()
@@ -137,7 +142,7 @@ export async function evaluateTask(
     };
   }
 
-  return db.transaction(async (tx) => {
+    const tx = db;
     // Supersede prior results rather than deleting them.
     await tx
       .update(trackingResults)
@@ -160,7 +165,6 @@ export async function evaluateTask(
         inputHash,
         recalculated: options.recalculated ?? false,
       })
-      .onConflictDoNothing()
       .returning();
 
     if (!row) return null;
@@ -180,8 +184,8 @@ export async function evaluateTask(
 }
 
 /**
- * Enqueues evaluation. Without Redis configured we evaluate inline but never let
- * a scoring failure surface to the user — the task mutation already committed.
+ * Evaluates inline in the caller's transaction. Failure must roll back the
+ * mutation rather than leave silently stale analytics; durable jobs are later scope.
  */
 export async function scheduleTrackingEvaluation(workspaceId: string, taskId: string): Promise<void> {
   try {
@@ -192,6 +196,7 @@ export async function scheduleTrackingEvaluation(workspaceId: string, taskId: st
       taskId,
       error: error instanceof Error ? error.message : 'unknown',
     });
+    throw error;
   }
 }
 
