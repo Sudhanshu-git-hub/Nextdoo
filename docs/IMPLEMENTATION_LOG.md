@@ -32,3 +32,12 @@ standard Playwright browser. Local DB is PostgreSQL 18.4 UTF-8; CI specifies 16.
 
 Pending. Add failing regressions before changing affected behavior; tenant isolation
 is a release blocker. Do not interpret Phase 1's green baseline as security acceptance.
+
+### Tenant isolation repair
+
+Added 9 database-backed regressions covering foreign task-ID collisions, foreign
+mutation replay, update/delete attempts, project/section/tag references through
+online and sync mutations, and inconsistent conflict snapshots. **6 failed before
+repair; all 9 pass after.** Scoped replay/collision/conflict targets and added shared
+reference authorization. Full verification passed: 202 tests, 2 browser E2E,
+coverage thresholds, lint, typecheck and production build.

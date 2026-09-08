@@ -13,6 +13,7 @@ import { getDb } from '../db';
 import { newId } from '../ids';
 import { appendTrackingEvent, publishEvent, recordSyncChange, writeAudit } from './events';
 import { scheduleTrackingEvaluation } from './tracking';
+import { assertTaskReferences } from './task-references';
 
 /**
  * Task domain service (PRD §6.3).
@@ -78,6 +79,7 @@ export async function createTask(actor: TaskActor, input: CreateTaskInput): Prom
   const now = new Date();
 
   return db.transaction(async (tx) => {
+    await assertTaskReferences(tx, actor.workspaceId, input);
     // Parent must live in the same workspace — prevents cross-tenant nesting.
     if (input.parentTaskId) {
       const parent = await tx
@@ -186,7 +188,9 @@ export async function updateTask(
     // Optimistic lock (PRD §6.3 acceptance criteria).
     if (current.version !== input.version) throw versionConflict('task', taskId);
 
+    await assertTaskReferences(tx, actor.workspaceId, input, current.projectId);
     const patch: Partial<typeof tasks.$inferInsert> = { updatedAt: new Date() };
+    if (input.projectId !== undefined && input.projectId !== current.projectId && input.sectionId === undefined) patch.sectionId = null;
     if (input.title !== undefined) patch.title = input.title;
     if (input.description !== undefined) patch.description = input.description ?? null;
     if (input.projectId !== undefined) patch.projectId = input.projectId ?? null;

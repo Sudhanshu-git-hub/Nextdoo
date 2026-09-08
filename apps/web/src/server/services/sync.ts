@@ -7,6 +7,7 @@ import { newId } from '../ids';
 import { logger } from '../observability';
 import { recordSyncChange } from './events';
 import { serialiseTask } from './tasks';
+import { assertTaskReferences } from './task-references';
 
 /**
  * Sync protocol (PRD §10).
@@ -93,6 +94,9 @@ async function applyMutation(
     .from(syncMutations)
     .where(eq(syncMutations.mutationId, mutation.mutationId))
     .limit(1);
+  if (prior[0] && prior[0].workspaceId !== actor.workspaceId) {
+    return { mutationId: mutation.mutationId, status: 'rejected', error: { code: 'NOT_FOUND', detail: 'The requested resource is not available.' } };
+  }
   if (prior[0]) {
     return { mutationId: mutation.mutationId, status: 'duplicate', entity: prior[0].result as Record<string, unknown> };
   }
@@ -121,6 +125,7 @@ async function applyMutation(
         await recordMutation(tx, actor.workspaceId, deviceId, mutation, 'duplicate', result);
         return { mutationId: mutation.mutationId, status: 'duplicate' as const, entity: result };
       }
+      await assertTaskReferences(tx, actor.workspaceId, mutation.payload);
       const payload = toColumnValues(sanitiseTaskPayload(mutation.payload));
       const [created] = await tx
         .insert(tasks)
@@ -135,7 +140,8 @@ async function applyMutation(
         .returning();
 
       if (!created) {
-        const existing = await tx.select().from(tasks).where(eq(tasks.id, mutation.entityId)).limit(1);
+        const existing = await tx.select().from(tasks).where(and(eq(tasks.id, mutation.entityId), eq(tasks.workspaceId, actor.workspaceId))).limit(1);
+        if (!existing[0]) return { mutationId: mutation.mutationId, status: 'rejected' as const, error: { code: 'NOT_FOUND', detail: 'The requested resource is not available.' } };
         const result = existing[0] ? (serialiseTask(existing[0]) as unknown as Record<string, unknown>) : {};
         await recordMutation(tx, actor.workspaceId, deviceId, mutation, 'duplicate', result);
         return { mutationId: mutation.mutationId, status: 'duplicate' as const, entity: result };
@@ -213,6 +219,7 @@ async function applyMutation(
       };
     }
 
+    await assertTaskReferences(tx, actor.workspaceId, mutation.payload, server.projectId);
     const serverSnapshot = serialiseTask(server) as unknown as Record<string, unknown>;
     const merge = mergeEntity({
       local,
@@ -366,12 +373,15 @@ export async function resolveConflict(
     if (!snapshot) return;
 
     if (resolution === 'local') {
+      const [target] = await tx.select().from(tasks).where(and(eq(tasks.id, snapshot.entityId), eq(tasks.workspaceId, workspaceId)));
+      if (!target || target.status === 'DELETED') return;
+      await assertTaskReferences(tx, workspaceId, snapshot.localPayload as Record<string, unknown>, target.projectId);
       const payload = toColumnValues(sanitiseTaskPayload(snapshot.localPayload as Record<string, unknown>));
       if (Object.keys(payload).length) {
         const [updated] = await tx
           .update(tasks)
           .set({ ...payload, updatedAt: new Date(), version: sql`${tasks.version} + 1` } as never)
-          .where(eq(tasks.id, snapshot.entityId))
+          .where(and(eq(tasks.id, snapshot.entityId), eq(tasks.workspaceId, workspaceId)))
           .returning();
         if (updated) {
           await recordSyncChange(tx, {
