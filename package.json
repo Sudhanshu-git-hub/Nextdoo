@@ -1,0 +1,32 @@
+{
+  "name": "nextdoo",
+  "private": true,
+  "packageManager": "pnpm@9.15.4",
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "vitest run",
+    "test:e2e": "pnpm --filter @nextdoo/web test:e2e",
+    "db:generate": "pnpm --filter @nextdoo/db generate",
+    "db:migrate": "pnpm --filter @nextdoo/db migrate",
+    "dev:services": "node scripts/dev-services.mjs",
+    "test:watch": "vitest",
+    "dev:worker": "pnpm --filter @nextdoo/worker start"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "embedded-postgres": "18.4.0-beta.17",
+    "turbo": "2.3.3",
+    "typescript": "5.7.2",
+    "vitest": "2.1.8"
+  },
+  "dependencies": {
+    "drizzle-orm": "0.38.3",
+    "postgres": "3.4.5"
+  }
+}

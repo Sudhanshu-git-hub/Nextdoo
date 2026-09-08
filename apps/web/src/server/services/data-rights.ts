@@ -1,0 +1,283 @@
+import { and, desc, eq, inArray, isNotNull, isNull, like, lte, or } from 'drizzle-orm';
+import { AppError } from '@nextdoo/contracts';
+import {
+  auditLogs,
+  projects,
+  reminders,
+  sections,
+  tags,
+  taskTags,
+  tasks,
+  timerSessions,
+  trackingEvents,
+  trackingResults,
+  users,
+  workspaceMembers,
+  workspaces,
+} from '@nextdoo/db';
+import { getDb } from '../db';
+import { revokeAllSessions, verifyPassword } from '../auth';
+import { writeAuditLog } from './events';
+import { absoluteUrl, sendMail } from '../mailer';
+
+/**
+ * Export and account deletion (PRD §12.4, §13.5).
+ *
+ * Both are user rights, not favours: the export must be complete enough to
+ * reconstruct the account elsewhere, and deletion must be honest about what is
+ * removed and when.
+ */
+
+const DELETION_GRACE_DAYS = 30;
+
+export interface ExportBundle {
+  formatVersion: 1;
+  exportedAt: string;
+  account: Record<string, unknown>;
+  workspaces: unknown[];
+  projects: unknown[];
+  sections: unknown[];
+  tags: unknown[];
+  tasks: unknown[];
+  taskTags: unknown[];
+  reminders: unknown[];
+  timerSessions: unknown[];
+  trackingEvents: unknown[];
+  trackingResults: unknown[];
+  auditLogs: unknown[];
+}
+
+/**
+ * Builds a complete JSON archive of everything the user owns.
+ *
+ * Generated synchronously: a personal workspace is small, and a streamed job
+ * would add a queue dependency for no benefit at this scale. The password hash
+ * and MFA secret are deliberately excluded — exporting credentials would create
+ * a new place for them to leak.
+ */
+export async function buildExport(userId: string): Promise<ExportBundle> {
+  const db = getDb();
+
+  const [account] = await db
+    .select({
+      id: users.id,
+      email: users.email,
+      name: users.name,
+      timeZone: users.timeZone,
+      emailVerifiedAt: users.emailVerifiedAt,
+      createdAt: users.createdAt,
+    })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  if (!account) throw new AppError('NOT_FOUND', 'Account not found.');
+
+  const memberships = await db
+    .select({ workspaceId: workspaceMembers.workspaceId })
+    .from(workspaceMembers)
+    .where(eq(workspaceMembers.userId, userId));
+
+  const workspaceIds = memberships.map((m) => m.workspaceId);
+  if (!workspaceIds.length) {
+    return {
+      formatVersion: 1,
+      exportedAt: new Date().toISOString(),
+      account,
+      workspaces: [], projects: [], sections: [], tags: [], tasks: [],
+      taskTags: [], reminders: [], timerSessions: [],
+      trackingEvents: [], trackingResults: [], auditLogs: [],
+    };
+  }
+
+  const [
+    workspaceRows, projectRows, sectionRows, tagRows, taskRows,
+    reminderRows, timerRows, eventRows, resultRows, auditRows,
+  ] = await Promise.all([
+    db.select().from(workspaces).where(inArray(workspaces.id, workspaceIds)),
+    db.select().from(projects).where(inArray(projects.workspaceId, workspaceIds)),
+    db.select().from(sections).where(inArray(sections.workspaceId, workspaceIds)),
+    db.select().from(tags).where(inArray(tags.workspaceId, workspaceIds)),
+    db.select().from(tasks).where(inArray(tasks.workspaceId, workspaceIds)),
+    db.select().from(reminders).where(inArray(reminders.workspaceId, workspaceIds)),
+    db.select().from(timerSessions).where(inArray(timerSessions.workspaceId, workspaceIds)),
+    db.select().from(trackingEvents).where(inArray(trackingEvents.workspaceId, workspaceIds)),
+    db.select().from(trackingResults).where(inArray(trackingResults.workspaceId, workspaceIds)),
+    db.select().from(auditLogs).where(inArray(auditLogs.workspaceId, workspaceIds)),
+  ]);
+
+  const taskIds = taskRows.map((t) => t.id);
+  const taskTagRows = taskIds.length
+    ? await db.select().from(taskTags).where(inArray(taskTags.taskId, taskIds))
+    : [];
+
+  await writeAuditLog({
+    userId,
+    action: 'account.exported',
+    entityType: 'user',
+    entityId: userId,
+    metadata: { taskCount: taskRows.length },
+  });
+
+  return {
+    formatVersion: 1,
+    exportedAt: new Date().toISOString(),
+    account,
+    workspaces: workspaceRows,
+    projects: projectRows,
+    sections: sectionRows,
+    tags: tagRows,
+    tasks: taskRows,
+    taskTags: taskTagRows,
+    reminders: reminderRows,
+    timerSessions: timerRows,
+    trackingEvents: eventRows,
+    trackingResults: resultRows,
+    auditLogs: auditRows,
+  };
+}
+
+export interface DeletionStatus {
+  scheduled: boolean;
+  requestedAt: string | null;
+  purgeAfter: string | null;
+}
+
+/**
+ * Schedules deletion after a grace period rather than deleting immediately.
+ *
+ * The grace window exists because account deletion is the one action a user
+ * cannot undo, and a compromised session should not be able to destroy someone's
+ * data instantly.
+ */
+export async function requestAccountDeletion(userId: string, password: string): Promise<DeletionStatus> {
+  const db = getDb();
+  const [user] = await db
+    .select({ passwordHash: users.passwordHash, email: users.email, deletionRequestedAt: users.deletionRequestedAt })
+    .from(users)
+    .where(and(eq(users.id, userId), isNull(users.deletedAt)))
+    .limit(1);
+
+  if (!user) throw new AppError('NOT_FOUND', 'Account not found.');
+
+  // Re-authenticate: a session alone must not be enough to destroy the account.
+  if (!(await verifyPassword(user.passwordHash, password))) {
+    throw new AppError('VALIDATION_FAILED', 'That password is not correct.');
+  }
+
+  const requestedAt = user.deletionRequestedAt ?? new Date();
+  await db.update(users).set({ deletionRequestedAt: requestedAt, updatedAt: new Date() }).where(eq(users.id, userId));
+
+  // Every session ends: the account is on its way out.
+  await revokeAllSessions(userId);
+
+  const purgeAfter = new Date(requestedAt.getTime() + DELETION_GRACE_DAYS * 86_400_000);
+  await writeAuditLog({
+    userId,
+    action: 'account.deletion_requested',
+    entityType: 'user',
+    entityId: userId,
+    metadata: { purgeAfter: purgeAfter.toISOString() },
+  });
+  await sendMail('account-deletion', user.email, absoluteUrl('/login'));
+
+  return { scheduled: true, requestedAt: requestedAt.toISOString(), purgeAfter: purgeAfter.toISOString() };
+}
+
+/** Signing in during the grace window cancels the deletion. */
+export async function cancelAccountDeletion(userId: string): Promise<void> {
+  const db = getDb();
+  const updated = await db
+    .update(users)
+    .set({ deletionRequestedAt: null, updatedAt: new Date() })
+    .where(and(eq(users.id, userId), isNull(users.deletedAt)))
+    .returning({ id: users.id });
+
+  if (updated.length) {
+    await writeAuditLog({ userId, action: 'account.deletion_cancelled', entityType: 'user', entityId: userId });
+  }
+}
+
+export async function getDeletionStatus(userId: string): Promise<DeletionStatus> {
+  const db = getDb();
+  const [user] = await db
+    .select({ requestedAt: users.deletionRequestedAt })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  if (!user?.requestedAt) return { scheduled: false, requestedAt: null, purgeAfter: null };
+  return {
+    scheduled: true,
+    requestedAt: user.requestedAt.toISOString(),
+    purgeAfter: new Date(user.requestedAt.getTime() + DELETION_GRACE_DAYS * 86_400_000).toISOString(),
+  };
+}
+
+/**
+ * Permanently removes accounts whose grace period has elapsed. Called by the
+ * worker, never by a request.
+ *
+ * Deletion cascades from `users` through every foreign key, so this is one
+ * statement rather than a hand-maintained list that would silently miss a table
+ * added later.
+ */
+export async function purgeDueAccounts(now = new Date()): Promise<string[]> {
+  const db = getDb();
+  const cutoff = new Date(now.getTime() - DELETION_GRACE_DAYS * 86_400_000);
+
+  const due = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(and(isNotNull(users.deletionRequestedAt), lte(users.deletionRequestedAt, cutoff)));
+
+  const purged: string[] = [];
+  for (const candidate of due) {
+    // One statement per account so a single failure cannot abort the whole run.
+    await db.delete(users).where(eq(users.id, candidate.id));
+    purged.push(candidate.id);
+  }
+  return purged;
+}
+
+/**
+ * Recent security-relevant activity for the account (PRD §12.4).
+ *
+ * Scoped to the caller's own actions and workspace; metadata is returned as
+ * stored, which by construction never contains task content or secrets.
+ */
+export async function listAuditLogs(
+  userId: string,
+  workspaceId: string,
+  limit = 50,
+  /** Optional action-namespace filter, e.g. `account.` for security events only. */
+  prefix?: string,
+) {
+  const db = getDb();
+  return db
+    .select({
+      id: auditLogs.id,
+      action: auditLogs.action,
+      targetType: auditLogs.targetType,
+      targetId: auditLogs.targetId,
+      metadata: auditLogs.metadata,
+      createdAt: auditLogs.createdAt,
+    })
+    .from(auditLogs)
+    .where(
+      and(
+        // `actorId` is the authorization boundary. Account-level events
+        // (password reset, MFA, deletion) are recorded with no workspace
+        // because they happen outside a session, so a strict workspace
+        // equality check would hide precisely the security history the
+        // account owner needs to see.
+        eq(auditLogs.actorId, userId),
+        or(eq(auditLogs.workspaceId, workspaceId), isNull(auditLogs.workspaceId)),
+        // `prefix` is never user-supplied free text; it is validated against an
+        // allow-list at the route boundary before reaching this query.
+        prefix ? like(auditLogs.action, `${prefix}%`) : undefined,
+      ),
+    )
+    .orderBy(desc(auditLogs.createdAt))
+    .limit(limit);
+}

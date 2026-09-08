@@ -1,0 +1,23 @@
+{
+  "name": "@nextdoo/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nextdoo/contracts": "workspace:*",
+    "@nextdoo/core": "workspace:*",
+    "@nextdoo/db": "workspace:*",
+    "drizzle-orm": "0.38.3",
+    "postgres": "3.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "typescript": "5.7.2",
+    "tsx": "4.19.2"
+  }
+}
