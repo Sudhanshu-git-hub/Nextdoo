@@ -99,3 +99,14 @@ to save a fully specified date rather than leave a capture confirmation open.
 Focus now consumes the API's elapsedSeconds snapshot and advances from receipt,
 not the original start time. Full verification passed: **225 tests, 3 E2E**,
 lint/typecheck/coverage/build.
+
+### Account purge with real task history
+
+Three regressions initially failed, including the actual worker job path. Both
+service and worker now use a shared atomic purge that rechecks deletion eligibility
+under a row lock, removes private outbox and replay payloads, and retains audit
+records (PRD separate one-year retention). Migration 0006 permits tracking deletion
+only through final account/workspace cascade and prevents live-account workspace
+deletion from bypassing immutability. Direct tracking UPDATE/DELETE still fail.
+No provider or billing-retention integration added. Full verification passed:
+**228 tests, 3 E2E**, lint/typecheck/coverage/build.

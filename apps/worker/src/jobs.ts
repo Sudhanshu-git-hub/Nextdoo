@@ -1,5 +1,5 @@
 import { and, eq, isNotNull, isNull, lt, lte, sql as raw } from 'drizzle-orm';
-import { authTokens, idempotencyKeys, reminders, users } from '@nextdoo/db';
+import { authTokens, idempotencyKeys, reminders, users, purgeAccount } from '@nextdoo/db';
 import { db, logger, type Job, type JobResult } from './runtime';
 
 /**
@@ -108,10 +108,9 @@ const purgeAccounts: Job = {
     let purged = 0;
     for (const user of due) {
       try {
-        // Foreign keys cascade, so this removes every owned row.
-        await db.delete(users).where(eq(users.id, user.id));
+        if (!await purgeAccount(db, user.id, cutoff)) continue;
         purged += 1;
-        // The id is logged because the account is gone; nothing identifying remains.
+        // Retain only the opaque identifier here; audit evidence follows its own retention.
         logger.info('account.purged', { userId: user.id });
       } catch (error) {
         logger.error('account.purge_failed', {

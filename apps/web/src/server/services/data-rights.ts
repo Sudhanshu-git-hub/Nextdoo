@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, isNotNull, isNull, like, lte, or } from 'drizzle-orm';
 import { AppError } from '@nextdoo/contracts';
 import {
+  purgeAccount,
   auditLogs,
   projects,
   reminders,
@@ -218,9 +219,8 @@ export async function getDeletionStatus(userId: string): Promise<DeletionStatus>
  * Permanently removes accounts whose grace period has elapsed. Called by the
  * worker, never by a request.
  *
- * Deletion cascades from `users` through every foreign key, so this is one
- * statement rather than a hand-maintained list that would silently miss a table
- * added later.
+ * Domain rows cascade at final purge. Private outbox/replay payloads require
+ * explicit cleanup; audit/security evidence is retained under its separate policy.
  */
 export async function purgeDueAccounts(now = new Date()): Promise<string[]> {
   const db = getDb();
@@ -234,8 +234,7 @@ export async function purgeDueAccounts(now = new Date()): Promise<string[]> {
   const purged: string[] = [];
   for (const candidate of due) {
     // One statement per account so a single failure cannot abort the whole run.
-    await db.delete(users).where(eq(users.id, candidate.id));
-    purged.push(candidate.id);
+    if (await purgeAccount(db, candidate.id, cutoff)) purged.push(candidate.id);
   }
   return purged;
 }
