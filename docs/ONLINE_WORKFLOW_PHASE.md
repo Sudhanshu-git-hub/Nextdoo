@@ -109,3 +109,10 @@ Deploy the colocated web/API together only after every API instance supports the
 new optional organization fields. Older servers strip unknown fields; mixed-version
 feature enablement is not qualified. No production rollout was attempted. No
 migrations or historical records were rewritten in this milestone.
+
+## Subsequent project lifecycle delivery
+
+The next bounded milestone adds project metadata editing, archive/restore, active
+and archived lists, transactional history and restore-limit enforcement. See
+`PROJECT_LIFECYCLE_MILESTONE.md` for semantics and evidence: 290 tests and 19 E2E/API
+scenarios pass. Sections/boards and the wider task-management milestone remain open.

@@ -182,3 +182,11 @@ Projects/Focus. Current verification is 285 tests and 16 E2E/API scenarios; edit
 keyboard and scoped axe checks pass. Existing API conventions are preserved by
 explicit user choice. Full task-management, cursor lifetime/virtualization, offline
 and production-release gates are not implied by this milestone.
+
+## Project lifecycle continuation
+
+`PROJECT_LIFECYCLE_MILESTONE.md` describes the latest online-workflow delivery:
+project metadata, non-destructive archive/restore, versioned/idempotent API writes,
+and plan-safe restoration. Current full validation: 290 tests, 19 E2E/API scenarios,
+all gates and zero dependency findings. Project settings have scoped keyboard/axe
+coverage; production and full-PRD qualification remain incomplete.

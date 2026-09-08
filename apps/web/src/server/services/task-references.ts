@@ -13,7 +13,9 @@ export async function assertTaskReferences(
   if (projectId != null) {
     const id = uuid.parse(projectId);
     const [project] = await db.select({ id: projects.id }).from(projects).where(and(
-      eq(projects.id, id), eq(projects.workspaceId, workspaceId), eq(projects.status, 'ACTIVE'), isNull(projects.deletedAt),
+      eq(projects.id, id), eq(projects.workspaceId, workspaceId),
+      // Existing assignments survive project archive. New assignments still require ACTIVE.
+      ...(id === currentProjectId ? [] : [eq(projects.status, 'ACTIVE')]), isNull(projects.deletedAt),
     ));
     if (!project) throw notFound('project', id);
   }

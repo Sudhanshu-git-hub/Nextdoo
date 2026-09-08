@@ -187,6 +187,16 @@ export const createProjectSchema = z.object({
   description: z.string().max(2000).nullish(),
 });
 
+/** Project metadata and lifecycle writes use optimistic versions like task edits. */
+export const projectVersionSchema = z.object({ version: z.number().int().min(1) });
+export const updateProjectSchema = z.object({
+  version: z.number().int().min(1),
+  name: z.string().trim().min(1).max(200).optional(),
+  description: z.string().max(2000).nullable().optional(),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),
+}).refine((v) => Object.entries(v).some(([key, value]) => key !== 'version' && value !== undefined), { message: 'No fields to update' });
+export type UpdateProjectInput = z.infer<typeof updateProjectSchema>;
+
 export const createSectionSchema = z.object({
   projectId: uuid,
   name: z.string().trim().min(1).max(200),
