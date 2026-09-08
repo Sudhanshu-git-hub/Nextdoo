@@ -126,3 +126,14 @@ shape; the error locator was narrowed to exclude Next's unrelated route announce
 without relaxing the expected error, original-input or zero-created-task assertions.
 Final full verification passed: 278 tests and 11 E2E/API scenarios, all gates.
 Evidence: structured-capture-red/verify.
+
+## Final fresh-database qualification and STOP
+
+On fresh UTF-8 PG18.4 database `nextdoo_remediation_final_20260908`, migrations
+0000–0009 applied and replay was a no-op. Frozen install and full `pnpm verify`
+passed: 278 tests in 29 files, 11 E2E/API scenarios, all lint/typecheck/coverage/build
+gates. Full audit: 362 dependencies, zero findings; production audit: 131, zero.
+The A–H final inventory is `AUDIT_REMEDIATION_REPORT.md`; current development/env
+notes were corrected to match real behavior. Remote PG16 CI, production providers,
+security/a11y/load/recovery and unresolved product/retention gates remain explicitly
+open. No next product-development phase has begun. STOP after this report.

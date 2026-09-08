@@ -10,9 +10,10 @@ An outcome-oriented task and time-management platform for Web and Windows Deskto
 
 ## Status
 
-Recovered implementation with active quality/security hardening. **Not a release-complete MVP.**
+Recovered implementation with verified incremental quality/security repairs. **Not a release-complete MVP.**
 
 - [Development and verification](docs/DEVELOPMENT.md)
+- [Audit-remediation report and release blockers](docs/AUDIT_REMEDIATION_REPORT.md)
 - [Implementation log and remaining limitations](docs/IMPLEMENTATION_LOG.md)
 
 The PRD remains the source of truth; routes, schemas and green unit tests alone do not establish feature completion.

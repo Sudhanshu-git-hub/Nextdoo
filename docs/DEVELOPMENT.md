@@ -51,7 +51,8 @@ including all non-test core files. Server-service coverage is also reported,
 including untouched/uncovered files; it is not disguised as complete route coverage.
 
 Playwright discovers only `apps/web/e2e/`, never Vitest's integration files. Tests
-use unique accounts, one worker, no automatic retries and no network/API mocks.
+use unique accounts, one worker and no automatic retries. Account/data flows use the real server;
+the cache-isolation case deliberately aborts task requests to exercise fallback.
 A test failure cannot become a pass through retries. The suite starts its own
 production server and refuses to reuse a developer's running server. CI rejects
 focused tests, provisions PostgreSQL and uploads coverage/trace artifacts.
@@ -92,12 +93,15 @@ Do not put production secrets in checked-in env files.
 Optional names (`REDIS_URL`, `SMTP_URL`, `GOOGLE_*`, `STRIPE_*`, `S3_*`) are **not
 proof of integrations**. Currently:
 
-- Rate limiting is in-process, not Redis-backed.
-- Worker is an interval scheduler, not BullMQ or a durable queue.
-- SMTP transport is not implemented. The mail stub logs test/development links;
-  configuring SMTP does not send mail. Do not deploy this as account recovery.
-- Reminder and outbox jobs still contain placeholder acknowledgement behavior;
-  they do not establish provider delivery. Do not mark these features complete.
+- Login account/IP backoff and export quotas are durable in PostgreSQL; other
+  route throttles remain in-process. Redis is not wired.
+- Worker scheduling uses intervals, but SMTP messages have durable PostgreSQL
+  leases/retry/expiry. This is not a complete BullMQ/general event-consumer system.
+- Configured SMTP queues encrypted auth email for a real worker transport. Without
+  SMTP, development/test may log local links; production fails explicitly.
+- WEB reminders atomically write an in-app notification. EMAIL/DESKTOP reminder
+  channels fail honestly; unhandled outbox events remain unpublished. Neither
+  external notification delivery nor inbox UI is established by these rows.
 - Google Calendar, Stripe checkout/webhooks, S3 upload/scanning and AI providers
   are not implemented. Static plan limits are not a billing integration.
 
@@ -122,24 +126,25 @@ See `docs/IMPLEMENTATION_LOG.md` for approved security repairs, evidence and rem
 
 ## Repair verification (2026-09-08)
 
-The prioritized integrity repairs and final evidence are in `REPAIR_REPORT.md`.
-Fresh SQL migrations 0000–0006 plus replay, 233 tests and five real browser E2E
-passed locally. Apply forward migrations before starting the repaired services.
-The sync sequence trigger serializes sync writes globally through commit; measure
-throughput before production rollout. Legacy timer pause timestamps cannot be
-fully reconstructed from the previous schema. Unsupported recurrence creation now
-fails explicitly and capture retains the original text; scheduling was not added.
+The accepted prior report is `REPAIR_REPORT.md`; the latest A–H inventory, results
+and stop point are in `AUDIT_REMEDIATION_REPORT.md`. Fresh SQL migrations 0000–0009
+plus replay, 278 tests and 11 E2E/API scenarios passed locally. Apply forward
+migrations before starting services. The sync sequence trigger serializes writes
+through commit; production throughput remains unmeasured. Legacy pause history and
+previously discarded seconds cannot be fabricated. Unsupported recurrence/tag/project
+capture now preserves original input with an explicit error; those workflows were
+not implemented.
 
-These results do not certify all audit findings fixed or the app production-ready.
-In particular, authentication/origin/logging hardening, unused offline-queue
-isolation and real provider delivery remain outstanding. Remote PostgreSQL 16 CI,
-load, backup restore and end-to-end provider behavior are not claimed verified.
+These results do not establish production readiness. Remote PG16 CI, breached-
+password checking, managed secrets/key rotation, load, accessibility, backup restore,
+legal retention and staged provider delivery remain gates. The full offline client,
+external event consumers and larger PRD features remain incomplete.
 
 ### Audit-remediation delivery configuration
 
 Auth email now has a real SMTP worker adapter. Supply the same `AUTH_SECRET` to web
 and worker (mail ciphertext uses a distinct HKDF purpose), `SMTP_URL` to both, and
-`MAIL_FROM` to web. Apply migration 0008 before running either. Never put actual
+`MAIL_FROM` to web. Apply all forward migrations before running either. Never put actual
 credentials in source control or chat. Production SMTP requires TLS and normal
 certificate validation; provision sender/domain authentication separately.
 
