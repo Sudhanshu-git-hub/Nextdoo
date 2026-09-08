@@ -83,3 +83,19 @@ returning to an old input appends a new historical row. Reopen and scoring-input
 edits reevaluate atomically, failures roll back rather than being swallowed, due
 cutoff changes invalidate cached inputs, and TR-06 includes skipped occurrences in
 the denominator. Full verification passed: **220 tests, 2 E2E**, all other gates.
+
+### Timer integrity and Focus clock
+
+Five database regressions failed before repair; all pass after. Starts/transitions
+serialize per user, acquiring affected workspace locks before task writes. Older
+offline starts preserve the newer canonical session; terminal sessions cannot be
+credited again; transitions cannot move backward. Credited time now versions and
+syncs the task and reevaluates atomically. Migration 0005 records event transition
+time; legacy rows can only be backfilled to their best known durable lower bound
+(the old schema did not store each pause timestamp).
+
+A real browser regression reproduced **NaN:NaN:NaN** after fixing the test fixture
+to save a fully specified date rather than leave a capture confirmation open.
+Focus now consumes the API's elapsedSeconds snapshot and advances from receipt,
+not the original start time. Full verification passed: **225 tests, 3 E2E**,
+lint/typecheck/coverage/build.

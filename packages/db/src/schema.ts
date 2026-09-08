@@ -348,6 +348,7 @@ export const timerSessions = pgTable(
     /** Accumulated across pause/resume cycles. */
     accumulatedSeconds: integer('accumulated_seconds').notNull().default(0),
     lastResumedAt: timestamp('last_resumed_at', { withTimezone: true }),
+    lastTransitionAt: timestamp('last_transition_at', { withTimezone: true }).notNull().defaultNow(),
     status: timerStatusEnum('status').notNull().default('RUNNING'),
     manualAdjustmentSeconds: integer('manual_adjustment_seconds').notNull().default(0),
     version: integer('version').notNull().default(1),

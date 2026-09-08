@@ -1,10 +1,11 @@
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { AppError, notFound } from '@nextdoo/contracts';
-import { resolveTimerOverlap } from '@nextdoo/core';
-import { tasks, timerSessions } from '@nextdoo/db';
-import { getDb } from '../db';
+import { tasks, timerSessions, type Database } from '@nextdoo/db';
+import { getDb, withTransaction } from '../db';
+import { withWorkspaceTransaction } from './transactions';
+import { serialiseTask } from './tasks';
 import { newId } from '../ids';
-import { appendTrackingEvent, publishEvent, writeAudit } from './events';
+import { appendTrackingEvent, publishEvent, recordSyncChange, writeAudit } from './events';
 import { scheduleTrackingEvaluation } from './tracking';
 
 /**
@@ -42,92 +43,82 @@ function serialise(row: typeof timerSessions.$inferSelect, at = new Date()) {
   };
 }
 
-export async function startTimer(actor: TimerActor, taskId: string, deviceId: string, startedAt?: string) {
-  const db = getDb();
-  const now = startedAt ? new Date(startedAt) : new Date();
-
-  return db.transaction(async (tx) => {
-    const taskRows = await tx
-      .select({ id: tasks.id, status: tasks.status })
-      .from(tasks)
-      .where(and(eq(tasks.id, taskId), eq(tasks.workspaceId, actor.workspaceId)))
-      .limit(1);
-    if (!taskRows[0] || taskRows[0].status === 'DELETED') throw notFound('task', taskId);
-
-    // Close any other open session for this user, preserving it.
-    const open = await tx
-      .select()
-      .from(timerSessions)
+/** User lock first, then all affected workspaces in deterministic order. */
+function withTimerTransaction<T>(actor: TimerActor, perform: (db: Database) => Promise<T>): Promise<T> {
+  return withTransaction(async (db) => {
+    await db.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'timer-user:' + actor.userId}, 0))`);
+    const open = await db.select({ workspaceId: timerSessions.workspaceId }).from(timerSessions)
       .where(and(eq(timerSessions.userId, actor.userId), inArray(timerSessions.status, ['RUNNING', 'PAUSED'])));
-
-    const [created] = await tx
-      .insert(timerSessions)
-      .values({
-        id: newId(),
-        workspaceId: actor.workspaceId,
-        taskId,
-        userId: actor.userId,
-        deviceId,
-        startedAt: now,
-        lastResumedAt: now,
-        status: 'RUNNING',
-      })
-      .returning();
-    if (!created) throw new AppError('INTERNAL_ERROR', 'Timer could not be started.');
-
-    for (const prior of open) {
-      const { overlappedId } = resolveTimerOverlap(
-        { id: prior.id, startedAt: prior.startedAt },
-        { id: created.id, startedAt: created.startedAt },
-      );
-      const isPriorOverlapped = overlappedId === prior.id;
-      await tx
-        .update(timerSessions)
-        .set({
-          status: isPriorOverlapped ? 'OVERLAPPED' : 'STOPPED',
-          endedAt: now,
-          accumulatedSeconds: elapsedSeconds(prior, now) - prior.manualAdjustmentSeconds,
-          lastResumedAt: null,
-          version: sql`${timerSessions.version} + 1`,
-        })
-        .where(eq(timerSessions.id, prior.id));
-      // Time already spent still counts toward the other task.
-      await applyDurationToTask(tx, prior.taskId, Math.floor(elapsedSeconds(prior, now) / 60));
+    for (const id of [...new Set([actor.workspaceId, ...open.map((r) => r.workspaceId)])].sort()) {
+      await withWorkspaceTransaction(id, async () => {});
     }
+    return perform(db);
+  });
+}
+function eventTime(value?: string): Date {
+  const time = value ? new Date(value) : new Date();
+  if (!Number.isFinite(time.getTime())) throw new AppError('VALIDATION_FAILED', 'Invalid timer timestamp.');
+  return time;
+}
 
-    await appendTrackingEvent(tx, {
-      workspaceId: actor.workspaceId,
-      taskId,
-      type: 'TASK_STARTED',
-      actorId: actor.userId,
-      occurredAt: now,
-      deviceId,
-    });
-    await publishEvent(tx, {
-      eventType: 'timer.started',
-      workspaceId: actor.workspaceId,
-      actorId: actor.userId,
-      entityType: 'timer_session',
-      entityId: created.id,
-    });
-
-    return serialise(created, now);
+export async function startTimer(actor: TimerActor, taskId: string, deviceId: string, startedAt?: string) {
+  const now = eventTime(startedAt);
+  return withTimerTransaction(actor, async (tx) => {
+    const [task] = await tx.select().from(tasks).where(and(eq(tasks.id, taskId), eq(tasks.workspaceId, actor.workspaceId)));
+    if (!task || task.status === 'DELETED') throw notFound('task', taskId);
+    const open = await tx.select().from(timerSessions)
+      .where(and(eq(timerSessions.userId, actor.userId), inArray(timerSessions.status, ['RUNNING', 'PAUSED'])))
+      .orderBy(desc(timerSessions.startedAt));
+    const canonical = open[0];
+    const incomingOlder = canonical && now < canonical.startedAt;
+    if (!incomingOlder && open.some((r) => now < r.lastTransitionAt)) throw new AppError('VALIDATION_FAILED', 'Start predates an already recorded timer transition.');
+    // Only close the existing sessions if the incoming one is chronologically newer.
+    if (!incomingOlder) {
+      for (const prior of open) {
+        await tx.update(timerSessions).set({ status: 'OVERLAPPED', endedAt: now,
+          accumulatedSeconds: elapsedSeconds(prior, now) - prior.manualAdjustmentSeconds,
+          lastResumedAt: null, lastTransitionAt: now, updatedAt: new Date(), version: sql`${timerSessions.version} + 1`,
+        }).where(eq(timerSessions.id, prior.id));
+        const minutes = Math.floor(elapsedSeconds(prior, now) / 60);
+        await applyDurationToTask(tx, { ...actor, workspaceId: prior.workspaceId }, prior.taskId, minutes);
+        await appendTrackingEvent(tx, { workspaceId: prior.workspaceId, taskId: prior.taskId, type: 'TIME_LOGGED', actorId: actor.userId,
+          occurredAt: now, payload: { minutes, source: 'timer-overlap' }, idempotencyKey: `timer-stop:${prior.id}` });
+      }
+    }
+    const [created] = await tx.insert(timerSessions).values({
+      id: newId(), workspaceId: actor.workspaceId, taskId, userId: actor.userId, deviceId,
+      startedAt: now, lastResumedAt: incomingOlder ? null : now,
+      status: incomingOlder ? 'OVERLAPPED' : 'RUNNING',
+      endedAt: incomingOlder ? canonical.startedAt : null,
+      accumulatedSeconds: incomingOlder ? Math.floor((canonical.startedAt.getTime() - now.getTime()) / 1000) : 0,
+      lastTransitionAt: incomingOlder ? canonical.startedAt : now,
+    }).returning();
+    if (!created) throw new AppError('INTERNAL_ERROR', 'Timer could not be started.');
+    await appendTrackingEvent(tx, { workspaceId: actor.workspaceId, taskId, type: 'TASK_STARTED', actorId: actor.userId, occurredAt: now, deviceId });
+    if (incomingOlder) {
+      const minutes = Math.floor(created.accumulatedSeconds / 60);
+      await applyDurationToTask(tx, actor, taskId, minutes);
+      await appendTrackingEvent(tx, { workspaceId: actor.workspaceId, taskId, type: 'TIME_LOGGED', actorId: actor.userId,
+        occurredAt: canonical.startedAt, payload: { minutes, source: 'timer-overlap' }, idempotencyKey: `timer-stop:${created.id}` });
+    }
+    await publishEvent(tx, { eventType: 'timer.started', workspaceId: actor.workspaceId, actorId: actor.userId, entityType: 'timer_session', entityId: created.id });
+    return serialise(created);
   });
 }
 
 export async function updateTimer(actor: TimerActor, timerId: string, action: 'pause' | 'resume' | 'stop', at?: string) {
-  const db = getDb();
-  const now = at ? new Date(at) : new Date();
+  const now = eventTime(at);
 
-  const result = await db.transaction(async (tx) => {
+  const result = await withTimerTransaction(actor, async (tx) => {
     const rows = await tx
       .select()
       .from(timerSessions)
-      .where(and(eq(timerSessions.id, timerId), eq(timerSessions.userId, actor.userId)))
+      .where(and(eq(timerSessions.id, timerId), eq(timerSessions.userId, actor.userId), eq(timerSessions.workspaceId, actor.workspaceId)))
       .limit(1);
     const row = rows[0];
     if (!row) throw notFound('timer_session', timerId);
-    if (row.status === 'STOPPED') {
+    if (now < row.lastTransitionAt) throw new AppError('VALIDATION_FAILED', 'Timer timestamps cannot move backwards.');
+    if (row.status === 'STOPPED' || row.status === 'OVERLAPPED') {
       throw new AppError('VALIDATION_FAILED', 'This timer has already been stopped.');
     }
 
@@ -136,7 +127,7 @@ export async function updateTimer(actor: TimerActor, timerId: string, action: 'p
         ? Math.max(0, Math.floor((now.getTime() - row.lastResumedAt.getTime()) / 1000))
         : 0;
 
-    const patch: Partial<typeof timerSessions.$inferInsert> = { version: sql`${timerSessions.version} + 1` as never };
+    const patch: Partial<typeof timerSessions.$inferInsert> = { lastTransitionAt: now, updatedAt: new Date(), version: sql`${timerSessions.version} + 1` as never };
 
     if (action === 'pause') {
       if (row.status !== 'RUNNING') throw new AppError('VALIDATION_FAILED', 'Timer is not running.');
@@ -173,7 +164,7 @@ export async function updateTimer(actor: TimerActor, timerId: string, action: 'p
 
     if (action === 'stop') {
       const minutes = Math.floor(elapsedSeconds(updated, now) / 60);
-      await applyDurationToTask(tx, row.taskId, minutes);
+      await applyDurationToTask(tx, actor, row.taskId, minutes);
       await appendTrackingEvent(tx, {
         workspaceId: actor.workspaceId,
         taskId: row.taskId,
@@ -193,17 +184,15 @@ export async function updateTimer(actor: TimerActor, timerId: string, action: 'p
       });
     }
 
-    return { timer: serialise(updated, now), taskId: row.taskId, stopped: action === 'stop' };
+    return { timer: serialise(updated), taskId: row.taskId, stopped: action === 'stop' };
   });
 
-  if (result.stopped) await scheduleTrackingEvaluation(actor.workspaceId, result.taskId);
   return result.timer;
 }
 
 /** Manual time entry, audited because it changes a measured value (PRD §6.7). */
 export async function logTime(actor: TimerActor, taskId: string, minutes: number, _note?: string) {
-  const db = getDb();
-  await db.transaction(async (tx) => {
+  await withTimerTransaction(actor, async (tx) => {
     const rows = await tx
       .select({ id: tasks.id, status: tasks.status })
       .from(tasks)
@@ -211,7 +200,7 @@ export async function logTime(actor: TimerActor, taskId: string, minutes: number
       .limit(1);
     if (!rows[0] || rows[0].status === 'DELETED') throw notFound('task', taskId);
 
-    await applyDurationToTask(tx, taskId, minutes);
+    await applyDurationToTask(tx, actor, taskId, minutes);
     await appendTrackingEvent(tx, {
       workspaceId: actor.workspaceId,
       taskId,
@@ -229,15 +218,16 @@ export async function logTime(actor: TimerActor, taskId: string, minutes: number
       requestId: actor.requestId ?? null,
     });
   });
-  await scheduleTrackingEvaluation(actor.workspaceId, taskId);
 }
 
-async function applyDurationToTask(tx: any, taskId: string, minutes: number): Promise<void> {
+async function applyDurationToTask(tx: Database, actor: TimerActor, taskId: string, minutes: number): Promise<void> {
   if (minutes <= 0) return;
-  await tx
-    .update(tasks)
-    .set({ actualMinutes: sql`${tasks.actualMinutes} + ${minutes}`, updatedAt: new Date() })
-    .where(eq(tasks.id, taskId));
+  const [updated] = await tx.update(tasks)
+    .set({ actualMinutes: sql`${tasks.actualMinutes} + ${minutes}`, updatedAt: new Date(), version: sql`${tasks.version} + 1` })
+    .where(and(eq(tasks.id, taskId), eq(tasks.workspaceId, actor.workspaceId))).returning();
+  if (!updated) throw notFound('task', taskId);
+  await recordSyncChange(tx, { workspaceId: actor.workspaceId, entityType: 'task', entityId: taskId, operation: 'update', payload: serialiseTask(updated), version: updated.version });
+  await scheduleTrackingEvaluation(actor.workspaceId, taskId);
 }
 
 export async function getActiveTimer(userId: string) {

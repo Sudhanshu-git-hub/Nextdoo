@@ -9,7 +9,7 @@ interface ActiveTimer {
   taskId: string;
   startedAt: string;
   status: 'RUNNING' | 'PAUSED' | 'STOPPED' | 'OVERLAPPED';
-  accumulatedSeconds: number;
+  elapsedSeconds: number;
 }
 
 /**
@@ -48,11 +48,12 @@ export function FocusView({ workspaceId }: { workspaceId: string }) {
   useEffect(() => {
     if (tick.current) clearInterval(tick.current);
     if (timer?.status !== 'RUNNING') {
-      setElapsed(timer?.accumulatedSeconds ?? 0);
+      setElapsed(timer?.elapsedSeconds ?? 0);
       return;
     }
+    const receivedAt = Date.now();
     const compute = () =>
-      setElapsed(timer.accumulatedSeconds + Math.floor((Date.now() - new Date(timer.startedAt).getTime()) / 1000));
+      setElapsed(timer.elapsedSeconds + Math.max(0, Math.floor((Date.now() - receivedAt) / 1000)));
     compute();
     tick.current = setInterval(compute, 1000);
     return () => {
