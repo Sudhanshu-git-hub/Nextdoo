@@ -1,4 +1,4 @@
-import { and, eq, inArray, lte, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, lte, sql } from 'drizzle-orm';
 import { AppError, notFound } from '@nextdoo/contracts';
 import { notifications, reminders, tasks } from '@nextdoo/db';
 import { getDb } from '../db';
@@ -147,7 +147,7 @@ export async function dispatchDueReminders(limit = 100): Promise<{ sent: number;
       FROM reminders r
       JOIN tasks t ON t.id = r.task_id
       WHERE r.status = 'SCHEDULED'
-        AND r.scheduled_at <= ${now}
+        AND r.scheduled_at <= ${now.toISOString()}::timestamptz
         AND t.status = 'ACTIVE'
       ORDER BY r.scheduled_at
       LIMIT ${limit}
@@ -192,4 +192,14 @@ export async function dispatchDueReminders(limit = 100): Promise<{ sent: number;
 
   if (sent || expired.length) logger.info('reminders.dispatched', { sent, expired: expired.length });
   return { sent, expired: expired.length };
+}
+
+/** Relative reminders follow due-date changes in the caller's task transaction. */
+export async function rescheduleRelativeReminders(taskId: string, dueAt: Date | null): Promise<void> {
+  await getDb().update(reminders).set(dueAt ? {
+    scheduledAt: sql`${dueAt.toISOString()}::timestamptz - ${reminders.minutesBeforeDue} * interval '1 minute'`,
+    status: 'SCHEDULED', updatedAt: new Date(),
+  } : { status: 'CANCELED', updatedAt: new Date() }).where(and(
+    eq(reminders.taskId, taskId), isNotNull(reminders.minutesBeforeDue), inArray(reminders.status, ['SCHEDULED', 'PROCESSING']),
+  ));
 }

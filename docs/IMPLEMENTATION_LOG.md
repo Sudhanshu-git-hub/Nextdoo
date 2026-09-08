@@ -119,3 +119,15 @@ reads/writes now require workspace provenance; unscoped legacy records are not
 rendered. The browser regression failed before and passes after. Full verification
 passed: **228 tests, 4 E2E**, lint/typecheck/coverage/build. This is a security repair,
 not completion of offline capture/queue/conflict UX.
+
+### Adjacent lifecycle/data-loss checks
+
+Five additional database regressions failed before repair and pass after: expired
+restore/task-cap bypass, lost reschedule intent and relative-reminder dates, raw
+Date binding in the alternate reminder dispatcher, expired paid-grace access, and
+silently ignored recurrence inputs. Recurrence generation remains out of scope:
+unsupported recurring creates now explicitly fail without creating a one-off task.
+A real browser regression also failed before capture forwarded the parsed rule;
+it now shows the unsupported message and preserves the original input text.
+Provider dispatch is still not implemented; the dispatcher regression claims zero
+rows and verifies binding only. Full verification: **233 tests, 5 E2E**, all gates.

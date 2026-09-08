@@ -75,3 +75,16 @@ test('switching accounts cannot expose another workspace cache during a network 
   await expect(page.getByText(/Could not load your tasks|Showing your last saved copy/)).toBeVisible();
   await expect(page.getByText(secret, { exact: true })).toHaveCount(0);
 });
+
+test('unsupported recurring capture preserves the original text instead of silently creating a one-off task', async ({ page }) => {
+  await page.goto('/register');
+  await page.getByLabel('Email', { exact: true }).fill(`recurrence-${randomUUID()}@test.local`);
+  await page.getByLabel('Password', { exact: true }).fill('e2e-only-password-123');
+  await page.getByRole('button', { name: 'Create account', exact: true }).click();
+  await expect(page).toHaveURL(/\/today$/);
+  const text = `Practice ${randomUUID()} every day today at 11:59pm for 30 minutes`;
+  await page.locator('#capture').fill(text);
+  await page.locator('#capture').press('Enter');
+  await expect(page.getByText('Recurring task creation is not implemented yet. No task was created.', { exact: true })).toBeVisible();
+  await expect(page.locator('#capture')).toHaveValue(text);
+});

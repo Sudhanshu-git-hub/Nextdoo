@@ -80,6 +80,7 @@ export async function createTask(actor: TaskActor, input: CreateTaskInput, optio
   const now = new Date();
 
   return withWorkspaceTransaction(actor.workspaceId, async (tx) => {
+    if (input.recurrenceRule) throw new AppError('VALIDATION_FAILED', 'Recurring task creation is not implemented yet. No task was created.');
     await enforceTaskLimit(actor.userId, actor.workspaceId);
     await assertTaskReferences(tx, actor.workspaceId, input);
     // Parent must live in the same workspace — prevents cross-tenant nesting.
@@ -202,6 +203,8 @@ export async function updateTask(
     if (input.dueAt !== undefined) patch.dueAt = input.dueAt ? new Date(input.dueAt) : null;
     if (input.estimateMinutes !== undefined) patch.estimateMinutes = input.estimateMinutes ?? null;
 
+    const dueChanged = input.dueAt !== undefined && (input.dueAt ?? null) !== (current.dueAt?.toISOString() ?? null);
+    if (dueChanged && current.dueAt) patch.rescheduleCount = current.rescheduleCount + 1;
     const [updated] = await tx
       .update(tasks)
       .set({ ...patch, version: sql`${tasks.version} + 1` })
@@ -218,6 +221,11 @@ export async function updateTask(
       }
     }
 
+    if (dueChanged) {
+      await appendTrackingEvent(tx, { workspaceId: actor.workspaceId, taskId, actorId: actor.userId,
+        type: current.dueAt ? 'TASK_RESCHEDULED' : 'TASK_PLANNED', payload: { from: current.dueAt?.toISOString() ?? null, to: input.dueAt ?? null } });
+      await rescheduleRelativeReminders(taskId, updated.dueAt);
+    }
     const estimateChanged =
       input.estimateMinutes !== undefined && input.estimateMinutes !== current.estimateMinutes;
     if (estimateChanged) {
@@ -430,6 +438,7 @@ export async function rescheduleTask(
       entityType: 'task',
       entityId: taskId,
     });
+    await rescheduleRelativeReminders(taskId, updated.dueAt);
     await scheduleTrackingEvaluation(actor.workspaceId, taskId);
     return serialise(updated);
   });
@@ -539,11 +548,15 @@ export async function restoreTask(actor: TaskActor, taskId: string): Promise<Ser
       .limit(1);
     const current = rows[0];
     if (!current) throw notFound('task', taskId);
+    nextStatus(current.status, 'restore');
+    if (current.status === 'DELETED' && (!current.deletedAt || current.deletedAt.getTime() <= Date.now() - 30 * 86400000)) throw new AppError('VALIDATION_FAILED', 'The restore window has expired.');
+    await enforceTaskLimit(actor.userId, actor.workspaceId);
 
     const [updated] = await tx
       .update(tasks)
       .set({
-        status: current.completedAt ? 'COMPLETED' : 'ACTIVE',
+        status: 'ACTIVE',
+        completedAt: null,
         deletedAt: null,
         archivedAt: null,
         updatedAt: new Date(),
@@ -636,4 +649,9 @@ export { serialise as serialiseTask };
 async function cancelRemindersForTask(taskId: string): Promise<void> {
   const { cancelRemindersForTask: cancel } = await import('./reminders');
   await cancel(taskId);
+}
+
+async function rescheduleRelativeReminders(taskId: string, dueAt: Date | null): Promise<void> {
+  const { rescheduleRelativeReminders: reschedule } = await import('./reminders');
+  await reschedule(taskId, dueAt);
 }

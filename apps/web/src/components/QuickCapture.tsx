@@ -76,6 +76,7 @@ export function QuickCapture({ workspaceId, onCreated }: { workspaceId: string; 
           priority: result.priority?.value ?? 'NONE',
           timeZone,
           tagIds: [],
+          recurrenceRule: result.recurrence ? { ...result.recurrence.value, timeZone } : null,
         }),
       });
       setText('');
