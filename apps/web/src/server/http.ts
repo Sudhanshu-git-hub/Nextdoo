@@ -1,7 +1,7 @@
 import { assertRequestOrigin } from './request-security';
 import { NextResponse } from 'next/server';
 import { ZodError, type ZodTypeAny, type z } from 'zod';
-import { AppError, type ProblemDetails } from '@nextdoo/contracts';
+import { AppError, uuid, type ProblemDetails } from '@nextdoo/contracts';
 import { lt } from 'drizzle-orm';
 import { idempotencyKeys } from '@nextdoo/db';
 import { getDb } from './db';
@@ -99,9 +99,18 @@ export function authedRoute<T>(
 
       const ctx: RouteContext = { requestId, auth, ip };
 
+      const perform = async () => {
+        const match = /^\/api\/v1\/(?:tasks|projects|timers|reminders)\/([^/]+)/.exec(new URL(request.url).pathname);
+        if (match) {
+          let id: string;
+          try { id = decodeURIComponent(match[1]!); } catch { throw new AppError('VALIDATION_FAILED', 'Invalid resource identifier.'); }
+          uuid.parse(id);
+        }
+        return handler(request, ctx);
+      };
       const outcome = options.idempotent
-        ? await idempotentMutation(request, auth.userId, options.routeName, () => handler(request, ctx))
-        : await handler(request, ctx).then((body) => ({ body, status: body == null ? 204 : 200, replay: false }));
+        ? await idempotentMutation(request, auth.userId, options.routeName, perform)
+        : await perform().then((body) => ({ body, status: body == null ? 204 : 200, replay: false }));
       const { body: result, status } = outcome;
 
       logger.info('request.ok', {

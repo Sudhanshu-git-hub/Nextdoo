@@ -16,7 +16,7 @@ export async function GET(request: Request, { params }: Params) {
 
 export async function PATCH(request: Request, { params }: Params) {
   const { id } = await params;
-  return authedRoute({ routeName: 'tasks.update', rateLimitPerMinute: 120 }, async (r, ctx) => {
+  return authedRoute({ routeName: 'tasks.update', idempotent: true, rateLimitPerMinute: 120 }, async (r, ctx) => {
     const input = await parseBody(r, updateTaskSchema);
     return updateTask({ userId: ctx.auth.userId, workspaceId: ctx.auth.workspaceId, requestId: ctx.requestId }, id, input);
   })(request);
@@ -24,7 +24,7 @@ export async function PATCH(request: Request, { params }: Params) {
 
 export async function DELETE(request: Request, { params }: Params) {
   const { id } = await params;
-  return authedRoute({ routeName: 'tasks.delete', rateLimitPerMinute: 120 }, async (_r, ctx) => {
+  return authedRoute({ routeName: 'tasks.delete', idempotent: true, rateLimitPerMinute: 120 }, async (_r, ctx) => {
     await deleteTask({ userId: ctx.auth.userId, workspaceId: ctx.auth.workspaceId, requestId: ctx.requestId }, id);
     return { ok: true };
   })(request);

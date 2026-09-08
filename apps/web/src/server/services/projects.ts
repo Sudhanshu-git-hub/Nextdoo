@@ -1,3 +1,5 @@
+import { withWorkspaceTransaction } from './transactions';
+import { enforceProjectLimit } from './entitlements';
 import { and, asc, eq, isNull } from 'drizzle-orm';
 import { notFound } from '@nextdoo/contracts';
 import { projects, sections, tags } from '@nextdoo/db';
@@ -18,8 +20,8 @@ export async function createProject(
   actor: { userId: string; workspaceId: string },
   input: { name: string; color?: string; description?: string | null },
 ) {
-  const db = getDb();
-  return db.transaction(async (tx) => {
+  return withWorkspaceTransaction(actor.workspaceId, async (tx) => {
+    await enforceProjectLimit(actor.userId, actor.workspaceId);
     const [created] = await tx
       .insert(projects)
       .values({

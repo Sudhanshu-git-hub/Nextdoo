@@ -9,7 +9,7 @@ export const GET = authedRoute({ routeName: 'reminders.due' }, async (_r, ctx) =
   data: await listDueReminders(ctx.auth.userId),
 }));
 
-export const POST = authedRoute({ routeName: 'reminders.create', rateLimitPerMinute: 120 }, async (request, ctx) => {
+export const POST = authedRoute({ routeName: 'reminders.create', idempotent: true, rateLimitPerMinute: 120 }, async (request, ctx) => {
   const input = await parseBody(request, createReminderSchema);
   return createReminder({ userId: ctx.auth.userId, workspaceId: ctx.auth.workspaceId }, input);
 });

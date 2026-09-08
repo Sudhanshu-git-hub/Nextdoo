@@ -93,7 +93,7 @@ export async function findUserByEmail(email: string) {
     .select({ id: workspaces.id })
     .from(workspaces)
     .innerJoin(workspaceMembers, eq(workspaceMembers.workspaceId, workspaces.id))
-    .where(and(eq(workspaceMembers.userId, user.id), isNull(workspaces.deletedAt)))
+    .where(and(eq(workspaceMembers.userId, user.id), eq(workspaceMembers.role, 'OWNER'), eq(workspaces.ownerId, user.id), isNull(workspaces.deletedAt)))
     .limit(1);
 
   return { ...user, workspaceId: ws[0]?.id ?? '' };

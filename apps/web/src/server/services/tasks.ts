@@ -601,6 +601,7 @@ export async function queryTasks(
   if (query.status) conditions.push(eq(tasks.status, query.status));
   else if (!query.includeArchived) conditions.push(inArray(tasks.status, ['ACTIVE', 'COMPLETED']));
 
+  if (query.tagId) conditions.push(inArray(tasks.id, db.select({ id: taskTags.taskId }).from(taskTags).where(eq(taskTags.tagId, query.tagId))));
   if (query.projectId) conditions.push(eq(tasks.projectId, query.projectId));
   if (query.dueBefore) conditions.push(lte(tasks.dueAt, new Date(query.dueBefore)));
   if (query.dueAfter) conditions.push(gte(tasks.dueAt, new Date(query.dueAfter)));

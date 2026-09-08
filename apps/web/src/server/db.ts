@@ -12,10 +12,10 @@ const globalForDb = globalThis as unknown as { __nextdooDb?: ReturnType<typeof c
 const transactionContext = new AsyncLocalStorage<Database>();
 
 /** All nested service calls participate in the caller's atomic unit of work. */
-export function withTransaction<T>(fn: (db: Database) => Promise<T>): Promise<T> {
+export function withTransaction<T>(fn: (db: Database) => Promise<T>, config?: Parameters<Database['transaction']>[1]): Promise<T> {
   const active = transactionContext.getStore();
   if (active) return fn(active);
-  return getDb().transaction((tx) => transactionContext.run(tx as unknown as Database, () => fn(tx as unknown as Database)));
+  return getDb().transaction((tx) => transactionContext.run(tx as unknown as Database, () => fn(tx as unknown as Database)), config);
 }
 
 export function getDb(): Database {

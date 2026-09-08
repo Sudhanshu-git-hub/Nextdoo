@@ -14,10 +14,10 @@ import {
   trackingEvents,
   trackingResults,
   users,
-  workspaceMembers,
+  userPreferences, recurrenceRules, taskOccurrences, taskDependencies, trackingCorrections, notifications, subscriptions, sessions, deviceRegistrations,
   workspaces,
 } from '@nextdoo/db';
-import { getDb } from '../db';
+import { getDb, withTransaction } from '../db';
 import { withAccountTransaction } from '../account-security';
 import { revokeAllSessions, verifyPassword } from '../auth';
 import { writeAuditLog } from './events';
@@ -48,10 +48,20 @@ export interface ExportBundle {
   trackingEvents: unknown[];
   trackingResults: unknown[];
   auditLogs: unknown[];
+  preferences: unknown[];
+  recurrenceRules: unknown[];
+  taskOccurrences: unknown[];
+  taskDependencies: unknown[];
+  trackingCorrections: unknown[];
+  notifications: unknown[];
+  subscriptions: unknown[];
+  sessions: unknown[];
+  devices: unknown[];
 }
 
 /**
- * Builds a complete JSON archive of everything the user owns.
+ * Credential-free snapshot of currently supported personal account data.
+ * This is not the PRD signed/expiring asynchronous file export.
  *
  * Generated synchronously: a personal workspace is small, and a streamed job
  * would add a queue dependency for no benefit at this scale. The password hash
@@ -59,7 +69,7 @@ export interface ExportBundle {
  * a new place for them to leak.
  */
 export async function buildExport(userId: string): Promise<ExportBundle> {
-  const db = getDb();
+  return withTransaction(async (db) => {
 
   const [account] = await db
     .select({
@@ -76,22 +86,8 @@ export async function buildExport(userId: string): Promise<ExportBundle> {
 
   if (!account) throw new AppError('NOT_FOUND', 'Account not found.');
 
-  const memberships = await db
-    .select({ workspaceId: workspaceMembers.workspaceId })
-    .from(workspaceMembers)
-    .where(eq(workspaceMembers.userId, userId));
-
-  const workspaceIds = memberships.map((m) => m.workspaceId);
-  if (!workspaceIds.length) {
-    return {
-      formatVersion: 1,
-      exportedAt: new Date().toISOString(),
-      account,
-      workspaces: [], projects: [], sections: [], tags: [], tasks: [],
-      taskTags: [], reminders: [], timerSessions: [],
-      trackingEvents: [], trackingResults: [], auditLogs: [],
-    };
-  }
+  const owned = await db.select({ id: workspaces.id }).from(workspaces).where(eq(workspaces.ownerId, userId));
+  const workspaceIds = owned.map((w) => w.id);
 
   const [
     workspaceRows, projectRows, sectionRows, tagRows, taskRows,
@@ -106,7 +102,7 @@ export async function buildExport(userId: string): Promise<ExportBundle> {
     db.select().from(timerSessions).where(inArray(timerSessions.workspaceId, workspaceIds)),
     db.select().from(trackingEvents).where(inArray(trackingEvents.workspaceId, workspaceIds)),
     db.select().from(trackingResults).where(inArray(trackingResults.workspaceId, workspaceIds)),
-    db.select().from(auditLogs).where(inArray(auditLogs.workspaceId, workspaceIds)),
+    db.select().from(auditLogs).where(or(inArray(auditLogs.workspaceId, workspaceIds), and(eq(auditLogs.actorId, userId), isNull(auditLogs.workspaceId)))),
   ]);
 
   const taskIds = taskRows.map((t) => t.id);
@@ -114,6 +110,17 @@ export async function buildExport(userId: string): Promise<ExportBundle> {
     ? await db.select().from(taskTags).where(inArray(taskTags.taskId, taskIds))
     : [];
 
+  const rules = await db.select().from(recurrenceRules).where(inArray(recurrenceRules.workspaceId, workspaceIds));
+  const [preferences, occurrences, dependencies, corrections, notices, plans, sessionRows, devices] = await Promise.all([
+    db.select().from(userPreferences).where(eq(userPreferences.userId, userId)),
+    db.select().from(taskOccurrences).where(inArray(taskOccurrences.recurrenceRuleId, rules.map((r) => r.id))),
+    db.select().from(taskDependencies).where(inArray(taskDependencies.taskId, taskIds)),
+    db.select().from(trackingCorrections).where(inArray(trackingCorrections.workspaceId, workspaceIds)),
+    db.select().from(notifications).where(eq(notifications.userId, userId)),
+    db.select().from(subscriptions).where(eq(subscriptions.userId, userId)),
+    db.select({ id: sessions.id, deviceLabel: sessions.deviceLabel, createdAt: sessions.createdAt, lastSeenAt: sessions.lastSeenAt, expiresAt: sessions.expiresAt, revokedAt: sessions.revokedAt }).from(sessions).where(eq(sessions.userId, userId)),
+    db.select({ id: deviceRegistrations.id, deviceId: deviceRegistrations.deviceId, platform: deviceRegistrations.platform, label: deviceRegistrations.label }).from(deviceRegistrations).where(eq(deviceRegistrations.userId, userId)),
+  ]);
   await writeAuditLog({
     userId,
     action: 'account.exported',
@@ -123,7 +130,7 @@ export async function buildExport(userId: string): Promise<ExportBundle> {
   });
 
   return {
-    formatVersion: 1,
+    formatVersion: 1 as const,
     exportedAt: new Date().toISOString(),
     account,
     workspaces: workspaceRows,
@@ -137,7 +144,10 @@ export async function buildExport(userId: string): Promise<ExportBundle> {
     trackingEvents: eventRows,
     trackingResults: resultRows,
     auditLogs: auditRows,
+    preferences, recurrenceRules: rules, taskOccurrences: occurrences, taskDependencies: dependencies,
+    trackingCorrections: corrections, notifications: notices, subscriptions: plans, sessions: sessionRows, devices,
   };
+  }, { isolationLevel: 'repeatable read' });
 }
 
 export interface DeletionStatus {

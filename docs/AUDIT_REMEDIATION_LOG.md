@@ -60,3 +60,24 @@ Full verification passed: 262 tests, seven E2E, all gates; full dependency audit
 Node type definitions updated to 22.20.1 to resolve the inherited Vite peer warning.
 Evidence: delivery-red/verify, smtp-tests, drain-red, notification-failure-red,
 delivery-audit. No later provider/product integrations were fabricated.
+
+## Remaining resource/export boundaries
+
+Five new integration regressions exposed guest-membership access/export disclosure,
+omitted account-level audit/preferences, project-limit races and ignored filters.
+MVP authorization now requires the actual personal-workspace owner, not any role
+string; export selects only owned workspaces and uses a repeatable-read snapshot.
+Exports include existing preferences/recurrence/dependencies/corrections/notifications
+and non-secret session/device metadata. Credentials remain excluded. The existing
+synchronous download is not represented as an expiring hosted-file feature.
+
+Project creates share workspace locking and quota checks. The initial quota fixture
+mistakenly assumed five projects; corrected to the contract's Free limit of three,
+and the corrected regression was rerun against the unchanged pre-fix service and
+failed before restoring the repair. No assertion was relaxed to bypass a requirement.
+Tag filtering and explicit boolean parsing now work. HTTP path IDs fail with 400,
+not SQL errors. Timer/task/reminder writes now opt into atomic idempotency, and the
+API client supplies a key while preserving explicitly provided retry identity.
+Two real HTTP E2E regressions also cover timer replay and request-ID/no-store/durable
+export quotas. Full verification passed: 267 tests, 9 E2E/API scenarios, all gates.
+Evidence: boundaries-red/verify, contracts-red/additional, project-cap-red-corrected.

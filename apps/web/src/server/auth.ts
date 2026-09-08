@@ -155,7 +155,7 @@ export async function resolveSession(token: string | undefined): Promise<AuthCon
     .select({ id: workspaces.id })
     .from(workspaces)
     .innerJoin(workspaceMembers, eq(workspaceMembers.workspaceId, workspaces.id))
-    .where(and(eq(workspaceMembers.userId, row.userId), isNull(workspaces.deletedAt)))
+    .where(and(eq(workspaceMembers.userId, row.userId), eq(workspaceMembers.role, 'OWNER'), eq(workspaces.ownerId, row.userId), isNull(workspaces.deletedAt)))
     .limit(1);
 
   if (!ws[0]) return null;
@@ -217,7 +217,8 @@ export async function assertWorkspaceAccess(userId: string, workspaceId: string)
   const rows = await db
     .select({ role: workspaceMembers.role })
     .from(workspaceMembers)
-    .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, userId)))
+    .innerJoin(workspaces, eq(workspaces.id, workspaceMembers.workspaceId))
+    .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, userId), eq(workspaceMembers.role, 'OWNER'), eq(workspaces.ownerId, userId), isNull(workspaces.deletedAt)))
     .limit(1);
   if (!rows[0]) {
     throw new AppError('FORBIDDEN', 'You do not have access to this workspace.', {

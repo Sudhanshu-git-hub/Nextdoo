@@ -169,7 +169,7 @@ export const taskQuerySchema = z.object({
   q: z.string().trim().max(200).optional(),
   dueBefore: isoDateTime.optional(),
   dueAfter: isoDateTime.optional(),
-  includeArchived: z.coerce.boolean().default(false),
+  includeArchived: z.preprocess((v) => v === 'true' ? true : v === 'false' ? false : v, z.boolean()).default(false),
   limit: z.coerce.number().int().min(1).max(100).default(50),
   cursor: z.string().max(500).optional(),
 });

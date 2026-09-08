@@ -111,3 +111,32 @@ test('security headers protect the rendered login page', async ({ page }) => {
   expect(response!.headers()['content-security-policy']).not.toContain("script-src 'self' 'unsafe-inline'");
   expect(response!.headers()['strict-transport-security']).toContain('max-age=');
 });
+
+test('existing API paths validate resource IDs and replay timer creation without another session', async ({ request }) => {
+  const headers = { Origin: 'http://localhost:3100' };
+  const registered = await request.post('/api/v1/auth/register', { headers, data: { email: `api-${randomUUID()}@test.local`, password: 'e2e-only-password-123', timeZone: 'UTC' } });
+  expect(registered.status()).toBe(200);
+  const { workspaceId } = await registered.json();
+  const task = await request.post('/api/v1/tasks', { headers: { ...headers, 'Idempotency-Key': randomUUID() }, data: { workspaceId, title: 'Timer replay' } });
+  expect(task.status()).toBe(200);
+  const { id } = await task.json(), key = randomUUID();
+  const start = () => request.post('/api/v1/timers', { headers: { ...headers, 'Idempotency-Key': key }, data: { taskId: id, deviceId: 'test' } });
+  const first = await start(), replay = await start();
+  expect(first.status()).toBe(200); expect(replay.status()).toBe(200);
+  expect((await replay.json()).id).toBe((await first.json()).id);
+  expect((await request.get('/api/v1/tasks/not-a-uuid')).status()).toBe(400);
+});
+
+test('exports have request IDs, no-store headers and a durable per-account quota', async ({ request }) => {
+  const registered = await request.post('/api/v1/auth/register', { headers: { Origin: 'http://localhost:3100' }, data: { email: `export-${randomUUID()}@test.local`, password: 'e2e-only-password-123', timeZone: 'UTC' } });
+  expect(registered.status()).toBe(200);
+  const first = await request.get('/api/v1/account/export');
+  expect(first.status()).toBe(200);
+  expect(first.headers()['cache-control']).toContain('no-store');
+  expect(JSON.stringify(await first.json())).not.toContain('passwordHash');
+  expect((await request.get('/api/v1/account/export')).status()).toBe(200);
+  expect((await request.get('/api/v1/account/export')).status()).toBe(200);
+  const fourth = await request.get('/api/v1/account/export');
+  expect(fourth.status()).toBe(429); expect(fourth.headers()['retry-after']).toBeTruthy();
+  expect(first.headers()['x-request-id']).toBeTruthy();
+});
