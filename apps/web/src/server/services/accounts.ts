@@ -1,6 +1,6 @@
 import { and, eq, isNull } from 'drizzle-orm';
 import { AppError } from '@nextdoo/contracts';
-import { entitlements, subscriptions, users, workspaces, workspaceMembers } from '@nextdoo/db';
+import { subscriptions, users, workspaces, workspaceMembers } from '@nextdoo/db';
 import { getDb } from '../db';
 import { newId } from '../ids';
 import { writeAudit } from './events';

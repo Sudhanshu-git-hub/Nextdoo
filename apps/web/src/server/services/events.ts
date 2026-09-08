@@ -13,15 +13,6 @@ import { logger } from '../observability';
  * the user's work — that is what the outbox relay is for.
  */
 
-type Tx = {
-  insert: (table: unknown) => {
-    values: (v: unknown) => {
-      onConflictDoNothing: (c?: unknown) => Promise<unknown>;
-      returning: () => Promise<unknown[]>;
-    } & Promise<unknown>;
-  };
-};
-
 export interface TrackingEventInput {
   workspaceId: string;
   taskId: string;

@@ -1,7 +1,6 @@
 import { z } from 'zod';
-import { completeTaskSchema, rescheduleTaskSchema } from '@nextdoo/contracts';
 import { authedRoute, parseBody } from '@/server/http';
-import { archiveTask, completeTask, reopenTask, rescheduleTask, restoreTask } from '@/server/services/tasks';
+import { reopenTask } from '@/server/services/tasks';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, lt, lte, or, sql } from 'drizzle-orm';
 import {
   AppError,
   type CreateTaskInput,

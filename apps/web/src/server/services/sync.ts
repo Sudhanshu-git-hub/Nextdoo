@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, sql } from 'drizzle-orm';
 import type { MutationInput, SyncPushInput } from '@nextdoo/contracts';
 import { mergeEntity } from '@nextdoo/core';
 import { conflictSnapshots, syncChanges, syncMutations, syncTombstones, tasks } from '@nextdoo/db';

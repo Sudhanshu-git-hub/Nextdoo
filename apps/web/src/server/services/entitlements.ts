@@ -1,4 +1,4 @@
-import { and, count, eq, inArray, isNull } from 'drizzle-orm';
+import { and, count, eq, isNull } from 'drizzle-orm';
 import { AppError, limitsFor } from '@nextdoo/contracts';
 import { projects, tasks } from '@nextdoo/db';
 import { getDb } from '../db';

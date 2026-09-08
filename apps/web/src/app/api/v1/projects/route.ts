@@ -1,9 +1,8 @@
 import { createProjectSchema } from '@nextdoo/contracts';
 import { assertWorkspaceAccess } from '@/server/auth';
-import { authedRoute, parseBody, parseQuery } from '@/server/http';
+import { authedRoute, parseBody } from '@/server/http';
 import { createProject, listProjects } from '@/server/services/projects';
 import { enforceProjectLimit } from '@/server/services/entitlements';
-import { z } from 'zod';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';

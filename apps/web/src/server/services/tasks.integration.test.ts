@@ -14,16 +14,9 @@ const DATABASE_URL = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@l
 
 let ctx: Awaited<ReturnType<typeof setup>> | null = null;
 
-async function probe(): Promise<boolean> {
-  try {
-    const { default: postgres } = await import('postgres');
-    const sql = postgres(DATABASE_URL, { max: 1, connect_timeout: 3 });
-    await sql`select 1`;
-    await sql.end();
-    return true;
-  } catch {
-    return false;
-  }
+async function probe(): Promise<true> {
+  const { requireTestDatabase } = await import('../../../../../tests/database');
+  return requireTestDatabase();
 }
 
 async function setup() {
@@ -233,7 +226,7 @@ describe('task service (integration)', () => {
     // The database enforces append-only via a trigger, not just convention.
     await expect(
       db.execute(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
         (await import('drizzle-orm')).sql`update tracking_events set type = 'TASK_CREATED' where task_id = ${task.id}`,
       ),
     ).rejects.toThrow();

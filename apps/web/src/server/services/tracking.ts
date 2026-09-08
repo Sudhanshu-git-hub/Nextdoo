@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
-import { and, asc, desc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNull, lte } from 'drizzle-orm';
 import { calculateScore, type ScoringInput } from '@nextdoo/core';
-import { tasks, taskOccurrences, timerSessions, trackingEvents, trackingResults } from '@nextdoo/db';
+import { tasks, taskOccurrences, trackingEvents, trackingResults } from '@nextdoo/db';
 import { getDb } from '../db';
 import { newId } from '../ids';
 import { logger } from '../observability';

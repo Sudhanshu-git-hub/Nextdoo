@@ -201,7 +201,7 @@ export async function updateTimer(actor: TimerActor, timerId: string, action: 'p
 }
 
 /** Manual time entry, audited because it changes a measured value (PRD §6.7). */
-export async function logTime(actor: TimerActor, taskId: string, minutes: number, note?: string) {
+export async function logTime(actor: TimerActor, taskId: string, minutes: number, _note?: string) {
   const db = getDb();
   await db.transaction(async (tx) => {
     const rows = await tx

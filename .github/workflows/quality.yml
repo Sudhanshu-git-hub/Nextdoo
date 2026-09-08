@@ -1,0 +1,58 @@
+name: Quality and integrity
+on:
+  pull_request:
+  push:
+permissions:
+  contents: read
+concurrency:
+  group: quality-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: nextdoo_test
+          POSTGRES_INITDB_ARGS: --encoding=UTF8
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d nextdoo_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/nextdoo_test
+      AUTH_SECRET: ci-only-isolated-test-secret-not-for-production
+      APP_URL: http://localhost:3100
+      NEXT_TELEMETRY_DISABLED: '1'
+      TURBO_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.22.3
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @nextdoo/web exec playwright install --with-deps chromium
+      - run: pnpm audit --audit-level high
+      - run: pnpm db:migrate && pnpm db:migrate
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test:coverage
+      - run: pnpm build
+      - run: pnpm test:e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verification-evidence
+          path: |
+            coverage/
+            apps/web/playwright-report/
+            apps/web/test-results/
+          retention-days: 7

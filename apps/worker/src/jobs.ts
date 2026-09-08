@@ -1,5 +1,5 @@
 import { and, eq, isNotNull, isNull, lt, lte, sql as raw } from 'drizzle-orm';
-import { authTokens, idempotencyKeys, outbox, reminders, users } from '@nextdoo/db';
+import { authTokens, idempotencyKeys, reminders, users } from '@nextdoo/db';
 import { db, logger, type Job, type JobResult } from './runtime';
 
 /**

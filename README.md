@@ -10,4 +10,9 @@ An outcome-oriented task and time-management platform for Web and Windows Deskto
 
 ## Status
 
-Planning. No implementation yet — the PRD is the source of truth. Implementation starts with the first engineering tickets in §22.9.
+Recovered implementation with active quality/security hardening. **Not a release-complete MVP.**
+
+- [Development and verification](docs/DEVELOPMENT.md)
+- [Implementation log and remaining limitations](docs/IMPLEMENTATION_LOG.md)
+
+The PRD remains the source of truth; routes, schemas and green unit tests alone do not establish feature completion.

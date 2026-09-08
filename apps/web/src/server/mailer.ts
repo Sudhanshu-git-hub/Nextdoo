@@ -46,7 +46,7 @@ function render(kind: MailKind, url: string | null): Mail['subject'] extends nev
 }
 
 export async function sendMail(kind: MailKind, to: string, url: string | null = null): Promise<void> {
-  const { subject, text } = render(kind, url);
+  const { subject } = render(kind, url);
 
   if (!features().email) {
     // Dev fallback. The address is logged because it is needed to act on the

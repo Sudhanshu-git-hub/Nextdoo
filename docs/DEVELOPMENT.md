@@ -1,179 +1,120 @@
-# Development guide
+# Development and verification
 
-How to run NEXTDOO locally, what exists today, and the conventions that keep the
-codebase coherent. The [PRD](./PRD.md) remains the source of truth for behaviour.
+The recovered implementation is not a release-complete MVP. `docs/PRD.md` on
+main is the product authority. This guide describes actual behavior, not planned integrations.
 
-## Requirements
+## Toolchain and local services
 
-| Tool       | Version | Notes                                       |
-| ---------- | ------- | ------------------------------------------- |
-| Node.js    | 22.x    | Uses native `node:` APIs and ESM throughout |
-| pnpm       | 9.15.4  | `corepack enable` installs the pinned version |
-| PostgreSQL | 16+     | A local instance is bundled; see below      |
-
-## First run
+- Node 22.22+ (CI: 22.22.3), pnpm **9.15.4**.
+- PostgreSQL 16+; CI uses PostgreSQL 16, the embedded local distribution uses 18.4.
+- Next.js 15 App Router hosts both the web UI and `/api/v1` route handlers.
+- Shared contracts/core/DB packages expose TypeScript source. Worker runs with tsx.
 
 ```bash
-pnpm install
+corepack enable
+pnpm install --frozen-lockfile
 
-# Boots an embedded PostgreSQL on port 55432 with a persistent .pgdata directory.
-# Leave this running in its own terminal.
-pnpm dev:services
+# Terminal 1: isolated UTF-8 test database; don't reuse valuable/production data.
+PGPORT=55433 PGDATABASE=nextdoo_test PGDATA_DIR="$PWD/.data/test-postgres" pnpm dev:services
 
-# Apply migrations (hand-authored SQL, applied in filename order).
+# Terminal 2: export explicitly; pnpm/tsx do not load .env files automatically.
+export DATABASE_URL=postgres://postgres:postgres@localhost:55433/nextdoo_test
+export AUTH_SECRET=test-only-secret-at-least-32-characters
+export APP_URL=http://localhost:3000
 pnpm db:migrate
-
-cp .env.example apps/web/.env.local   # then set AUTH_SECRET
+pnpm db:migrate  # safe rerun
 pnpm dev
 ```
 
-The app is served at <http://localhost:3000>. Create an account at `/register`;
-registration provisions a personal workspace and a FREE subscription in one
-transaction.
+For a separate development database, omit `PGPORT/PGDATABASE`: defaults are
+55432/nextdoo. Existing initialized clusters are reused, never reinitialized.
+Initialization failures now fail rather than being swallowed. Keep the service
+process running until testing ends. Never run test fixtures against production.
+
+## Quality gates
+
+```bash
+pnpm lint              # ESLint recommended JS/TS correctness + unused imports/variables, zero warnings
+pnpm typecheck         # all five packages
+pnpm test:unit         # pure core and tooling; no database required
+pnpm test              # all tests; integration collection FAILS without a configured, migrated DB
+pnpm test:coverage     # V8 text, HTML, JSON summary and LCOV in coverage/
+pnpm build             # production web build; other packages currently execute TypeScript source
+pnpm --filter @nextdoo/web exec playwright install --with-deps chromium
+pnpm test:e2e          # production build + real database + real Chromium; owns server on port 3100
+pnpm audit --audit-level high
+pnpm verify            # lint → typecheck → coverage/tests → build → E2E
+```
+
+Core coverage thresholds: **85% statements, branches, functions and lines**,
+including all non-test core files. Server-service coverage is also reported,
+including untouched/uncovered files; it is not disguised as complete route coverage.
+
+Playwright discovers only `apps/web/e2e/`, never Vitest's integration files. Tests
+use unique accounts, one worker, no automatic retries and no network/API mocks.
+A test failure cannot become a pass through retries. The suite starts its own
+production server and refuses to reuse a developer's running server. CI rejects
+focused tests, provisions PostgreSQL and uploads coverage/trace artifacts.
+
+If browser CDN access is unavailable locally, `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`
+can point to an already installed real Chromium. Do not disable browser security
+or replace tests with mocked responses to claim E2E success. The fallback binary
+is an environment dependency, not part of NEXTDOO or its lockfile.
+
+## Migrations
+
+**Hand-authored SQL is authoritative.** Never edit an applied migration.
+
+```bash
+pnpm db:generate meaningful_change_name
+# Review/edit the newly numbered SQL file, then:
+pnpm db:migrate
+```
+
+`db:generate` now explicitly scaffolds the next SQL migration; it **does not infer
+schema differences**. It validates the name, uses exclusive file creation and
+fails nonzero on invalid arguments or filesystem errors. The obsolete Drizzle Kit
+command was removed: it emitted an ESM exception with exit 0 and could not safely
+diff the hand-authored baseline. Drizzle remains the ORM. `drizzle.config.ts` is
+retained as a schema-reference configuration, not an executable generator.
+Keep `packages/db/src/schema.ts` and new SQL migrations aligned and test both
+fresh installation and upgrade. Backups/restore and deployment rollback are still
+separate, outstanding operational gates.
 
 ## Environment
 
-Configuration is validated once at boot by `apps/web/src/server/env.ts`. A
-missing required value crashes startup rather than degrading silently.
+Required for database-backed web flows: `DATABASE_URL`, `AUTH_SECRET` (32+ chars).
+`APP_URL` controls absolute links. `.env.example` documents development settings.
+Next can read `apps/web/.env.local`; the worker and tests require exported values.
+Turbo explicitly passes the declared application configuration to package tasks.
+Do not put production secrets in checked-in env files.
 
-| Variable       | Required | Purpose                                        |
-| -------------- | -------- | ---------------------------------------------- |
-| `DATABASE_URL` | yes      | PostgreSQL connection string                    |
-| `AUTH_SECRET`  | yes      | 32+ chars; derives session and encryption keys  |
-| `APP_URL`      | no       | Absolute base URL, defaults to localhost:3000   |
-| `REDIS_URL`    | no       | Durable queue; falls back to an in-process adapter |
-| `SMTP_URL`     | no       | Outbound email; when unset, mail is logged instead of sent |
-| `GOOGLE_*`     | no       | Calendar sync; the feature is hidden when unset |
-| `STRIPE_*`     | no       | Billing; entitlements fall back to FREE         |
-| `S3_*`         | no       | Attachment storage                              |
+Optional names (`REDIS_URL`, `SMTP_URL`, `GOOGLE_*`, `STRIPE_*`, `S3_*`) are **not
+proof of integrations**. Currently:
 
-Optional integrations are genuinely optional: `features()` derives availability
-from configuration so the UI can degrade honestly instead of failing at runtime.
+- Rate limiting is in-process, not Redis-backed.
+- Worker is an interval scheduler, not BullMQ or a durable queue.
+- SMTP transport is not implemented. The mail stub logs test/development links;
+  configuring SMTP does not send mail. Do not deploy this as account recovery.
+- Reminder and outbox jobs still contain placeholder acknowledgement behavior;
+  they do not establish provider delivery. Do not mark these features complete.
+- Google Calendar, Stripe checkout/webhooks, S3 upload/scanning and AI providers
+  are not implemented. Static plan limits are not a billing integration.
 
-## Commands
+## Actual product coverage and limitations
 
-```bash
-pnpm dev              # Next.js dev server
-pnpm dev:worker       # background jobs (reminders, purges, outbox relay)
-pnpm build            # production build of every package
-pnpm typecheck        # tsc --noEmit across the workspace
-pnpm test             # unit + integration tests
-pnpm db:migrate       # apply pending SQL migrations
-```
+Online account provisioning, basic task APIs, normal completion, a weekly task
+calendar, focus UI and summary analytics exist. Pure domain and selected database
+rules have tests. The 2026-09-08 recovered baseline had **191 tests**, not 188.
+Use test output for the current count; new regressions are added incrementally.
 
-## Testing
+Still incomplete: rich task/project/board flows, persisted recurrence generation,
+real notifications, full analytics/corrections/wellbeing controls, offline capture
+and reconciliation, conflict UX, attachments, async expiring exports, Windows
+client, integrations and production operations. IndexedDB helpers exist but core
+capture/edit does not yet enqueue offline work. JSON export is synchronous and is
+not the PRD's signed, expiring CSV/JSON export job.
 
-```bash
-pnpm test                                   # everything
-npx vitest run packages/core                # pure domain logic, no I/O
-npx vitest run apps/web                     # integration, needs a database
-```
-
-Integration tests **skip rather than fail** when no database is reachable, so a
-fresh checkout is green without `pnpm dev:services`. They probe the connection at
-module scope because Vitest chooses `it.skip` during collection, before hooks run.
-
-Current coverage: 188 tests — 155 unit (scoring, recurrence, NL parsing, sync
-merge rules, task state machine, TOTP) and 33 integration against real
-PostgreSQL (optimistic locking, tenant isolation, append-only history, sync
-replay and conflicts, MFA, password reset, export and account deletion).
-
-The TOTP suite runs the published RFC 4226 and RFC 6238 test vectors, so the
-implementation is checked against the specification rather than against itself.
-
-## Layout
-
-```
-apps/web            Next.js App Router: UI, API routes, server services
-apps/worker         background jobs: reminder dispatch, purges, outbox relay
-packages/contracts  zod schemas, error taxonomy, entitlements — shared by all
-packages/core       pure domain logic, no I/O, exhaustively unit tested
-packages/db         Drizzle schema, migrations, client
-```
-
-Dependencies point inward: `core` knows nothing about HTTP or the database, and
-`contracts` knows nothing about anything. That is what keeps the domain rules
-testable without a running stack.
-
-## Conventions
-
-**Migrations are hand-authored SQL** in `packages/db/migrations`, applied in
-filename order and recorded in `_migrations`. `drizzle-kit generate` is not used —
-it fails against this ESM schema — so `schema.ts` and the SQL must be kept in
-step by hand. Never edit an applied migration; add a new one.
-
-**Every mutation is versioned.** Updates carry the client's `version` and the
-UPDATE re-checks it in the WHERE clause, so a lost update becomes a 409 rather
-than silent data loss.
-
-**Tracking events are append-only**, enforced by a database trigger, not
-convention. Scores are content-addressed on their inputs and superseded rather
-than overwritten, so any number on the analytics page can be traced to the events
-that produced it.
-
-**Errors are RFC 7807 problem+json** with a stable `code` and a `request_id` that
-matches the structured log line. Logs redact secrets and task content.
-
-**Idempotency**: mutating routes accept an `Idempotency-Key` header and replay the
-stored response within 24 hours. Sync mutations are deduped by `mutationId`.
-
-## Local email
-
-No SMTP provider is configured in development, so `sendMail` logs the message
-instead of sending it — including the verification or reset link, which is the
-only way to complete those flows locally:
-
-```
-{"level":"info","message":"mail.stub","kind":"reset-password","url":"http://localhost:3000/reset-password?token=..."}
-```
-
-Tokens are stored only as SHA-256, so the log is genuinely the sole source of
-the raw value. Setting `SMTP_URL` switches to real delivery.
-
-## Background jobs
-
-The worker is a separate process so slow background work cannot affect request
-latency. Every job is idempotent and claims rows with `FOR UPDATE ... SKIP
-LOCKED`, so running several workers is safe.
-
-| Job                      | Interval | Purpose                                       |
-| ------------------------ | -------- | --------------------------------------------- |
-| `reminders.dispatch`     | 30s      | Sends due reminders; expires those >24h stale  |
-| `reminders.requeue_stuck`| 5m       | Recovers reminders orphaned by a crashed worker |
-| `outbox.relay`           | 10s      | Publishes transactional outbox events          |
-| `accounts.purge`         | 6h       | Deletes accounts past their 30-day grace period |
-| `auth_tokens.purge`      | 12h      | Removes expired verification and reset tokens  |
-| `idempotency.purge`      | 6h       | Clears replay records past their window        |
-
-## Adding an endpoint
-
-1. Define the request schema in `packages/contracts/src/schemas.ts`.
-2. Put the behaviour in a service under `apps/web/src/server/services/`, taking an
-   actor `{ userId, workspaceId }` and authorising at the resource boundary.
-3. Wrap the route with `authedRoute` — it supplies validation, rate limiting,
-   idempotency, problem+json and structured logging.
-4. Emit a tracking event for anything that reflects user intent, and an audit log
-   entry for anything security-relevant.
-5. Cover the rule in `packages/core` if it is pure, or an integration test if it
-   touches the database.
-
-## Troubleshooting
-
-**`numeric field overflow`** — a `position` column narrower than the epoch
-milliseconds written into it. Fixed by migration `0001`; mentioned here because
-the symptom is opaque.
-
-**`Module not found: ./x.js`** — the Next.js bundler does not rewrite `.js`
-specifiers to `.ts` sources. Import workspace-relative modules without the
-extension.
-
-**`column "status" is of type X but expression is of type text`** — a raw SQL
-`CASE` producing string literals needs an explicit `::enum_name` cast.
-
-**`The "string" argument must be of type string ... Received an instance of
-Date`** — the `postgres` driver cannot bind a `Date` inside a raw `sql` fragment.
-Use Drizzle's comparison helpers (`gt`, `lte`), or pass `.toISOString()` with an
-explicit `::timestamptz` cast.
-
-**Port 55432 already in use** — a previous `pnpm dev:services` is still running.
-Its data lives in `.pgdata/` and is safe to reuse.
+`pnpm dev:worker` runs the current worker; supply DATABASE_URL explicitly. Do not
+run it against customer data until retention and dispatch behavior is qualified.
+See `docs/IMPLEMENTATION_LOG.md` for approved security repairs, evidence and remaining scope.
