@@ -201,8 +201,22 @@ Section changes are versioned/idempotent, tenant scoped, and atomically synced,
 outboxed and audited; archived projects reject section writes. Default sections
 created with new projects now participate in those same transactional records.
 
-Current full validation: **301 tests across 33 files, 25 E2E/API scenarios**, all
+At that milestone, full validation was **301 tests across 33 files, 25 E2E/API scenarios**, all
 existing gates green, zero dependency findings. Board and editor keyboard/axe
 checks are scoped, not full WCAG qualification. See the report for exact API
 contracts, density limits, bounded paging and remaining production/PRD gaps.
 Deploy the API before the board UI; this is not mixed-version/offline qualification.
+
+
+## Project execution analytics continuation
+
+`PROJECT_ANALYTICS_MILESTONE.md` describes aggregate project reports for UTC days
+and rolling seven-day windows. Reports reuse existing current-project/due-date
+cohorts and stored scores, with explicit measurement coverage and no fabricated
+missing scores. New reads use a read-only repeatable-read snapshot; global and
+project summaries now preserve sub-minute recorded time.
+
+Current full validation: **310 tests in 35 files, 29 browser/API scenarios**, all
+existing gates green and zero dependency findings. The report defines temporal
+semantics and remaining analytics/production gaps; this is not historical project
+attribution, local-time reporting, full score-settings delivery or MVP completion.

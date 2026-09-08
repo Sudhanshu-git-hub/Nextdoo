@@ -125,3 +125,10 @@ No mixed-version rollout qualification is claimed. Fractional persisted position
 alone do not make the complete drag-and-drop workflow offline-safe. Existing
 production security, retention, provider, observability, load and disaster-recovery
 blockers remain; scoped axe checks are not full WCAG certification.
+
+
+## Subsequent continuation
+
+Aggregate project reporting is now described in
+[Project execution analytics milestone](PROJECT_ANALYTICS_MILESTONE.md). This board
+report retains its original validation counts and milestone-specific evidence.

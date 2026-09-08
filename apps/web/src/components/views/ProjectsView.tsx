@@ -1,5 +1,6 @@
 'use client';
 
+import { ProjectAnalytics } from '@/components/ProjectAnalytics';
 import { ProjectBoard } from '@/components/ProjectBoard';
 import { ProjectSettings, type Project } from '@/components/ProjectSettings';
 import { useTaskPages } from '@/lib/use-task-pages';
@@ -125,16 +126,17 @@ export function ProjectsView({ workspaceId, initialProjects }: { workspaceId: st
 
 function ProjectTasks({ workspaceId, project, back, manage }: { workspaceId: string; project: Project; back: () => void; manage: () => void }) {
   const page = useTaskPages(workspaceId, `status=ACTIVE&projectId=${project.id}`);
-  const [board, setBoard] = useState(false);
+  const [view, setView] = useState<'list' | 'board' | 'analytics'>('list');
   return <>
     <div className="row"><button onClick={back}>Back to projects</button><button onClick={manage}>Project settings</button></div><h1>{project.name}</h1>
     {project.status === 'ARCHIVED' && <div className="banner banner-warn" role="status">This project is archived. Existing tasks and reminders stay unchanged; new assignments require restoring the project.</div>}
     <p className="subtitle">Active tasks. Open a task to edit its project, tags, date or estimate.</p>
     <div className="row" role="group" aria-label="Project task view" style={{ marginBottom: 18 }}>
-      <button aria-pressed={!board} onClick={() => setBoard(false)}>List</button>
-      <button aria-pressed={board} onClick={() => setBoard(true)}>Board</button>
+      <button aria-pressed={view === 'list'} onClick={() => setView('list')}>List</button>
+      <button aria-pressed={view === 'board'} onClick={() => setView('board')}>Board</button>
+      <button aria-pressed={view === 'analytics'} onClick={() => setView('analytics')}>Project analytics</button>
     </div>
-    {board ? <ProjectBoard project={project} tasks={page.tasks} loading={page.loading} error={page.tasks.length ? null : page.error} onChanged={page.reload} /> : <TaskList tasks={page.tasks} loading={page.loading && !page.tasks.length} error={page.tasks.length ? null : page.error} emptyTitle="No active tasks" emptyBody="Assign a task to this project from Inbox or capture with its +project name." onChanged={page.reload} />}
-    <TaskPagination {...page} error={page.tasks.length ? page.error : null} count={page.tasks.length} onMore={page.loadMore} onRetry={page.tasks.length ? page.loadMore : page.reload} />
+    {view === 'analytics' ? <ProjectAnalytics key={project.id} projectId={project.id} /> : view === 'board' ? <ProjectBoard project={project} tasks={page.tasks} loading={page.loading} error={page.tasks.length ? null : page.error} onChanged={page.reload} /> : <TaskList tasks={page.tasks} loading={page.loading && !page.tasks.length} error={page.tasks.length ? null : page.error} emptyTitle="No active tasks" emptyBody="Assign a task to this project from Inbox or capture with its +project name." onChanged={page.reload} />}
+    {view !== 'analytics' && <TaskPagination {...page} error={page.tasks.length ? page.error : null} count={page.tasks.length} onMore={page.loadMore} onRetry={page.tasks.length ? page.loadMore : page.reload} />}
   </>;
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { formatTrackedDuration } from '@/lib/format-duration';
 import { api, ApiError } from '@/lib/api';
 
 interface Summary {
@@ -176,13 +177,11 @@ function Stat({ label, value, sub }: { label: string; value: string; sub: string
 }
 
 function Bar({ label, minutes, max }: { label: string; minutes: number; max: number }) {
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
   return (
     <div style={{ marginBottom: 12 }}>
       <div className="spread" style={{ marginBottom: 5, fontSize: 13 }}>
         <span>{label}</span>
-        <span className="muted">{hours ? `${hours}h ` : ''}{mins}m</span>
+        <span className="muted">{formatTrackedDuration(minutes)}</span>
       </div>
       <div className="bar">
         <i style={{ width: `${Math.min(100, (minutes / max) * 100)}%` }} />

@@ -231,31 +231,14 @@ export async function getResultForTask(workspaceId: string, taskId: string): Pro
   };
 }
 
-export interface Summary {
-  period: 'day' | 'week';
-  from: string;
-  to: string;
-  plannedCount: number;
-  completedCount: number;
-  completionRate: number | null;
-  onTimeCount: number;
-  onTimeRate: number | null;
-  lateCount: number;
-  rescheduledCount: number;
-  plannedMinutes: number;
-  actualMinutes: number;
-  averageScore: number | null;
-  unmeasuredCount: number;
-  estimateVariancePct: number | null;
-  /** Plain-language findings shown in the review UI. */
-  insights: string[];
-}
+export type Summary = import('@nextdoo/contracts').ExecutionSummary;
 
 /** Daily and weekly analytics (PRD §7.8). */
 export async function getSummary(
   workspaceId: string,
   period: 'day' | 'week',
   reference: Date,
+  projectId?: string,
 ): Promise<Summary> {
   const db = getDb();
   const from = new Date(reference);
@@ -270,6 +253,7 @@ export async function getSummary(
     .where(
       and(
         eq(tasks.workspaceId, workspaceId),
+        ...(projectId ? [eq(tasks.projectId, projectId)] : []),
         isNull(tasks.deletedAt),
         gte(tasks.dueAt, from),
         lte(tasks.dueAt, to),
@@ -282,7 +266,9 @@ export async function getSummary(
   const rescheduled = planned.filter((t) => t.rescheduleCount > 0);
 
   const plannedMinutes = planned.reduce((s, t) => s + (t.estimateMinutes ?? 0), 0);
-  const actualMinutes = planned.reduce((s, t) => s + t.actualMinutes, 0);
+  // Timers preserve sub-minute remainders; analytics must not round them away.
+  const actual = (t: typeof tasks.$inferSelect) => t.actualMinutes + t.actualSecondsRemainder / 60;
+  const actualMinutes = planned.reduce((s, t) => s + t.actualMinutes * 60 + t.actualSecondsRemainder, 0) / 60;
 
   /**
    * Scores must be scoped to the same task set as every other figure on this
@@ -309,10 +295,10 @@ export async function getSummary(
     ? Math.round((scored.reduce((a, b) => a + b, 0) / scored.length) * 10) / 10
     : null;
 
-  const withBoth = planned.filter((t) => t.estimateMinutes && t.estimateMinutes > 0 && t.actualMinutes > 0);
+  const withBoth = planned.filter((t) => t.estimateMinutes && t.estimateMinutes > 0 && actual(t) > 0);
   const estimateVariancePct = withBoth.length
     ? Math.round(
-        (withBoth.reduce((s, t) => s + (t.actualMinutes - t.estimateMinutes!) / t.estimateMinutes!, 0) /
+        (withBoth.reduce((s, t) => s + (actual(t) - t.estimateMinutes!) / t.estimateMinutes!, 0) /
           withBoth.length) *
           100,
       )
@@ -360,6 +346,11 @@ export async function getSummary(
     averageScore,
     unmeasuredCount: results.filter((r) => r.outcome === 'UNMEASURED').length,
     estimateVariancePct,
+    storedResultCount: results.length,
+    scoredCount: scored.length,
+    missingResultCount: planned.length - results.length,
+    actualMeasuredCount: planned.filter((t) => actual(t) > 0).length,
+    estimateMeasuredCount: withBoth.length,
     insights,
   };
 }

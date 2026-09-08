@@ -3,3 +3,5 @@ export * from './errors';
 export * from './events';
 export * from './schemas';
 export * from './entitlements';
+
+export * from './analytics';

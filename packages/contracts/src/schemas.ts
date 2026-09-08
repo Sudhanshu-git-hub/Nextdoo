@@ -309,3 +309,11 @@ export type UpdateTaskInput = z.infer<typeof updateTaskSchema>;
 export type TaskQueryInput = z.infer<typeof taskQuerySchema>;
 export type SyncPushInput = z.infer<typeof syncPushSchema>;
 export type MutationInput = z.infer<typeof mutationSchema>;
+
+
+/** Project reports use real calendar dates, not normalized invalid dates such as February 30. */
+export const projectAnalyticsQuerySchema = z.object({
+  period: z.enum(['day', 'week']).default('week'),
+  date: z.string().date().refine((date) => date >= '0001-01-01', { message: 'Date must be in year 1 or later' }).optional(),
+}).strict().refine((query) => !query.date || query.period !== 'week' || query.date >= '0001-01-07', { message: 'A seven-day window must begin in year 1 or later' });
+export type ProjectAnalyticsQuery = z.infer<typeof projectAnalyticsQuerySchema>;
