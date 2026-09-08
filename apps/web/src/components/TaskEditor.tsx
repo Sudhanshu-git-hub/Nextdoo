@@ -1,4 +1,5 @@
 'use client';
+import { TaskRelations } from './TaskRelations';
 import { useEffect, useRef, useState } from 'react';
 import { api, ApiError, type Task } from '@/lib/api';
 interface Detail extends Task { tagIds: string[]; timeZone: string | null }
@@ -8,7 +9,20 @@ interface Draft { title: string; description: string; projectId: string; priorit
 const localTime = (iso: string | null) => { if (!iso) return ''; const d = new Date(iso); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); };
 const draftOf = (t: Detail): Draft => ({ title: t.title, description: t.description ?? '', projectId: t.projectId ?? '', priority: t.priority, due: localTime(t.dueAt), estimate: t.estimateMinutes?.toString() ?? '', tagIds: t.tagIds, newTags: '' });
 export function TaskEditor({ task, onClose, onSaved }: { task: Task; onClose: () => void; onSaved: () => void }) {
+  const [history, setHistory] = useState<Task[]>([task]);
+  const changed = useRef(false);
+  const current = history[history.length - 1]!;
+  return <TaskEditorForm key={current.id} task={current}
+    onSaved={() => { changed.current = true; }}
+    onClose={() => { onClose(); if (changed.current) onSaved(); }}
+    onNavigate={(next) => setHistory((rows) => [...rows, next])}
+    onBack={history.length > 1 ? () => setHistory((rows) => rows.slice(0, -1)) : undefined} />;
+}
+function TaskEditorForm({ task, onClose, onSaved, onNavigate, onBack }: {
+  task: Task; onClose: () => void; onSaved: () => void; onNavigate: (task: Task) => void; onBack?: () => void;
+}) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const [relationsOpen, setRelationsOpen] = useState(false), [relationsBusy, setRelationsBusy] = useState(false), [relationDraft, setRelationDraft] = useState(false);
   const [base, setBase] = useState<Draft | null>(null), [draft, setDraft] = useState<Draft | null>(null);
   const [version, setVersion] = useState(task.version), [projects, setProjects] = useState<Project[]>([]), [tags, setTags] = useState<Tag[]>([]);
   const [busy, setBusy] = useState(false), [error, setError] = useState<string | null>(null), [conflict, setConflict] = useState<Detail | null>(null);
@@ -22,9 +36,10 @@ export function TaskEditor({ task, onClose, onSaved }: { task: Task; onClose: ()
       .catch((e) => { if (!controller.signal.aborted) setError(e instanceof ApiError ? e.problem.detail : 'Could not load task details. Close and retry.'); });
     return () => controller.abort();
   }, [task.id]);
-  function close() { if (!busy && (!dirty || window.confirm('Discard unsaved changes?'))) { dialog.current?.close(); onClose(); } }
+  function close() { if (!busy && !relationsBusy && (!(dirty || relationDraft) || window.confirm('Discard unsaved changes?'))) { dialog.current?.close(); onClose(); } }
   async function save(e: React.FormEvent) {
-    e.preventDefault(); if (!draft || !base || busy || conflict || !dirty) return;
+    e.preventDefault(); if (!draft || !base || busy || relationsBusy || conflict || !dirty) return;
+    if (relationDraft && !window.confirm('Discard the unsaved subtask draft and save task changes?')) return;
     const patch: Record<string, unknown> = { version };
     if (draft.title !== base.title) patch.title = draft.title;
     if (draft.description !== base.description) patch.description = draft.description || null;
@@ -40,7 +55,7 @@ export function TaskEditor({ task, onClose, onSaved }: { task: Task; onClose: ()
     setBusy(true); setError(null);
     try {
       await api(`/tasks/${task.id}`, { method: 'PATCH', headers: { 'Idempotency-Key': identity.current.key }, body });
-      dialog.current?.close(); onClose(); onSaved();
+      dialog.current?.close(); onSaved(); onClose();
     } catch (e) {
       setError(e instanceof ApiError ? e.problem.detail : 'Could not save. Your draft is kept; retry uses the same request identity.');
       if (e instanceof ApiError && e.isConflict) {
@@ -49,9 +64,18 @@ export function TaskEditor({ task, onClose, onSaved }: { task: Task; onClose: ()
       }
     } finally { setBusy(false); }
   }
+  function navigate(action: () => void) {
+    if (busy || relationsBusy || (dirty || relationDraft) && !window.confirm('Discard unsaved changes?')) return;
+    dialog.current?.close(); action();
+  }
+  async function reloadDetails() {
+    const detail = await api<Detail>(`/tasks/${task.id}`);
+    const d = draftOf(detail); setBase(d); setDraft(d); setVersion(detail.version); setConflict(null); setError(null);
+  }
   function change<K extends keyof Draft>(key: K, value: Draft[K]) { setDraft((d) => d && ({ ...d, [key]: value })); }
   return <dialog ref={dialog} aria-labelledby="task-editor-title" className="task-editor" onCancel={(e) => { e.preventDefault(); close(); }}>
     <h2 id="task-editor-title">Edit task</h2>
+    {onBack && <button disabled={busy || relationsBusy} onClick={() => navigate(onBack)}>Back to previous task</button>}
     {error && <div className="banner banner-error" role="alert" id="task-editor-error">{error}</div>}
     {conflict && <section className="banner banner-warn" aria-label="Latest server version">
       <p>The task changed elsewhere. Your draft below has not been replaced.</p>
@@ -61,7 +85,7 @@ export function TaskEditor({ task, onClose, onSaved }: { task: Task; onClose: ()
       <button disabled={busy} onClick={() => { if (window.confirm('Replace your draft with the server version?')) { const d = draftOf(conflict); setBase(d); setDraft(d); setVersion(conflict.version); setConflict(null); setError(null); } }}>Use server version</button>
     </section>}
     {!draft ? <p role="status">{error ? 'Details unavailable.' : 'Loading task details…'}</p> : <form onSubmit={save} aria-describedby={error ? 'task-editor-error' : undefined}>
-      <fieldset disabled={busy} style={{ border: 0, padding: 0 }}>
+      <fieldset disabled={busy || relationsBusy} style={{ border: 0, padding: 0 }}>
         <label htmlFor="edit-title">Title</label><input autoFocus id="edit-title" required maxLength={500} value={draft.title} onChange={(e) => change('title', e.target.value)} />
         <label htmlFor="edit-notes">Notes</label><textarea id="edit-notes" maxLength={20000} rows={4} value={draft.description} onChange={(e) => change('description', e.target.value)} />
         <label htmlFor="edit-project">Project</label><select id="edit-project" value={draft.projectId} onChange={(e) => change('projectId', e.target.value)}><option value="">Inbox (unfiled)</option>{projects.map((p) => <option key={p.id} value={p.id} disabled={p.status !== 'ACTIVE'}>{p.name}{p.status !== 'ACTIVE' ? ' (archived)' : ''}</option>)}</select>
@@ -72,8 +96,19 @@ export function TaskEditor({ task, onClose, onSaved }: { task: Task; onClose: ()
           <label htmlFor="edit-new-tags">New tags (comma separated)</label><input id="edit-new-tags" value={draft.newTags} onChange={(e) => change('newTags', e.target.value)} />
         </fieldset>
       </fieldset>
-      <div className="row" style={{ marginTop: 16 }}><button className="btn-primary" disabled={busy || !dirty || Boolean(conflict)}>{busy ? 'Saving…' : 'Save changes'}</button><button type="button" disabled={busy} onClick={close}>Cancel</button></div>
+      <div className="row" style={{ marginTop: 16 }}><button className="btn-primary" disabled={busy || relationsBusy || !dirty || Boolean(conflict)}>{busy ? 'Saving…' : 'Save changes'}</button><button type="button" disabled={busy || relationsBusy} onClick={close}>Cancel</button></div>
     </form>}
+    <details open={relationsOpen} onToggle={(e) => {
+      if (!e.currentTarget.open && (relationsBusy || relationDraft && !window.confirm('Discard the unsaved subtask draft?'))) { e.currentTarget.open = true; return; }
+      if (!e.currentTarget.open) setRelationDraft(false);
+      setRelationsOpen(e.currentTarget.open);
+    }} style={{ marginTop: 20 }}>
+      <summary>Subtasks and dependencies</summary>
+      {relationsOpen && <TaskRelations task={task} version={version} disabled={busy || dirty || !!conflict || !draft}
+        onBusyChange={setRelationsBusy} onDraftChange={setRelationDraft} onReload={reloadDetails}
+        onChanged={(nextVersion) => { if (nextVersion !== undefined) setVersion(nextVersion); onSaved(); }}
+        onOpen={(next) => navigate(() => onNavigate(next))} />}
+    </details>
     {!draft && <button onClick={close}>Close</button>}
   </dialog>;
 }

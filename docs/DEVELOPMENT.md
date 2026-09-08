@@ -216,7 +216,22 @@ cohorts and stored scores, with explicit measurement coverage and no fabricated
 missing scores. New reads use a read-only repeatable-read snapshot; global and
 project summaries now preserve sub-minute recorded time.
 
-Current full validation: **310 tests in 35 files, 29 browser/API scenarios**, all
+At that milestone, full validation was **310 tests in 35 files, 29 browser/API scenarios**, all
 existing gates green and zero dependency findings. The report defines temporal
 semantics and remaining analytics/production gaps; this is not historical project
 attribution, local-time reporting, full score-settings delivery or MVP completion.
+
+
+## Phase 1 core tasks: subtasks and dependencies
+
+See `TASK_RELATIONSHIPS_MILESTONE.md` for parent/prerequisite editing, task navigation,
+cycle prevention, paged relation lists and conflict-safe controls in the task editor.
+Apply **0010_non_cascading_task_parent.sql** before enabling this UI: referenced
+parents can no longer silently cascade-delete live children on permanent deletion.
+Whole-account purge remains tested. Existing migrations are immutable.
+
+Current full validation: **322 tests in 36 files, 34 browser/API scenarios**, all
+existing gates green and zero dependency findings. Task cursors now preserve database
+microseconds. Dependency commands remain online-only and are explicitly rejected
+by generic sync; this is not completion of offline relationships or all core tasks.
+Task lifecycle/recovery UI, filtering/sorting and bulk operations remain next work.

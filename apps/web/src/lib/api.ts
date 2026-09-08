@@ -43,6 +43,7 @@ export interface Task {
   workspaceId: string;
   projectId: string | null;
   sectionId?: string | null;
+  parentTaskId?: string | null;
   title: string;
   description: string | null;
   status: 'ACTIVE' | 'COMPLETED' | 'ARCHIVED' | 'DELETED';

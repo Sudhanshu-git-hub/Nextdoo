@@ -166,6 +166,8 @@ export const rescheduleTaskSchema = z.object({
 
 export const taskQuerySchema = z.object({
   workspaceId: uuid,
+  parentTaskId: uuid.optional(),
+  dependencyOfTaskId: uuid.optional(),
   status: z.enum(TASK_STATUS).optional(),
   projectId: uuid.optional(),
   tagId: uuid.optional(),
@@ -317,3 +319,17 @@ export const projectAnalyticsQuerySchema = z.object({
   date: z.string().date().refine((date) => date >= '0001-01-01', { message: 'Date must be in year 1 or later' }).optional(),
 }).strict().refine((query) => !query.date || query.period !== 'week' || query.date >= '0001-01-07', { message: 'A seven-day window must begin in year 1 or later' });
 export type ProjectAnalyticsQuery = z.infer<typeof projectAnalyticsQuerySchema>;
+
+export const createSubtaskSchema = z.object({
+  version: z.number().int().min(1),
+  title: z.string().trim().min(1).max(500),
+}).strict();
+export const updateTaskRelationsSchema = z.object({
+  version: z.number().int().min(1),
+  parentTaskId: uuid.nullable().optional(),
+  addDependencyId: uuid.optional(),
+  removeDependencyId: uuid.optional(),
+}).strict().refine((v) => v.parentTaskId !== undefined || v.addDependencyId !== undefined || v.removeDependencyId !== undefined, { message: 'No relationships to change' })
+  .refine((v) => !v.addDependencyId || v.addDependencyId !== v.removeDependencyId, { message: 'Cannot add and remove the same prerequisite' });
+export type CreateSubtaskInput = z.infer<typeof createSubtaskSchema>;
+export type UpdateTaskRelationsInput = z.infer<typeof updateTaskRelationsSchema>;

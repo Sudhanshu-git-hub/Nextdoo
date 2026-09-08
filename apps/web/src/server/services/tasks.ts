@@ -1,7 +1,9 @@
 import { createTag } from './projects';
-import { and, desc, eq, gte, inArray, isNull, lt, lte, or, sql } from 'drizzle-orm';
+import { and, desc, eq, getTableColumns, gte, inArray, isNull, lt, lte, or, sql } from 'drizzle-orm';
 import {
   AppError,
+  isoDateTime,
+  uuid,
   type CreateTaskInput,
   type TaskQueryInput,
   type UpdateTaskInput,
@@ -9,7 +11,7 @@ import {
   versionConflict,
 } from '@nextdoo/contracts';
 import { nextStatus } from '@nextdoo/core';
-import { projects, tasks, taskTags, syncTombstones } from '@nextdoo/db';
+import { projects, tasks, taskTags, taskDependencies, syncTombstones } from '@nextdoo/db';
 import { getDb } from '../db';
 import { newId } from '../ids';
 import { appendTrackingEvent, publishEvent, recordSyncChange, writeAudit } from './events';
@@ -612,6 +614,14 @@ export async function queryTasks(
   const db = getDb();
   const conditions = [eq(tasks.workspaceId, workspaceId), isNull(tasks.deletedAt)];
 
+  if (query.parentTaskId) {
+    await loadTask(workspaceId, query.parentTaskId);
+    conditions.push(eq(tasks.parentTaskId, query.parentTaskId));
+  }
+  if (query.dependencyOfTaskId) {
+    await loadTask(workspaceId, query.dependencyOfTaskId);
+    conditions.push(inArray(tasks.id, db.select({ id: taskDependencies.dependsOnTaskId }).from(taskDependencies).where(eq(taskDependencies.taskId, query.dependencyOfTaskId))));
+  }
   if (query.status) conditions.push(eq(tasks.status, query.status));
   else if (!query.includeArchived) conditions.push(inArray(tasks.status, ['ACTIVE', 'COMPLETED']));
 
@@ -634,8 +644,9 @@ export async function queryTasks(
         c: string;
         i: string;
       };
+      isoDateTime.parse(decoded.c); uuid.parse(decoded.i);
       conditions.push(
-        or(lt(tasks.createdAt, new Date(decoded.c)), and(eq(tasks.createdAt, new Date(decoded.c)), lt(tasks.id, decoded.i)))!,
+        or(sql`${tasks.createdAt} < ${decoded.c}::timestamptz`, and(sql`${tasks.createdAt} = ${decoded.c}::timestamptz`, lt(tasks.id, decoded.i)))!,
       );
     } catch {
       throw new AppError('VALIDATION_FAILED', 'Malformed pagination cursor.');
@@ -643,7 +654,7 @@ export async function queryTasks(
   }
 
   const rows = await db
-    .select()
+    .select({ ...getTableColumns(tasks), cursorCreatedAt: sql<string>`to_char(${tasks.createdAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')` })
     .from(tasks)
     .where(and(...conditions))
     .orderBy(desc(tasks.createdAt), desc(tasks.id))
@@ -654,7 +665,7 @@ export async function queryTasks(
   const last = page[page.length - 1];
   const nextCursor =
     hasMore && last
-      ? Buffer.from(JSON.stringify({ c: last.createdAt.toISOString(), i: last.id })).toString('base64url')
+      ? Buffer.from(JSON.stringify({ c: last.cursorCreatedAt, i: last.id })).toString('base64url')
       : null;
 
   return { data: page.map(serialise), nextCursor, hasMore };

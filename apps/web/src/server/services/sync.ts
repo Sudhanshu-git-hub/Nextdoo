@@ -82,6 +82,9 @@ export async function pushMutations(
 
   for (const mutation of input.mutations) {
     try {
+      if (['addDependencyId', 'removeDependencyId', 'dependsOnTaskIds'].some((field) => field in mutation.payload)) {
+        throw new AppError('VALIDATION_FAILED', 'Relationship commands require the online relationships endpoint.');
+      }
       results.push(await applyMutation(actor, input.deviceId, mutation));
     } catch (error) {
       // Isolate the failure: the rest of the batch still applies.

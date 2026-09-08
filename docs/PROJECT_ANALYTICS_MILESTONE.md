@@ -142,3 +142,10 @@ Full offline reconciliation, cursor expiry/virtualization, broader collection pa
 AI, billing, Calendar, attachments and desktop are not delivered here. Existing
 production security, retention, provider, observability, load and disaster-recovery
 blockers remain. Scoped axe success is not full WCAG certification.
+
+
+## Subsequent continuation
+
+The next Phase 1 core-task slice is documented in
+[Subtasks and dependencies milestone](TASK_RELATIONSHIPS_MILESTONE.md). This analytics
+report retains its original validation counts and evidence.
