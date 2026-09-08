@@ -10,4 +10,4 @@ An outcome-oriented task and time-management platform for Web and Windows Deskto
 
 ## Status
 
-Planning. No implementation yet — the PRD is the source of truth. Implementation starts with the first engineering tickets in §20.9.
+Planning. No implementation yet — the PRD is the source of truth. Implementation starts with the first engineering tickets in §22.9.

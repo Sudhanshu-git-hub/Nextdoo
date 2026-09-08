@@ -3,13 +3,44 @@
 | Field | Value |
 |---|---|
 | Document status | Proposed |
-| Version | 1.0 |
+| Version | 1.1 |
 | Last updated | 2026-09-08 |
 | Product | NEXTDOO |
 | Initial platforms | Web, Windows Desktop |
 | Mobile | Planned after product-market fit |
 | Primary launch segment | Professionals and small teams whose work is deadline-driven, recurring, and measurable |
 | Core promise | Help users plan work against available time, execute it, and understand whether their execution matched their intentions |
+
+---
+
+## Contents
+
+| § | Section |
+|---|---|
+| 1 | [Executive Summary](#1-executive-summary) |
+| 2 | [Product Strategy](#2-product-strategy) |
+| 3 | [Personas And Jobs-To-Be-Done](#3-personas-and-jobs-to-be-done) |
+| 4 | [Product Scope And Phasing](#4-product-scope-and-phasing) |
+| 5 | [Core Product Loop](#5-core-product-loop) |
+| 6 | [Functional Requirements](#6-functional-requirements) |
+| 7 | [Execution Tracking System](#7-execution-tracking-system-primary-differentiator) |
+| 8 | [UX And Accessibility](#8-ux-and-accessibility) |
+| 9 | [Technical Architecture](#9-technical-architecture) |
+| 10 | [Offline And Synchronization Design](#10-offline-and-synchronization-design) |
+| 11 | [Security And Privacy](#11-security-and-privacy) |
+| 12 | [Reliability And Operations](#12-reliability-and-operations) |
+| 13 | [Database Design](#13-database-design) |
+| 14 | [API Design](#14-api-design) |
+| 15 | [Event Architecture](#15-event-architecture) |
+| 16 | [Calendar Integration](#16-calendar-integration) |
+| 17 | [AI And Voice](#17-ai-and-voice) |
+| 18 | [Monetization](#18-monetization) |
+| 19 | [Testing And Quality Gates](#19-testing-and-quality-gates) |
+| 20 | [Analytics And Instrumentation](#20-analytics-and-instrumentation) |
+| 21 | [Delivery Plan](#21-delivery-plan) |
+| 22 | [Final Decision Register](#22-final-decision-register) |
+| A | [Glossary](#appendix-a--glossary) |
+| B | [Document Control](#appendix-b--document-control) |
 
 ---
 
@@ -427,7 +458,7 @@ Upload · download · preview for supported types · delete · per-plan file-siz
 
 > The client must never receive permanent object-storage credentials.
 
-Flow: `POST /v1/attachments/presign` → direct PUT to storage → `POST /v1/attachments/confirm` → async scan → `scan_status` becomes `CLEAN`/`INFECTED`. Downloads are blocked until `CLEAN`.
+Flow: `POST /v1/attachments/upload` (upload authorization) → direct PUT to storage → `POST /v1/attachments/:id/complete` → async scan → `scan_status` becomes `CLEAN`/`INFECTED`. Downloads are issued through `GET /v1/attachments/:id/download` as a short-lived signed URL and are blocked until `CLEAN`.
 
 ### 6.9 Views
 
@@ -1056,11 +1087,11 @@ Retention periods must be configurable where law, contract, or plan requirements
 
 ---
 
-## 14. API And Events
+## 14. API Design
 
-### 14.1 Standards
+### 14.1 API Standards
 
-Version prefix `/v1` · JSON over HTTPS · cursor-based pagination · RFC 7807-style errors · idempotency keys on mutation endpoints · request IDs on every response · explicit time zones for date-time fields · authorization checked at the resource boundary.
+Version prefix `/v1` · JSON over HTTPS · cursor-based pagination · RFC 7807-style errors · idempotency keys on mutation endpoints · request IDs on every response · explicit time zones for date-time fields · authorization checked at the resource boundary · no breaking change without a new version.
 
 ### 14.2 Error Schema
 
@@ -1076,153 +1107,357 @@ Version prefix `/v1` · JSON over HTTPS · cursor-based pagination · RFC 7807-s
 }
 ```
 
-### 14.3 Endpoint Catalog
+Canonical error codes: `VALIDATION_FAILED` · `UNAUTHENTICATED` · `FORBIDDEN` · `NOT_FOUND` · `RESOURCE_VERSION_CONFLICT` · `IDEMPOTENCY_CONFLICT` · `DEPENDENCY_CYCLE` · `ENTITLEMENT_LIMIT_REACHED` · `RATE_LIMITED` · `PROVIDER_UNAVAILABLE` · `INTERNAL_ERROR`.
+
+### 14.3 Core Endpoints
 
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/v1/auth/register` | Create account |
 | POST | `/v1/auth/login` | Authenticate |
-| POST | `/v1/auth/logout` | Revoke session |
-| POST | `/v1/auth/password-reset` | Request reset |
-| POST | `/v1/auth/mfa/enroll` | Begin TOTP enrollment |
-| GET | `/v1/me` | Current user |
-| GET / DELETE | `/v1/sessions` | List / revoke sessions |
-| GET / POST | `/v1/workspaces` | List / create workspace |
-| GET / POST | `/v1/tasks` | Query / create task |
-| GET / PATCH / DELETE | `/v1/tasks/:id` | Fetch / update / soft-delete |
+| POST | `/v1/auth/logout` | Revoke current session |
+| POST | `/v1/auth/logout-all` | Revoke all sessions |
+| POST | `/v1/auth/password-reset` | Request password reset |
+| POST | `/v1/auth/password-reset/confirm` | Complete password reset |
+| POST | `/v1/auth/mfa/enable` | Start TOTP enrollment |
+| POST | `/v1/auth/mfa/verify` | Confirm TOTP enrollment |
+| POST | `/v1/auth/mfa/disable` | Disable TOTP |
+| GET | `/v1/me` | Fetch current user |
+| PATCH | `/v1/me` | Update profile and preferences |
+| GET | `/v1/me/sessions` | List active sessions |
+| DELETE | `/v1/me/sessions/:id` | Revoke a session |
+| GET | `/v1/workspaces` | List available workspaces |
+| POST | `/v1/workspaces` | Create a workspace |
+| GET | `/v1/workspaces/:id` | Fetch workspace |
+| PATCH | `/v1/workspaces/:id` | Update workspace settings |
+| DELETE | `/v1/workspaces/:id` | Delete workspace |
+| GET | `/v1/tasks` | Query tasks |
+| POST | `/v1/tasks` | Create task |
+| GET | `/v1/tasks/:id` | Fetch task |
+| PATCH | `/v1/tasks/:id` | Update task |
 | POST | `/v1/tasks/:id/complete` | Complete task |
 | POST | `/v1/tasks/:id/reopen` | Reopen task |
 | POST | `/v1/tasks/:id/reschedule` | Reschedule task |
-| POST | `/v1/tasks/:id/restore` | Restore deleted task |
-| GET / POST | `/v1/projects` | List / create project |
-| GET / POST | `/v1/projects/:id/sections` | Sections |
-| GET / POST | `/v1/views` | Saved views |
-| GET | `/v1/tracking/summary` | Analytics summary |
-| GET | `/v1/tracking/tasks/:id` | Task execution result + explanation |
-| POST | `/v1/tracking/recalculate` | Bounded recalculation |
+| POST | `/v1/tasks/:id/archive` | Archive task |
+| POST | `/v1/tasks/:id/restore` | Restore task |
+| DELETE | `/v1/tasks/:id` | Soft-delete task |
+| POST | `/v1/tasks/bulk` | Execute authorized bulk operations |
+| GET | `/v1/tasks/:id/history` | Fetch task event history |
+| GET | `/v1/projects` | List projects |
+| POST | `/v1/projects` | Create project |
+| GET | `/v1/projects/:id` | Fetch project |
+| PATCH | `/v1/projects/:id` | Update project |
+| POST | `/v1/projects/:id/archive` | Archive project |
+| POST | `/v1/projects/:id/restore` | Restore project |
+| GET | `/v1/projects/:id/analytics` | Fetch project analytics |
+| GET | `/v1/sections` | List sections |
+| POST | `/v1/sections` | Create section |
+| PATCH | `/v1/sections/:id` | Update or reorder section |
+| DELETE | `/v1/sections/:id` | Delete section |
+| GET | `/v1/tags` | List tags |
+| POST | `/v1/tags` | Create tag |
+| PATCH | `/v1/tags/:id` | Update tag |
+| DELETE | `/v1/tags/:id` | Delete tag |
+| GET | `/v1/tracking/summary` | Fetch daily or weekly summary |
+| GET | `/v1/tracking/tasks/:id` | Fetch task execution result |
+| POST | `/v1/tracking/recalculate` | Recalculate a date range |
+| POST | `/v1/tracking/corrections` | Record a tracking correction |
+| GET | `/v1/tracking/events` | Query tracking events |
 | POST | `/v1/timers` | Start timer |
-| PATCH | `/v1/timers/:id` | Pause / resume / stop |
-| GET / POST / DELETE | `/v1/reminders` | Reminder management |
+| GET | `/v1/timers/active` | Fetch active timer |
+| PATCH | `/v1/timers/:id` | Pause, resume, or stop timer |
+| POST | `/v1/timers/:id/correct` | Apply audited duration correction |
+| GET | `/v1/reminders` | List reminders |
+| POST | `/v1/reminders` | Create reminder |
+| PATCH | `/v1/reminders/:id` | Update reminder |
+| POST | `/v1/reminders/:id/snooze` | Snooze reminder |
+| DELETE | `/v1/reminders/:id` | Cancel reminder |
 | GET | `/v1/calendar/connections` | List calendar connections |
-| POST | `/v1/calendar/connections` | Begin OAuth connection |
-| DELETE | `/v1/calendar/connections/:id` | Disconnect and revoke tokens |
-| POST | `/v1/calendar/sync` | Force sync |
-| GET / POST | `/v1/automations` | Phase 2 |
-| GET / POST | `/v1/tasks/:id/comments` | Phase 2 |
-| POST | `/v1/attachments/presign` | Get signed upload URL |
-| POST | `/v1/attachments/confirm` | Confirm upload |
-| GET | `/v1/billing/portal` | Stripe portal handoff |
-| GET | `/v1/billing/entitlements` | Current entitlements |
+| POST | `/v1/calendar/connections/google/start` | Begin Google OAuth |
+| GET | `/v1/calendar/connections/google/callback` | Complete Google OAuth |
+| POST | `/v1/calendar/connections/:id/sync` | Request synchronization |
+| PATCH | `/v1/calendar/connections/:id` | Update sync settings |
+| DELETE | `/v1/calendar/connections/:id` | Disconnect calendar |
+| GET | `/v1/calendar/events` | Fetch normalized calendar events |
+| POST | `/v1/attachments/upload` | Create upload authorization |
+| POST | `/v1/attachments/:id/complete` | Confirm upload completion |
+| GET | `/v1/attachments/:id/download` | Create signed download URL |
+| DELETE | `/v1/attachments/:id` | Delete attachment |
+| POST | `/v1/natural-language/parse` | Parse task text |
+| POST | `/v1/ai/suggestions` | Generate advisory suggestions |
+| GET | `/v1/notifications` | List notifications |
+| PATCH | `/v1/notifications/:id` | Mark notification read |
+| GET | `/v1/billing/subscription` | Fetch subscription state |
+| POST | `/v1/billing/checkout` | Start checkout |
+| POST | `/v1/billing/portal` | Open billing portal |
+| POST | `/v1/billing/webhooks` | Receive provider events |
+| GET | `/v1/sync/pull` | Pull changes after cursor |
+| POST | `/v1/sync/push` | Submit offline mutations |
+| GET | `/v1/exports` | List exports |
 | POST | `/v1/exports` | Request data export |
-| DELETE | `/v1/account` | Request account deletion |
-| POST | `/v1/sync/push` | Submit mutation batch |
-| GET | `/v1/sync/pull` | Pull changes since cursor |
+| GET | `/v1/exports/:id` | Fetch export status |
+| GET | `/v1/exports/:id/download` | Download export |
+| POST | `/v1/account/deletion` | Request account deletion |
+| POST | `/v1/account/deletion/cancel` | Cancel pending deletion |
 
-### 14.4 Endpoint Detail — Create Task
+### 14.4 Task Creation Request
 
-| Aspect | Value |
-|---|---|
-| Method / path | `POST /v1/tasks` |
-| Auth | Session cookie or bearer token |
-| Authorization | Caller must be a member of `workspace_id` |
-| Idempotency | `Idempotency-Key` header required; 24 h replay window |
-| Rate limit | 120 req/min per user |
-| Audit event | `task.created` |
-
-Request:
+`POST /v1/tasks` — session cookie or bearer token; caller must be a member of `workspace_id`; `Idempotency-Key` header required with a 24-hour replay window; 120 requests/minute per user; emits audit event `task.created`.
 
 ```json
 {
   "workspace_id": "ws_01J...",
   "title": "Prepare Q3 report",
-  "project_id": "prj_01J...",
-  "due_at": "2026-09-09T14:00:00+02:00",
-  "due_timezone": "Europe/Berlin",
+  "description": null,
+  "project_id": "proj_01J...",
+  "section_id": "sec_01J...",
+  "priority": "HIGH",
+  "due_at": "2026-09-09T14:00:00-04:00",
+  "time_zone": "America/New_York",
   "estimate_minutes": 90,
-  "priority": 2,
-  "tags": ["finance"]
+  "tag_ids": ["tag_01J..."],
+  "recurrence_rule": null,
+  "client_mutation_id": "mut_01J..."
 }
 ```
 
-Response `201`:
+### 14.5 Task Response
 
 ```json
 {
   "id": "task_01J...",
-  "version": 1,
-  "status": "ACTIVE",
+  "workspace_id": "ws_01J...",
   "title": "Prepare Q3 report",
-  "due_at": "2026-09-09T12:00:00Z",
-  "due_timezone": "Europe/Berlin",
+  "status": "ACTIVE",
+  "priority": "HIGH",
+  "due_at": "2026-09-09T14:00:00-04:00",
+  "time_zone": "America/New_York",
   "estimate_minutes": 90,
-  "created_at": "2026-09-08T10:22:31Z"
+  "actual_duration_minutes": 0,
+  "version": 1,
+  "created_at": "2026-09-08T14:00:00Z",
+  "updated_at": "2026-09-08T14:00:00Z"
 }
 ```
 
 Errors: `400 VALIDATION_FAILED` · `401 UNAUTHENTICATED` · `403 FORBIDDEN` · `409 IDEMPOTENCY_CONFLICT` · `422 DEPENDENCY_CYCLE` · `429 RATE_LIMITED`.
 
-### 14.5 Endpoint Detail — Sync Push
+### 14.6 Sync Push Contract
 
-`POST /v1/sync/push`, auth required, batch ≤ 200 mutations, 60 req/min per device.
+`POST /v1/sync/push` — authentication required, batch of at most 200 mutations, 60 requests/minute per device.
 
 ```json
-{ "device_id": "dev_01J...", "mutations": [ { "mutation_id": "mut_01J...", "entity_type": "task", "entity_id": "task_01J...", "operation": "update", "base_version": 12, "payload": { "title": "Prepare report" } } ] }
+{
+  "device_id": "dev_01J...",
+  "mutations": [
+    {
+      "mutation_id": "mut_01J...",
+      "entity_type": "task",
+      "entity_id": "task_01J...",
+      "operation": "update",
+      "base_version": 12,
+      "payload": { "title": "Prepare report" }
+    }
+  ]
+}
 ```
 
 ```json
 {
   "results": [
-    { "mutation_id": "mut_01J...", "status": "applied", "entity": { "id": "task_01J...", "version": 13 } }
+    {
+      "mutation_id": "mut_01J...",
+      "status": "applied",
+      "entity": { "id": "task_01J...", "version": 13 }
+    }
   ],
   "cursor": "seq_918273"
 }
 ```
 
-Per-mutation statuses: `applied` · `duplicate` · `conflict` (includes server entity) · `rejected` (includes error object).
+Per-mutation statuses: `applied` · `duplicate` · `conflict` (includes the server entity) · `rejected` (includes an error object).
 
-### 14.6 Pagination
+### 14.7 Pagination
+
+Collection endpoints use cursor pagination:
 
 ```
-GET /v1/tasks?workspace_id=...&status=ACTIVE&limit=50&cursor=eyJ...
+GET /v1/tasks?limit=50&cursor=eyJvZmZzZXQiOjUwfQ==
 ```
 
 ```json
-{ "data": [], "page": { "next_cursor": "eyJ...", "has_more": true } }
+{
+  "data": [],
+  "pagination": {
+    "next_cursor": "eyJvZmZzZXQiOjEwMH0=",
+    "has_more": true
+  }
+}
 ```
 
-### 14.7 Rate Limits
+Rules:
 
-| Scope | Limit |
-|---|---|
-| Auth endpoints | 10/min per IP, 5/min per account |
-| Read endpoints | 600/min per user |
-| Write endpoints | 120/min per user |
-| Sync push | 60/min per device |
-| AI endpoints | Plan quota + 10/min per user |
-| Export | 3/day per user |
+- Default page size: 50.
+- Maximum page size: 100.
+- Cursors are opaque.
+- Cursors expire after 24 hours.
+- Results use stable ordering.
+- Deleted records are excluded by default.
+- Clients can request archived records explicitly.
 
-### 14.8 Event Catalog
+### 14.8 Rate Limits
 
-| Event | Payload highlights | Consumers |
-|---|---|---|
-| `task.created` | task_id, workspace_id, actor | Tracking, sync, audit |
-| `task.updated` | changed fields, version | Tracking, sync, audit |
-| `task.completed` | completed_at, planned_due_at | Tracking, reminders (cancel), analytics |
-| `task.deleted` / `task.restored` | task_id, actor | Sync, audit, retention |
-| `reminder.scheduled` / `.sent` / `.failed` / `.canceled` | reminder_id, channel, status | Notifications, audit |
-| `tracking.result_created` / `.recalculated` | task_id, score, calculation_version | Analytics, UI |
-| `calendar.item_imported` / `.updated` | external_id, mapping_id | Sync, UI |
-| `automation.started` / `.succeeded` / `.failed` / `.retried` | run_id, automation_id | Audit, UI (Phase 2) |
-| `subscription.changed` | plan, status, period_end | Entitlements, notifications |
-| `workspace.member_changed` | member_id, role, actor | Authorization cache, audit |
+| Client type | Limit |
+|---|---:|
+| Unauthenticated authentication routes | 10 requests/minute/IP |
+| Standard authenticated reads | 600 requests/minute/user |
+| Standard authenticated writes | 120 requests/minute/user |
+| Sync push | 60 requests/minute/device |
+| AI parsing | Plan-specific |
+| File-upload authorization | 30 requests/minute/user |
+| Data exports | 3 requests/hour/user |
+| Recalculation jobs | 10 requests/hour/user |
+| Calendar synchronization | Provider and plan-specific |
 
-All events carry `event_id`, `occurred_at`, `schema_version`, and are published via a transactional outbox.
+Rate-limit responses use HTTP 429 and include a `Retry-After` header.
 
 ---
 
-## 15. Integrations
+## 15. Event Architecture
 
-### 15.1 Prioritization
+### 15.1 Event Envelope
+
+```json
+{
+  "event_id": "evt_01J...",
+  "event_type": "task.completed",
+  "schema_version": 1,
+  "occurred_at": "2026-09-08T18:30:00Z",
+  "workspace_id": "ws_01J...",
+  "actor_id": "user_01J...",
+  "entity_type": "task",
+  "entity_id": "task_01J...",
+  "correlation_id": "req_01J...",
+  "payload": {}
+}
+```
+
+### 15.2 Domain Events
+
+| Event | Producer | Consumers |
+|---|---|---|
+| `task.created` | Tasks | Tracking, sync, analytics |
+| `task.updated` | Tasks | Sync, reminders, calendar |
+| `task.completed` | Tasks | Tracking, recurrence, analytics |
+| `task.reopened` | Tasks | Tracking, analytics |
+| `task.rescheduled` | Tasks | Tracking, reminders, analytics |
+| `task.deleted` | Tasks | Sync, reminders, retention |
+| `task.restored` | Tasks | Sync, analytics |
+| `recurrence.occurrence_generated` | Recurrence | Tasks, reminders, sync |
+| `reminder.scheduled` | Reminders | Notification workers |
+| `reminder.sent` | Notifications | Analytics, audit |
+| `reminder.failed` | Notifications | Retry and alerting |
+| `timer.started` | Timers | Tracking, sync |
+| `timer.stopped` | Timers | Tracking, analytics |
+| `tracking.result_created` | Tracking | Analytics, notifications |
+| `tracking.result_recalculated` | Tracking | Analytics, audit |
+| `calendar.item_imported` | Calendar | Tasks, sync |
+| `calendar.item_updated` | Calendar | Tasks, sync |
+| `subscription.changed` | Billing | Entitlements, audit |
+| `workspace.member_changed` | Workspaces | Authorization cache, audit |
+| `automation.started` / `.succeeded` / `.failed` / `.retried` | Automations (Phase 2) | Audit, UI |
+| `export.completed` | Exports | Notifications |
+| `account.deletion_requested` | Accounts | Retention and compliance jobs |
+
+### 15.3 Transactional Event Publication
+
+Domain changes and their corresponding outbox events must be written in the **same database transaction**.
+
+A worker publishes pending outbox records to the internal event bus. Events are:
+
+- Immutable.
+- Versioned.
+- Retriable.
+- Idempotently consumable.
+- Traceable through correlation IDs.
+
+A failed consumer must not roll back the original user transaction.
+
+---
+
+## 16. Calendar Integration
+
+### 16.1 Google Calendar MVP
+
+The first calendar integration supports Google Calendar.
+
+Capabilities: OAuth authorization · calendar selection · event import · task-to-event export where enabled · two-way updates for mapped records · webhook-based change detection where supported · polling fallback · manual sync · disconnect and token revocation.
+
+| Aspect | Specification |
+|---|---|
+| Authentication | OAuth 2.0 authorization code with PKCE |
+| Data imported | Event ID, title, start/end, all-day flag, recurrence, busy/free status, calendar ID |
+| Data exported | Tasks with a due time, as timed events on a dedicated NEXTDOO calendar |
+| Sync direction | Two-way for NEXTDOO-created events; one-way read for the user's other calendars |
+| Webhooks | Google push notification channels, renewed before expiry |
+| Polling fallback | Incremental sync token every 10 minutes when a channel is unhealthy |
+| Rate-limit handling | Respect 403/429 backoff, token bucket per connection, batched requests |
+| Token rotation | Refresh tokens encrypted; access tokens refreshed on demand and cached until expiry |
+
+### 16.2 Requested Permissions
+
+Request the minimum permissions required for the selected mode:
+
+- Read-only calendar access for availability display.
+- Read/write calendar access only when task-to-event synchronization is enabled.
+
+The user must choose the synchronization mode **before** authorization is completed. No Drive, contacts, or mail scopes are requested.
+
+### 16.3 Normalization
+
+External events are normalized into:
+
+```json
+{
+  "external_id": "google_event_123",
+  "calendar_id": "calendar_123",
+  "title": "Client meeting",
+  "starts_at": "2026-09-09T15:00:00-04:00",
+  "ends_at": "2026-09-09T16:00:00-04:00",
+  "time_zone": "America/New_York",
+  "is_all_day": false,
+  "busy": true,
+  "source": "google"
+}
+```
+
+### 16.4 Conflict Behavior
+
+- External calendar changes never silently overwrite user-authored task titles.
+- If both systems modify a mapped date, the mapping enters `CONFLICT`.
+- The user sees local and external values.
+- The user may select: keep the NEXTDOO value, keep the calendar value, or unlink the records.
+- Conflict decisions are audit-logged.
+
+### 16.5 Disconnect Behavior
+
+When a calendar is disconnected:
+
+- OAuth tokens are revoked where supported.
+- Tokens are deleted from application storage.
+- Mappings are retained as historical metadata for 30 days.
+- Future synchronization stops immediately.
+- Imported tasks remain unless the user explicitly chooses removal.
+- Exported calendar events are not automatically deleted by default.
+
+### 16.6 Acceptance Criteria
+
+- A task with a due time appears on the NEXTDOO calendar within 60 seconds.
+- Deleting the task removes the mapped event.
+- Deleting the event in Google marks the task unscheduled and notifies the user.
+- Sync never creates duplicate events for the same task (unique `(connection_id, task_id)` mapping).
+- A revoked or expired token pauses the connection and surfaces a reconnect prompt rather than failing silently.
+
+### 16.7 Integration Prioritization
 
 | Integration | Customer value | Implementation risk | Phase |
 |---|---|---|---|
@@ -1233,134 +1468,198 @@ All events carry `event_id`, `occurred_at`, `schema_version`, and are published 
 | Slack notifications | Medium | Low | Phase 2 |
 | Zapier / public API | Medium | Medium | Phase 3 |
 
-### 15.2 Google Calendar (MVP)
-
-| Aspect | Specification |
-|---|---|
-| Authentication | OAuth 2.0 authorization code with PKCE |
-| Scopes | `calendar.events` + `calendar.readonly` (least privilege; no Drive, no contacts) |
-| Data imported | Event id, title, start/end, all-day flag, recurrence, busy/free status, calendar id |
-| Data exported | Tasks with a due time, as timed events on a dedicated "NEXTDOO" calendar |
-| Sync direction | Two-way for NEXTDOO-created events; one-way read for user's other calendars |
-| Webhooks | Google push notification channels, renewed before expiry |
-| Polling fallback | Incremental sync token every 10 minutes when a channel is unhealthy |
-| Rate-limit handling | Respect 403/429 backoff, token-bucket per connection, batch requests |
-| Conflict behavior | If both sides changed since last sync, surface conflict UI; never auto-delete a user event |
-| Token rotation | Refresh tokens encrypted; access tokens refreshed on demand and cached ≤ expiry |
-| Disconnect behavior | Revoke tokens with the provider, retain mappings 30 days for reconnect, stop all jobs |
-| Data deletion | On disconnect + retention expiry, purge imported event cache and mappings |
-
-**Acceptance criteria:** a task with a due time appears on the NEXTDOO calendar within 60 seconds; deleting the task removes the event; deleting the event in Google marks the task as unscheduled and notifies the user; sync never creates duplicate events for the same task (unique `(connection_id, task_id)` mapping).
-
 ---
 
-## 16. AI And Voice
+## 17. AI And Voice
 
-### 16.1 Principles
+### 17.1 AI Scope
 
-AI is **assistive, explainable, and optional**. AI must never silently delete, reschedule, share, execute commands, or change billing.
+MVP AI is limited to:
 
-### 16.2 Features
+- Natural-language task parsing.
+- Task categorization suggestions.
+- Duplicate-task suggestions.
+- Basic execution summaries.
 
-| Feature | Phase | Implementation | Confirmation required |
-|---|---|---|---|
-| Natural-language task parsing | MVP | Deterministic grammar; LLM fallback opt-in | Only on low confidence |
-| Categorization (project/tag suggestion) | Phase 2 | Small model + heuristics | Yes, suggested chips |
-| Duplicate detection | Phase 2 | Embedding similarity + trigram | Yes |
-| Scheduling suggestions | Phase 2 | Rules over calendar capacity + history | Yes |
-| Weekly summarization | Phase 2 | LLM over aggregated, minimized data | No (read-only output) |
-| Voice capture | Phase 2 | Speech-to-text → same parser path | Yes, transcript shown |
+AI output must be **advisory** unless the user explicitly confirms a mutation. The default parsing path is a deterministic local grammar; the model-backed path is a fallback for unparsed input and is opt-in, budgeted, and schema-validated before any mutation.
 
-### 16.3 Architecture
+### 17.2 Structured AI Contract
 
+```json
+{
+  "operation": "parse_task",
+  "input": "Prepare Q3 report tomorrow at 2pm for 90 minutes #finance",
+  "result": {
+    "title": "Prepare Q3 report",
+    "due_at": "2026-09-09T14:00:00-04:00",
+    "estimate_minutes": 90,
+    "tags": ["finance"]
+  },
+  "confidence": {
+    "title": 0.99,
+    "due_at": 0.98,
+    "estimate_minutes": 0.91,
+    "tags": 0.96
+  },
+  "requires_confirmation": false,
+  "model_version": "task-parser-1"
+}
 ```
-Client → /v1/ai/* → AI Service
-  ├─ consent + entitlement check
-  ├─ quota + cost budget check (Redis counters)
-  ├─ redaction / minimization
-  ├─ provider adapter (primary, fallback)
-  ├─ structured output validation (zod / JSON schema)
-  ├─ confirmation gate for any mutation
-  └─ telemetry: tokens, latency, cost, model + prompt version
-```
 
-Prompt and model versions are stored in `packages/contracts` and pinned per release; every AI response records `prompt_version` and `model_id` for reproducibility.
+### 17.3 AI Safety Rules
 
-### 16.4 Controls
+AI must **not**: delete tasks · complete tasks without confirmation · reschedule tasks without confirmation · send messages · share data externally · modify billing · execute code · change security settings · create calendar events without confirmation.
+
+AI requests must have: per-user rate limits · per-plan quotas · maximum input size · maximum output size · provider timeout · fallback behavior · cost tracking · prompt and parser versioning · redaction of secrets and access tokens.
 
 | Control | Value |
 |---|---|
-| Cost budget | $0.30/user/month soft, $0.45 hard cap, then degrade to deterministic parser |
-| Rate limit | 10 requests/min per user |
-| Failure fallback | Deterministic parser; feature hidden with a clear notice on outage |
-| Data sent to third parties | Only with explicit opt-in; per-workspace toggle; excluded fields configurable |
-| Training | Contractual opt-out with providers; customer data never used to train models |
+| Cost budget | $0.30/user/month soft, $0.45 hard cap, then degrade to the deterministic parser |
+| Rate limit | 10 requests/minute per user |
+| Max input | 2,000 characters per parse request |
+| Provider timeout | 5 seconds, single retry on connection error only |
+| Data sent to third parties | Explicit opt-in; per-workspace toggle; excluded fields configurable |
+| Training | Contractual opt-out; customer data never used to train models |
 | Local models | Roadmap item for Phase 3 desktop (on-device parsing for privacy-sensitive users) |
+
+### 17.4 AI Failure Handling
+
+If AI fails or times out:
+
+- Preserve the original user input.
+- Offer ordinary manual task creation.
+- Do not partially apply a mutation.
+- Record a non-sensitive operational failure metric.
+- Avoid repeatedly retrying expensive requests without user action.
+
+### 17.5 Voice
+
+Voice capture is **Phase 2**. Requirements:
+
+- Explicit microphone permission.
+- Clear recording indicator.
+- Local deletion of temporary audio after transcription.
+- No background recording.
+- User confirmation before task creation.
+- Transcript editing before mutation.
+- Provider disclosure where third-party transcription is used.
 
 ---
 
-## 17. Monetization
+## 18. Monetization
 
-### 17.1 Entitlement Matrix
+### 18.1 Entitlement Model
 
-| Capability | Free | Pro | Team (P2) | Enterprise (P3) |
+Billing status is determined by verified provider webhooks and synchronized into an internal entitlement table. **The client cannot grant or extend access.**
+
+| Capability | Free | Pro | Team | Enterprise |
+|---|---|---|---|---|
+| Personal tasks | Limited | Unlimited | Unlimited | Unlimited |
+| Projects | Limited | Unlimited | Unlimited | Unlimited |
+| Calendar connections | 1 | Multiple | Multiple | Multiple |
+| Execution analytics | Basic | Advanced | Advanced | Advanced |
+| Historical analytics | 30 days | Unlimited | Unlimited | Unlimited |
+| Focus timer | Yes | Yes | Yes | Yes |
+| Attachments | Limited | Increased | Increased | Custom |
+| AI parsing | Limited | Increased | Shared quota | Custom |
+| Offline sync | Yes | Yes | Yes | Yes |
+| Shared workspaces | No | No | Yes | Yes |
+| Comments and mentions | No | No | Yes | Yes |
+| Team reporting | No | No | Yes | Yes |
+| SSO and SCIM | No | No | No | Yes |
+| Audit retention | Limited | Limited | Extended | Custom |
+| Support | Community | Standard | Priority | Dedicated |
+
+Exact limits must be configured server-side and exposed through an entitlement endpoint. Initial configured values (subject to the pricing validation plan in §2.11):
+
+| Limit | Free | Pro | Team | Enterprise |
 |---|---|---|---|---|
 | Active tasks | 200 | Unlimited | Unlimited | Unlimited |
 | Projects | 3 | Unlimited | Unlimited | Unlimited |
 | Attachment storage | 100 MB | 5 GB | 10 GB/seat | Negotiated |
 | Max file size | 10 MB | 100 MB | 250 MB | Negotiated |
 | Calendar connections | 1 read-only | 3 two-way | 5/seat | Unlimited |
-| Execution tracking history | 30 days | Unlimited | Unlimited | Unlimited |
-| Custom scoring rules | ✖ | 10 | 25 | Unlimited |
-| AI requests / month | 20 | 500 | 1,000/seat | Negotiated |
-| Focus timer & time tracking | ✔ | ✔ | ✔ | ✔ |
-| Offline desktop | ✔ | ✔ | ✔ | ✔ |
-| Export (CSV/JSON) | Manual, 1/day | Unlimited | Unlimited | Scheduled |
-| Collaboration seats | 1 | 1 | 2–50 | Unlimited |
-| Audit logs | ✖ | 30 days | 1 year | 7 years |
-| SSO / SCIM | ✖ | ✖ | ✖ | ✔ |
-| Support | Community | Email, 2 business days | Priority, 1 business day | SLA-backed |
+| Custom scoring rules | 0 | 10 | 25 | Unlimited |
+| AI requests/month | 20 | 500 | 1,000/seat | Negotiated |
+| Export | 1/day | Unlimited | Unlimited | Scheduled |
+| Seats | 1 | 1 | 2–50 | Unlimited |
+| Audit log retention | None | 30 days | 1 year | 7 years |
 
-### 17.2 Lifecycle Rules
+### 18.2 Subscription States
 
-| Situation | Behavior |
-|---|---|
-| Trial | 14 days of Pro, no card required; on expiry account becomes Free, no data deleted |
-| Upgrade | Immediate entitlement grant, prorated charge via Stripe |
-| Downgrade | Effective at period end; over-limit data becomes read-only, never deleted |
-| Failed payment | Stripe dunning; 7-day grace with full access; then Free with banner |
-| Cancellation | Access until period end; export available for 30 days |
-| Refunds | Pro-rated refund within 14 days of first charge; case-by-case afterwards |
-| Taxes | Handled by Stripe Tax; VAT/GST collected where required |
-| Marketplace revenue share | Phase 3: 80/20 developer/platform split, documented before SDK launch |
+`TRIALING` · `ACTIVE` · `PAST_DUE` · `GRACE_PERIOD` · `CANCELED` · `EXPIRED` · `PAUSED`
 
-### 17.3 Entitlement Integrity
+| From | To | Trigger |
+|---|---|---|
+| TRIALING | ACTIVE | Successful first payment |
+| TRIALING | EXPIRED | Trial ends without payment |
+| ACTIVE | PAST_DUE | Payment failure |
+| PAST_DUE | GRACE_PERIOD | Dunning window opens |
+| GRACE_PERIOD | ACTIVE | Payment recovered |
+| GRACE_PERIOD | EXPIRED | Dunning exhausted |
+| ACTIVE | CANCELED | User cancels; access until period end |
+| CANCELED | EXPIRED | Paid period ends |
+| ACTIVE | PAUSED | Supported pause request |
 
-Entitlements are derived **only** from verified Stripe webhooks, stored server-side, and cached with a short TTL. A client-side response never grants access. Webhook handling is idempotent on Stripe `event.id`, and a nightly reconciliation job compares Stripe subscription state to local entitlements and alerts on drift.
+### 18.3 Billing Rules
+
+- Provider webhooks are signature-verified.
+- Webhook events are idempotently processed (deduplicated on provider `event.id`).
+- Entitlements are updated transactionally.
+- Downgrades do not delete user data; over-limit data becomes read-only.
+- Limits apply at the next billing period unless legally required otherwise.
+- Failed payments enter a grace period (7 days with full access).
+- Users receive warnings before access is restricted.
+- Cancellation preserves access through the paid period; export remains available for 30 days.
+- Billing history remains available for tax and accounting retention.
+- Refunds are handled through the billing provider and reflected through webhook events; pro-rated within 14 days of first charge, case-by-case afterwards.
+- Taxes are handled by the provider's tax service; VAT/GST collected where required.
+- Marketplace revenue share (Phase 3): 80/20 developer/platform, documented before SDK launch.
+
+A nightly reconciliation job compares provider subscription state against local entitlements and alerts on drift.
 
 ---
 
-## 18. Testing And Quality Gates
+## 19. Testing And Quality Gates
 
-### 18.1 Test Strategy
+### 19.1 Test Categories
 
-| Layer | Tool | Scope | Target |
-|---|---|---|---|
-| Unit | Vitest | Domain logic: recurrence, scoring, parser, conflict rules | ≥ 85% on `packages/core` |
-| Component | Vitest + Testing Library | UI components, states | Critical components covered |
-| Integration | Vitest + ephemeral PG/Redis | Repositories, workers, transactions | All mutation paths |
-| Contract | OpenAPI + zod snapshot | API request/response shapes | 100% of `/v1` endpoints |
-| E2E | Playwright | Capture → plan → focus → complete → review | Core loop on Chromium + WebView2 |
-| Sync/conflict | Deterministic simulator | Multi-device, offline, partial failure | Scenario matrix below |
-| Calendar | Sandbox account + mocked API | Two-way sync, tokens, revocation | All acceptance criteria |
-| Security | SAST, dependency, secret scan, ASVS L2 checklist | Every PR | Zero high findings |
-| Accessibility | axe-core + manual keyboard/screen-reader | Every core screen | Zero critical violations |
-| Performance | Lighthouse CI + API benchmarks | Web vitals, p95 latency | Budgets enforced |
-| Load | k6 | 10× expected peak | SLOs hold |
-| Backup/restore | Scheduled job | Monthly restore into clean env | RTO/RPO verified |
-| Chaos | Fault injection | DB failover, Redis loss, provider 5xx, clock skew | Graceful degradation |
+| Category | Coverage | Tooling |
+|---|---|---|
+| Unit | Domain rules, scoring, recurrence, authorization policies | Vitest |
+| Component | Forms, views, state transitions, accessibility behavior | Vitest + Testing Library |
+| Integration | Database transactions, outbox, queues, object storage | Vitest + ephemeral PostgreSQL/Redis |
+| Contract | API schemas and event schemas | OpenAPI + zod snapshots |
+| End-to-end | Capture, planning, focus, completion, review, billing | Playwright (Chromium + WebView2) |
+| Sync | Offline mutations, retries, conflicts, tombstones | Deterministic multi-device simulator |
+| Calendar | OAuth, import, export, conflict resolution | Sandbox account + mocked provider |
+| Security | Authentication, authorization, uploads, webhooks, rate limits | SAST, dependency and secret scanning, ASVS L2 checklist |
+| Accessibility | Keyboard, screen readers, contrast, reduced motion | axe-core + manual passes |
+| Performance | API latency, sync throughput, search, analytics | Lighthouse CI + API benchmarks |
+| Reliability | Retry behavior, dead letters, restore, failover | k6 load tests + fault injection |
 
-### 18.2 Sync Scenario Matrix
+Coverage target: ≥ 85% on `packages/core`; 100% of `/v1` endpoints under contract test.
+
+### 19.2 Required Acceptance Tests
+
+The MVP cannot ship unless:
+
+1. A user can create a task offline and synchronize it later.
+2. Duplicate mutation delivery does not duplicate the task.
+3. A task completed on one device appears completed on another.
+4. Conflicting title edits do not silently destroy either version.
+5. Recurring occurrences are not duplicated after worker retries.
+6. Reminders are canceled after task completion.
+7. Calendar disconnect removes stored OAuth credentials.
+8. Billing access cannot be granted through client-side modification.
+9. Deleted accounts cannot authenticate.
+10. Export files expire and become inaccessible.
+11. Attachment malware detection blocks unsafe downloads.
+12. Analytics show `Unmeasured` when required data is missing.
+13. All critical flows are keyboard accessible.
+14. Database restore has been tested successfully.
+
+### 19.3 Sync Scenario Matrix
 
 | ID | Scenario | Expected |
 |---|---|---|
@@ -1375,91 +1674,240 @@ Entitlements are derived **only** from verified Stripe webhooks, stored server-s
 | SY-09 | Batch with one invalid mutation | Others applied; invalid quarantined |
 | SY-10 | 5,000 queued offline mutations | Drained without duplication or timeout |
 
-### 18.3 Release Gates
+### 19.4 Release Gates
 
-| Gate | Criterion |
+A release requires:
+
+- No unresolved critical security issues.
+- No unresolved data-loss issue.
+- Passing migration tests.
+- Passing synchronization tests.
+- Passing core end-to-end tests.
+- Accessibility checks completed.
+- Monitoring dashboards updated.
+- Alerts tested.
+- Rollback procedure verified.
+- Support documentation available.
+- Feature flag and kill-switch behavior verified.
+
+| Gate | Objective criterion |
 |---|---|
-| Correctness | All unit/integration/E2E green; sync matrix green |
-| Security | No high/critical SAST, dependency, or secret findings; ASVS L2 items for touched areas verified |
+| Correctness | Unit, integration, E2E, and sync matrix green |
+| Security | No high/critical SAST, dependency, or secret findings; ASVS L2 items verified for touched areas |
 | Accessibility | No critical axe violations; keyboard path verified on changed screens |
 | Performance | p95 read < 300 ms, write < 500 ms in staging load test; web vitals budget met |
 | Reliability | Error budget not exhausted; alerting in place for new jobs |
-| Migration safety | Backward-compatible, tested rollback or restore plan |
+| Migration safety | Backward-compatible with a tested rollback or restore plan |
 | Observability | New paths emit traces, metrics, and structured logs with request IDs |
 | Rollback readiness | Feature flag or documented revert within 15 minutes |
 
 ---
 
-## 19. Delivery Plan (12 Months)
+## 20. Analytics And Instrumentation
 
-### 19.1 Team Composition
+### 20.1 Product Events
 
-| Role | Count | Notes |
-|---|---|---|
-| Full-stack engineer | 3 | One owns sync, one owns tracking, one owns product surface |
-| Frontend/design engineer | 1 | Design system, accessibility, desktop shell |
-| Product/PM (founder) | 1 | Research, prioritization, GTM |
-| Part-time SRE/security | 0.5 | Infra, on-call setup, ASVS, pen-test coordination |
-| Part-time support/success | 0.5 | From beta onwards |
+Track: account created · first task created · first task completed · first project created · first calendar connected · first focus session started · first weekly review completed · first execution result viewed · first export requested · trial started · subscription started · subscription canceled.
 
-Capacity assumption: ~4.5 engineering FTE, 70% on roadmap, 20% on quality/ops, 10% on unplanned work.
+### 20.2 Activation Definition
 
-### 19.2 Milestones
+A user is activated when, within seven days, they:
 
-| Milestone | Months | Ships | Explicitly deferred | Go/no-go |
-|---|---|---|---|---|
-| M0 Foundations | 1 | Monorepo, CI, auth, workspace, PG schema, observability skeleton | Any UI polish | Auth + deploy pipeline working end-to-end |
-| M1 Task core | 2–3 | Tasks, subtasks, projects, sections, tags, list view, quick capture | Board/calendar views | Core CRUD passes E2E + contract tests |
-| M2 Time & sync | 4–5 | Offline queue, sync protocol, desktop shell, timer, time tracking | Multi-workspace | Sync scenario matrix green |
-| M3 Tracking v1 | 6–7 | Events, scoring, explanations, daily/weekly analytics, review flow | Custom rules | Tracking acceptance tests green |
-| M4 Calendar & reminders | 8 | Google Calendar two-way, reminders, notifications | Outlook/CalDAV | Calendar acceptance criteria met |
-| M5 Private alpha | 9 | Billing, entitlements, export, deletion, board + calendar views | Collaboration | 30 alpha users, no SEV-1 for 2 weeks |
-| M6 Public beta | 10–11 | Hardening, performance, accessibility, docs, status page, support tooling | Mobile | SLOs met 30 days; ≥ 25% alpha conversion |
-| M7 GA | 12 | Pricing live, marketing site, onboarding, pen-test remediation | Enterprise | Pen test clean; restore test passed; error budget healthy |
+- Create at least three tasks.
+- Set at least one estimate.
+- Complete at least one task.
+- View or use the daily planning screen.
+- Return on at least two separate days.
 
-### 19.3 Technical Spikes
+> Activation criteria must be tested against retention outcomes and revised if they do not predict meaningful product value.
 
-| Spike | Question | Timebox |
-|---|---|---|
-| Sync protocol prototype | Does the mutation-queue model hold under the scenario matrix? | 2 weeks (M0–M1) |
-| Tauri + SQLite + WebView2 | Packaging, auto-update, notification, shortcut reliability on Windows | 1 week (M2) |
-| Recurrence + DST | Does the occurrence-key model survive time-zone edge cases? | 1 week (M1) |
-| Calendar two-way | Duplicate/echo prevention with push channels | 1 week (M4) |
-| Tracking recalculation cost | Backfill cost at 100k tasks | 3 days (M3) |
+### 20.3 Metrics
 
-### 19.4 Per-Phase Requirements
+| Metric | Definition |
+|---|---|
+| Task capture latency | Time from capture UI open to saved task |
+| First-value time | Time from account creation to first completed task |
+| Weekly review rate | Activated users completing a review each week |
+| On-time completion | Tasks completed at or before planned due time |
+| Estimate accuracy | Difference between estimate and actual duration |
+| Reschedule rate | Rescheduled tasks divided by planned tasks |
+| Sync success | Mutations acknowledged without user intervention |
+| Calendar freshness | Time since last successful sync |
+| AI acceptance rate | Parsed suggestions accepted without major correction |
+| Paid conversion | Trial users becoming paid |
+| Gross margin | Revenue minus direct infrastructure and provider costs |
+| Churn | Customers lost in a billing period |
 
-Every milestone must ship with: instrumentation for its funnel events · at least 5 user-research sessions · written acceptance criteria · success metrics · an operational readiness checklist (alerts, runbook, dashboard, rollback, on-call owner).
+Analytics must distinguish: personal versus team users · free versus paid users · acquisition source · platform · cohort · time zone · consent state.
 
-### 19.5 Launch Risks
-
-| Risk | Impact | Mitigation |
-|---|---|---|
-| Sync complexity slips M2 | Everything downstream slips | Spike first, cut multi-workspace, keep conflict UI minimal |
-| Tracking feels punitive | Core differentiator rejected | Wellbeing controls, language review, alpha qualitative testing |
-| Google Calendar review delays | M4 slips | Start verification early; ship one-way read first |
-| Windows desktop support cost | Support overload | Crash telemetry, auto-update, staged rollout |
-| Low willingness to pay | No revenue | Pricing validation plan (§2.11) before GA |
-| Solo-founder key-person risk | Delivery risk | Documentation, ADRs, pairing on critical modules |
+> Do not collect unnecessary task content for analytics. Product telemetry is stored separately from user-facing execution analytics, and content fields are excluded by default.
 
 ---
 
-## 20. Final Decision Register
+## 21. Delivery Plan
 
-### 20.1 Architecture Decisions
+### 21.1 Team Assumptions
+
+Initial team:
+
+- 1 product manager/founder.
+- 1 product designer.
+- 2 full-stack engineers.
+- 1 desktop/client engineer.
+- 1 part-time QA or automation engineer.
+- 1 part-time security/SRE consultant.
+- 1 part-time growth/customer-support operator.
+
+The plan assumes a small team and prioritizes modular architecture over parallel feature development. Capacity assumption: roughly 4.5 engineering FTE, with 70% on roadmap, 20% on quality and operations, and 10% on unplanned work.
+
+### 21.2 Twelve-Month Roadmap
+
+| Period | Focus | Exit criteria |
+|---|---|---|
+| Months 1–2 | Architecture, authentication, database, task core | Tasks and accounts work in staging |
+| Months 3–4 | Projects, views, recurrence, reminders | Core task workflow passes acceptance tests |
+| Months 5–6 | Timers, tracking events, analytics | Explainable execution results available |
+| Months 7–8 | Offline sync, Windows desktop, attachments | Cross-platform synchronization passes conflict tests |
+| Month 9 | Google Calendar, billing, exports, deletion | Paid beta operational |
+| Month 10 | Accessibility, performance, security hardening | Release gates pass |
+| Month 11 | Private beta and user research | Retention and reliability issues prioritized |
+| Month 12 | Public beta or GA decision | Go/no-go criteria satisfied |
+
+### 21.3 Milestone Details
+
+#### Milestone 1: Foundation
+
+**Includes:** repository and CI · environment configuration · authentication · user and workspace models · database migrations · API conventions · error handling · logging and tracing · basic web shell.
+
+**Deferred:** desktop client · AI · calendar · billing.
+
+**Required instrumentation:** deploy success rate · authentication error rate · request tracing coverage.
+
+#### Milestone 2: Core Task Management
+
+**Includes:** quick capture · tasks · subtasks · projects · sections · tags · list and board views · due dates · estimates · archive and restore.
+
+**Deferred:** calendar view · collaboration · custom fields.
+
+**Required instrumentation:** capture latency · task creation success rate · task mutation error rate · active-task count.
+
+#### Milestone 3: Planning And Execution
+
+**Includes:** calendar view · daily planning · focus timer · manual time logging · reminders · recurrence · completion and rescheduling flows.
+
+**Deferred:** smart scheduling · automations.
+
+**Required instrumentation:** timer usage · reminder delivery · reschedule rate · daily planning usage · recurrence failures.
+
+#### Milestone 4: Tracking And Analytics
+
+**Includes:** append-only tracking events · calculation pipeline · execution results · daily analytics · weekly review · explainability interface · score controls.
+
+**Deferred:** user-defined scoring rules · team reporting.
+
+**Required instrumentation:** result-view rate · score correction rate · analytics engagement · unmeasured result rate.
+
+#### Milestone 5: Cross-Platform Reliability
+
+**Includes:** desktop application · local SQLite store · web IndexedDB store · mutation queue · sync cursors · conflict UI · tombstones · offline capture.
+
+**Deferred:** mobile clients · multi-workspace switching.
+
+**Required instrumentation:** sync latency · mutation retries · conflict frequency · queue depth · data-integrity checks.
+
+#### Milestone 6: Commercial Readiness
+
+**Includes:** Google Calendar · billing · entitlements · data export · account deletion · attachment scanning · support tools · status page · operational dashboards.
+
+**Deferred:** Outlook and CalDAV · public API · marketplace.
+
+**Required instrumentation:** trial conversion · billing webhook failures · calendar sync freshness · export completion · deletion completion.
+
+### 21.4 Beta Stages
+
+**Private alpha**
+
+- 10 to 25 users.
+- Founder-led onboarding.
+- Manual support.
+- Daily issue review.
+- No expectation of broad reliability.
+
+**Private beta**
+
+- 50 to 150 users.
+- At least three user segments.
+- Automated crash and sync monitoring.
+- Weekly research interviews and issue triage.
+- Published known-issues list.
+- Entry gate: no SEV-1 for two consecutive weeks in alpha.
+
+**Public beta**
+
+- Open signup with a paid plan available.
+- SLOs measured and published internally.
+- Status page live.
+- Support response targets enforced.
+- Entry gate: 30 days meeting SLOs; sync scenario matrix green; restore test passed.
+
+**General availability**
+
+- Pricing live and marketing site published.
+- Penetration-test findings remediated.
+- Documented runbooks and on-call rotation.
+- Entry gate: clean pen test, healthy error budget, verified backup restore, go/no-go review completed.
+
+### 21.5 Technical Spikes
+
+| Spike | Question | Timebox |
+|---|---|---|
+| Sync protocol prototype | Does the mutation-queue model hold under the scenario matrix? | 2 weeks (M1) |
+| Tauri + SQLite + WebView2 | Packaging, auto-update, notifications, shortcut reliability on Windows | 1 week (M5) |
+| Recurrence and DST | Does the occurrence-key model survive time-zone edge cases? | 1 week (M3) |
+| Calendar two-way | Duplicate and echo prevention with push channels | 1 week (M6) |
+| Tracking recalculation cost | Backfill cost at 100,000 tasks | 3 days (M4) |
+
+### 21.6 Launch Risks
+
+| Risk | Impact | Mitigation |
+|---|---|---|
+| Sync complexity slips Milestone 5 | Everything downstream slips | Spike first, cut multi-workspace, keep conflict UI minimal |
+| Tracking feels punitive | Core differentiator rejected | Wellbeing controls, language review, alpha qualitative testing |
+| Google Calendar verification delays | Milestone 6 slips | Start verification early; ship one-way read first |
+| Windows desktop support cost | Support overload | Crash telemetry, auto-update, staged rollout |
+| Low willingness to pay | No revenue | Pricing validation plan before GA |
+| Key-person concentration | Delivery risk | Documentation, decision records, pairing on critical modules |
+
+### 21.7 Go/No-Go Criteria
+
+| Criterion | Threshold |
+|---|---|
+| Data integrity | Zero known data-loss defects |
+| Reliability | SLOs met for 30 consecutive days |
+| Security | No unresolved high or critical findings |
+| Accessibility | No critical violations on core flows |
+| Commercial | Billing, entitlement, refund, and deletion paths verified end to end |
+| Support | Runbooks, status page, and response targets in place |
+| Demand | Alpha-to-paid conversion at or above target |
+
+---
+
+## 22. Final Decision Register
+
+### 22.1 Architecture Decisions
 
 | ID | Decision | Rationale |
 |---|---|---|
-| AD-01 | Modular monolith + workers | Cross-domain consistency; extract later on measured need |
-| AD-02 | Drizzle over Prisma | SQL-first, no query engine binary, cheaper container/desktop footprint |
-| AD-03 | PostgreSQL FTS before a search engine | Adequate at expected scale; avoids a second system of record |
-| AD-04 | Mutation queue, not CRDTs, for MVP | Scalar-dominant model; CRDT cost unjustified pre-collaboration |
+| AD-01 | Modular monolith with workers | Cross-domain consistency; extract later on measured need |
+| AD-02 | Drizzle over Prisma | SQL-first, no query engine binary, cheaper container and desktop footprint |
+| AD-03 | PostgreSQL full-text search before a search engine | Adequate at expected scale; avoids a second system of record |
+| AD-04 | Mutation queue, not CRDTs, for MVP | Scalar-dominant model; CRDT cost unjustified before collaborative editing |
 | AD-05 | SQLite (desktop) + IndexedDB (web) behind one repository abstraction | Shared sync logic, platform-appropriate storage |
-| AD-06 | Transactional outbox for events | Guarantees event/state consistency |
-| AD-07 | BullMQ on Redis for jobs | Operational simplicity; managed queue only if throughput demands |
-| AD-08 | Stripe for billing, webhook-driven entitlements | Never rebuild billing; integrity from server-verified events |
+| AD-06 | Transactional outbox for events | Guarantees event and state consistency |
+| AD-07 | Redis-backed durable queue for jobs | Operational simplicity; managed queue only if throughput demands |
+| AD-08 | Billing provider with webhook-driven entitlements | Never rebuild billing; integrity from server-verified events |
 
-### 20.2 Product Decisions
+### 22.2 Product Decisions
 
 | ID | Decision |
 |---|---|
@@ -1468,80 +1916,80 @@ Every milestone must ship with: instrumentation for its funnel events · at leas
 | PD-03 | Scores are explainable, correctable, and disableable |
 | PD-04 | No leaderboards or cross-user comparison in MVP |
 | PD-05 | Google Calendar is the only integration at launch |
-| PD-06 | Deterministic parser is the default; LLM is fallback and opt-in |
-| PD-07 | Windows-only desktop at launch; macOS/Linux after PMF |
+| PD-06 | Deterministic parser is the default; the model path is fallback and opt-in |
+| PD-07 | Windows-only desktop at launch; macOS and Linux after product-market fit |
 
-### 20.3 Security Decisions
+### 22.3 Security Decisions
 
 | ID | Decision |
 |---|---|
-| SD-01 | No shell commands, no user scripts, no unreviewed plugins in MVP |
-| SD-02 | OWASP ASVS L2 as the verification baseline |
-| SD-03 | OAuth tokens under envelope encryption with rotating KEK |
+| SD-01 | No shell commands, user scripts, or unreviewed plugins in MVP |
+| SD-02 | OWASP ASVS Level 2 as the verification baseline |
+| SD-03 | OAuth tokens under envelope encryption with a rotating key-encryption key |
 | SD-04 | Entitlements only from verified provider webhooks |
 | SD-05 | AI opt-in for third-party processing; no training on customer data |
 | SD-06 | Object-level authorization on every read and write |
 
-### 20.4 Deferred Decisions
+### 22.4 Deferred Decisions
 
-Mobile framework (React Native vs native) · dedicated search engine choice · multi-region residency architecture · plugin sandbox technology · workspace-level E2EE scope · Team pricing per-seat vs flat · analytics warehouse choice.
+Mobile framework · dedicated search engine choice · multi-region residency architecture · plugin sandbox technology · workspace-level end-to-end encryption scope · Team pricing model (per-seat versus flat) · analytics warehouse choice.
 
-### 20.5 Highest-Risk Assumptions
+### 22.5 Highest-Risk Assumptions
 
 1. Users will maintain estimates consistently enough for estimate accuracy to be meaningful.
 2. Explainable execution scoring is motivating rather than discouraging.
-3. Individual professionals will pay ~$8/month for planning feedback.
+3. Individual professionals will pay the hypothesized price for planning feedback.
 4. Google Calendar alone is sufficient integration coverage at launch.
-5. Offline sync can be made reliable enough to be a trust asset with 4.5 FTE.
+5. Offline sync can be made reliable enough to be a trust asset with the assumed team size.
 6. Tracking data creates real switching cost within 90 days of use.
 
-### 20.6 Required Experiments
+### 22.6 Required Experiments
 
 | Experiment | Validates | Success signal |
 |---|---|---|
-| Estimate prompt A/B (required vs optional) | Assumption 1 | ≥ 60% of tasks carry an estimate |
-| Score presentation test (score vs narrative only) | Assumption 2 | Higher week-4 retention in winning arm |
+| Estimate prompt A/B (required versus optional) | Assumption 1 | ≥ 60% of tasks carry an estimate |
+| Score presentation test (score versus narrative only) | Assumption 2 | Higher week-4 retention in the winning arm |
 | Paid alpha at list price | Assumption 3 | ≥ 25% conversion |
 | Integration demand survey during beta | Assumption 4 | < 20% cite a missing integration as a blocker |
-| Chaos + offline drills | Assumption 5 | Zero data-loss findings across the matrix |
+| Chaos and offline drills | Assumption 5 | Zero data-loss findings across the matrix |
 | Cohort analysis of analytics users | Assumption 6 | Analytics viewers churn at less than half the rate |
 
-### 20.7 Open Questions
+### 22.7 Open Questions
 
-- Should Free include any execution tracking history at all, or a 7-day teaser?
+- Should Free include any execution tracking history at all, or a seven-day teaser?
 - Is the weekly review a page, an email, or both?
 - Should calendar events be plannable objects or purely context?
 - How much history should the desktop client cache offline by default?
-- Do we ship a public roadmap during beta?
+- Do we publish a public roadmap during beta?
 
-### 20.8 Top Ten Failure Modes
+### 22.8 Top Ten Failure Modes
 
 | # | Failure mode | Detection | Mitigation |
 |---|---|---|---|
 | 1 | Silent sync data loss | Integrity checks, client/server entity diff canary | Conflict snapshots, no destructive merges, alert on diff |
 | 2 | Duplicate recurrence generation | Unique occurrence keys, duplicate metric | Idempotency keys, advisory locks |
-| 3 | Reminder storm after outage | Queue depth alert | Expiry window, dispatch rate limit |
+| 3 | Reminder storm after an outage | Queue depth alert | Expiry window, dispatch rate limit |
 | 4 | Calendar echo loop | Sync-origin tagging, event rate metric | Origin markers, loop breaker, backoff |
-| 5 | Entitlement drift after webhook loss | Nightly reconciliation | Replay Stripe events, alert on mismatch |
-| 6 | Tracking backfill saturates the DB | Job latency + DB CPU alerts | Chunked, rate-limited, off-peak backfills |
-| 7 | Attachment malware served to users | Scan status gating, scanner health check | Block downloads until `CLEAN`, quarantine |
-| 8 | AI cost blowout | Per-user and global cost counters | Hard caps, degrade to deterministic path |
-| 9 | Desktop auto-update bricks clients | Crash telemetry, update success rate | Staged rollout, rollback channel |
+| 5 | Entitlement drift after webhook loss | Nightly reconciliation | Replay provider events, alert on mismatch |
+| 6 | Tracking backfill saturates the database | Job latency and database CPU alerts | Chunked, rate-limited, off-peak backfills |
+| 7 | Attachment malware served to users | Scan status gating, scanner health check | Block downloads until clean, quarantine |
+| 8 | AI cost blowout | Per-user and global cost counters | Hard caps, degrade to the deterministic path |
+| 9 | Desktop auto-update breaks clients | Crash telemetry, update success rate | Staged rollout, rollback channel |
 | 10 | Punitive analytics drives churn | Cohort retention by analytics exposure | Wellbeing controls, language review, opt-out |
 
-### 20.9 Recommended First Engineering Tickets
+### 22.9 Recommended First Engineering Tickets
 
 | # | Ticket | Outcome |
 |---|---|---|
-| 1 | Scaffold pnpm + Turborepo monorepo with `web`, `api`, `worker`, `core`, `db`, `contracts` | Buildable skeleton, CI on PR |
-| 2 | PostgreSQL + Drizzle baseline schema: users, sessions, workspaces, projects, sections, tasks | Migrations run in CI |
-| 3 | Auth module: register, login, verify, reset, sessions, revocation, Argon2id | E2E auth flow green |
+| 1 | Scaffold pnpm and Turborepo monorepo with `web`, `api`, `worker`, `core`, `db`, `contracts` | Buildable skeleton with CI on pull requests |
+| 2 | PostgreSQL and Drizzle baseline schema: users, sessions, workspaces, projects, sections, tasks | Migrations run in CI |
+| 3 | Authentication module: register, login, verify, reset, sessions, revocation, Argon2id | End-to-end authentication flow green |
 | 4 | Task CRUD API with optimistic versioning and RFC 7807 errors | Contract tests pass |
-| 5 | Transactional outbox + BullMQ worker skeleton with idempotency helper | One job end-to-end |
-| 6 | Tracking event writer wired to task mutations | Events append-only with idempotency |
-| 7 | Sync protocol v1: `/v1/sync/push` and `/v1/sync/pull` with cursor and tombstones | Scenario matrix SY-01…SY-05 green |
+| 5 | Transactional outbox and worker skeleton with an idempotency helper | One job end to end |
+| 6 | Tracking event writer wired to task mutations | Append-only events with idempotency |
+| 7 | Sync protocol v1: `/v1/sync/push` and `/v1/sync/pull` with cursor and tombstones | Scenario matrix SY-01 through SY-05 green |
 | 8 | Web shell: Today, Inbox, quick capture, list view with optimistic updates | Core loop clickable |
-| 9 | Deterministic NL parser package with confidence scores | Parser unit suite green |
+| 9 | Deterministic natural-language parser package with confidence scores | Parser unit suite green |
 | 10 | Observability baseline: OpenTelemetry traces, request IDs, structured logs, health checks | Dashboards and alerts live |
 
 ---
@@ -1554,8 +2002,9 @@ Mobile framework (React Native vs native) · dedicated search engine choice · m
 | Execution result | A calculated, explainable outcome record for a task or occurrence |
 | Unmeasured | A component excluded from scoring due to insufficient data |
 | Mutation | A client-originated change submitted through the sync protocol |
-| Tombstone | A record marking an entity as deleted for sync purposes |
+| Tombstone | A record marking an entity as deleted for synchronization purposes |
 | Entitlement | A server-side capability grant derived from billing state |
+| Outbox | A table written in the same transaction as a domain change, later published as events |
 | Wedge | The narrow initial advantage the product competes on |
 
 ## Appendix B — Document Control
@@ -1565,4 +2014,4 @@ Mobile framework (React Native vs native) · dedicated search engine choice · m
 | Owner | Product (founder) |
 | Reviewers | Engineering, Security, SRE, Design |
 | Review cadence | Per milestone |
-| Change process | PR against `docs/PRD.md` with decision-register update |
+| Change process | Pull request against `docs/PRD.md` with a decision-register update |
