@@ -51,3 +51,13 @@ atomically under a per-user/key PostgreSQL advisory lock. Canonical request hash
 includes method/path/query/body. Legacy response-only ledger entries are rejected
 rather than guessed or silently reexecuted. Full verification: **207 tests and
 2 E2E passed**, lint/typecheck/coverage/build passed.
+
+### Commit-ordered sync cursors
+
+A real two-connection regression reproduced the late-commit skip. Migration 0002
+assigns sync sequence numbers inside a BEFORE INSERT trigger after acquiring a
+global transaction advisory lock, so a higher number cannot commit first. This
+covers application, worker and raw SQL writers. **Throughput tradeoff:** sync writes
+serialize globally through commit; no claim of production load/SLO validation.
+Migration applied successfully and rerun was a no-op. Regression green and full
+verification passed: **208 tests, 2 E2E**, lint/typecheck/coverage/build.
