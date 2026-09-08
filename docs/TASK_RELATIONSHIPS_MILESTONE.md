@@ -166,3 +166,10 @@ No recurrence workflow, full offline client, Google Calendar, billing integratio
 attachments, desktop, Phase 2 collaboration or enterprise feature was added. Prior
 production security, retention, provider, accessibility, load, observability and
 restore gates remain open. Scoped axe checks are not full WCAG certification.
+
+
+## Subsequent continuation
+
+The task lifecycle/recovery UI is now documented in
+[Task archive, deletion and recovery milestone](TASK_LIFECYCLE_MILESTONE.md).
+This relationship report retains its original counts and milestone-specific evidence.

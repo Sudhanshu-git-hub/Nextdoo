@@ -1,9 +1,10 @@
 import { createTag } from './projects';
-import { and, desc, eq, getTableColumns, gte, inArray, isNull, lt, lte, or, sql } from 'drizzle-orm';
+import { and, desc, eq, getTableColumns, gt, gte, inArray, isNotNull, isNull, lt, lte, or, sql } from 'drizzle-orm';
 import {
   AppError,
   isoDateTime,
   uuid,
+  taskVersionSchema,
   type CreateTaskInput,
   type TaskQueryInput,
   type UpdateTaskInput,
@@ -37,6 +38,7 @@ export interface TaskActor {
 }
 
 export type TaskRow = typeof tasks.$inferSelect;
+export const TASK_RESTORE_WINDOW_MS = 30 * 86_400_000;
 
 function serialise(task: TaskRow) {
   return {
@@ -59,6 +61,8 @@ function serialise(task: TaskRow) {
     version: task.version,
     completedAt: task.completedAt?.toISOString() ?? null,
     archivedAt: task.archivedAt?.toISOString() ?? null,
+    deletedAt: task.deletedAt?.toISOString() ?? null,
+    restoreUntil: task.status === 'DELETED' && task.deletedAt ? new Date(task.deletedAt.getTime() + TASK_RESTORE_WINDOW_MS).toISOString() : null,
     createdAt: task.createdAt.toISOString(),
     updatedAt: task.updatedAt.toISOString(),
   };
@@ -493,13 +497,16 @@ export async function archiveTask(actor: TaskActor, taskId: string, version: num
       payload: serialise(updated) as unknown as Record<string, unknown>,
       version: updated.version,
     });
+    await publishEvent(tx, { workspaceId: actor.workspaceId, actorId: actor.userId, entityType: 'task', entityId: taskId, eventType: 'task.archived', correlationId: actor.requestId, payload: { version: updated.version } });
+    await writeAudit(tx, { workspaceId: actor.workspaceId, actorId: actor.userId, action: 'task.archived', targetType: 'task', targetId: taskId, requestId: actor.requestId, metadata: { fromStatus: current.status, version: updated.version } });
     await scheduleTrackingEvaluation(actor.workspaceId, taskId);
     return serialise(updated);
   });
 }
 
 /** Soft delete with a tombstone and a 30-day restore window (PRD §13.5). */
-export async function deleteTask(actor: TaskActor, taskId: string): Promise<void> {
+export async function deleteTask(actor: TaskActor, taskId: string, version?: number): Promise<void> {
+  if (version !== undefined) taskVersionSchema.parse({ version });
   await withWorkspaceTransaction(actor.workspaceId, async (tx) => {
     const rows = await tx
       .select()
@@ -508,13 +515,16 @@ export async function deleteTask(actor: TaskActor, taskId: string): Promise<void
       .limit(1);
     const current = rows[0];
     if (!current) throw notFound('task', taskId);
+    if (version !== undefined && current.version !== version) throw versionConflict('task', taskId);
     if (current.status === 'DELETED') return;
 
     const now = new Date();
-    await tx
+    const [deleted] = await tx
       .update(tasks)
       .set({ status: 'DELETED', deletedAt: now, updatedAt: now, version: sql`${tasks.version} + 1` })
-      .where(eq(tasks.id, taskId));
+      .where(and(eq(tasks.id, taskId), eq(tasks.workspaceId, actor.workspaceId), eq(tasks.version, current.version)))
+      .returning({ id: tasks.id });
+    if (!deleted) throw versionConflict('task', taskId);
 
     await tx
       .insert(syncTombstones)
@@ -524,7 +534,7 @@ export async function deleteTask(actor: TaskActor, taskId: string): Promise<void
         entityType: 'task',
         entityId: taskId,
         deletedAt: now,
-        purgeAfter: new Date(now.getTime() + 30 * 86_400_000),
+        purgeAfter: new Date(now.getTime() + TASK_RESTORE_WINDOW_MS),
       })
       .onConflictDoNothing();
 
@@ -555,7 +565,8 @@ export async function deleteTask(actor: TaskActor, taskId: string): Promise<void
   });
 }
 
-export async function restoreTask(actor: TaskActor, taskId: string): Promise<SerialisedTask> {
+export async function restoreTask(actor: TaskActor, taskId: string, version?: number): Promise<SerialisedTask> {
+  if (version !== undefined) taskVersionSchema.parse({ version });
   return withWorkspaceTransaction(actor.workspaceId, async (tx) => {
     const rows = await tx
       .select()
@@ -564,8 +575,9 @@ export async function restoreTask(actor: TaskActor, taskId: string): Promise<Ser
       .limit(1);
     const current = rows[0];
     if (!current) throw notFound('task', taskId);
+    if (version !== undefined && current.version !== version) throw versionConflict('task', taskId);
     nextStatus(current.status, 'restore');
-    if (current.status === 'DELETED' && (!current.deletedAt || current.deletedAt.getTime() <= Date.now() - 30 * 86400000)) throw new AppError('VALIDATION_FAILED', 'The restore window has expired.');
+    if (current.status === 'DELETED' && (!current.deletedAt || current.deletedAt.getTime() <= Date.now() - TASK_RESTORE_WINDOW_MS)) throw new AppError('VALIDATION_FAILED', 'The restore window has expired.');
     await enforceTaskLimit(actor.userId, actor.workspaceId);
 
     const [updated] = await tx
@@ -578,13 +590,13 @@ export async function restoreTask(actor: TaskActor, taskId: string): Promise<Ser
         updatedAt: new Date(),
         version: sql`${tasks.version} + 1`,
       })
-      .where(eq(tasks.id, taskId))
+      .where(and(eq(tasks.id, taskId), eq(tasks.workspaceId, actor.workspaceId), eq(tasks.version, current.version)))
       .returning();
     if (!updated) throw notFound('task', taskId);
 
     await tx
       .delete(syncTombstones)
-      .where(and(eq(syncTombstones.entityType, 'task'), eq(syncTombstones.entityId, taskId)));
+      .where(and(eq(syncTombstones.workspaceId, actor.workspaceId), eq(syncTombstones.entityType, 'task'), eq(syncTombstones.entityId, taskId)));
 
     await recordSyncChange(tx, {
       workspaceId: actor.workspaceId,
@@ -601,6 +613,7 @@ export async function restoreTask(actor: TaskActor, taskId: string): Promise<Ser
       entityType: 'task',
       entityId: taskId,
     });
+    await writeAudit(tx, { workspaceId: actor.workspaceId, actorId: actor.userId, action: 'task.restored', targetType: 'task', targetId: taskId, requestId: actor.requestId, metadata: { fromStatus: current.status, version: updated.version } });
     await scheduleTrackingEvaluation(actor.workspaceId, taskId);
     return serialise(updated);
   });
@@ -612,7 +625,10 @@ export async function queryTasks(
   query: TaskQueryInput,
 ): Promise<{ data: SerialisedTask[]; nextCursor: string | null; hasMore: boolean }> {
   const db = getDb();
-  const conditions = [eq(tasks.workspaceId, workspaceId), isNull(tasks.deletedAt)];
+  // Deleted content is exposed only by an explicit recovery query, never normal lists.
+  const conditions = [eq(tasks.workspaceId, workspaceId), ...(query.status === 'DELETED'
+    ? [isNotNull(tasks.deletedAt), gt(tasks.deletedAt, new Date(Date.now() - TASK_RESTORE_WINDOW_MS))]
+    : [isNull(tasks.deletedAt)])];
 
   if (query.parentTaskId) {
     await loadTask(workspaceId, query.parentTaskId);

@@ -194,3 +194,13 @@ export async function purgeExpiredIdempotencyKeys(): Promise<number> {
     .returning({ key: idempotencyKeys.key });
   return removed.length;
 }
+
+
+/** Compatible additions to endpoints which historically accepted no body. */
+export async function parseOptionalBody<S extends ZodTypeAny>(request: Request, schema: S): Promise<z.output<S> | undefined> {
+  const text = await request.text();
+  if (!text.trim()) return undefined;
+  let raw: unknown;
+  try { raw = JSON.parse(text); } catch { throw new AppError('VALIDATION_FAILED', 'Request body must be valid JSON.'); }
+  return schema.parse(raw);
+}

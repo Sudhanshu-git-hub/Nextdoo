@@ -13,6 +13,7 @@ An outcome-oriented task and time-management platform for Web and Windows Deskto
 Recovered implementation with verified incremental quality/security repairs. **Not a release-complete MVP.**
 
 - [Development and verification](docs/DEVELOPMENT.md)
+- [Phase 1 task archive, deletion and recovery milestone](docs/TASK_LIFECYCLE_MILESTONE.md)
 - [Phase 1 subtasks and dependencies milestone](docs/TASK_RELATIONSHIPS_MILESTONE.md)
 - [Project execution analytics milestone](docs/PROJECT_ANALYTICS_MILESTONE.md)
 - [Project sections and board milestone](docs/PROJECT_BOARD_MILESTONE.md)

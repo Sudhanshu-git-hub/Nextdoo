@@ -333,3 +333,8 @@ export const updateTaskRelationsSchema = z.object({
   .refine((v) => !v.addDependencyId || v.addDependencyId !== v.removeDependencyId, { message: 'Cannot add and remove the same prerequisite' });
 export type CreateSubtaskInput = z.infer<typeof createSubtaskSchema>;
 export type UpdateTaskRelationsInput = z.infer<typeof updateTaskRelationsSchema>;
+
+
+export const taskVersionSchema = z.object({ version: z.number().int().min(1) });
+/** Preserve legacy bodyless delete/restore; new clients always send version. */
+export const optionalTaskVersionSchema = z.object({ version: z.number().int().min(1).optional() });

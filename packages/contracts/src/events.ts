@@ -13,6 +13,7 @@ export const DOMAIN_EVENT_TYPE = [
   'task.completed',
   'task.reopened',
   'task.rescheduled',
+  'task.archived',
   'task.deleted',
   'task.restored',
   'recurrence.occurrence_generated',

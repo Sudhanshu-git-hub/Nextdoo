@@ -210,3 +210,6 @@ th { color: var(--text-dim); font-weight: 550; font-size: 12px; text-transform: 
 .board-movement select { min-width: 0; max-width: 190px; flex: 1; }
 .project-board > form input { flex: 1; min-width: 150px; }
 .project-board [tabindex="-1"]:focus { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+/* Recovery links sit on the page background; keep contrast in both color schemes. */
+.history-link { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }

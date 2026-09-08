@@ -19,7 +19,10 @@ export async function idempotentMutation<T>(request: Request, userId: string, sc
   if (!key || key.length > 128) throw new AppError('VALIDATION_FAILED', 'An Idempotency-Key of 1–128 characters is required.');
   let input: unknown = null;
   if (request.body !== null) {
-    try { input = await request.clone().json(); }
+    try {
+      const text = await request.clone().text();
+      if (text.trim()) input = JSON.parse(text);
+    }
     catch { throw new AppError('VALIDATION_FAILED', 'Request body must be valid JSON.'); }
   }
   const url = new URL(request.url);

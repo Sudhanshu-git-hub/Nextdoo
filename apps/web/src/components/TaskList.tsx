@@ -94,11 +94,11 @@ export function TaskList({
       <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
         {tasks.map((task) => {
           const done = task.status === 'COMPLETED';
-          const overdue = !done && task.dueAt && new Date(task.dueAt) < new Date();
+          const overdue = task.status === 'ACTIVE' && task.dueAt && new Date(task.dueAt) < new Date();
           return (
             <li key={task.id} data-task-id={task.id} draggable={!!onTaskDrag} onDragStart={onTaskDrag ? (event) => onTaskDrag(task, event) : undefined}>
               <div className={`task-row${done ? ' done' : ''}`}>
-                <button
+                {(task.status === 'ACTIVE' || done) && <button
                   className="check"
                   aria-pressed={done}
                   aria-label={done ? `Mark "${task.title}" as not done` : `Complete "${task.title}"`}
@@ -106,7 +106,7 @@ export function TaskList({
                   disabled={busyId === task.id}
                 >
                   {done ? '✓' : ''}
-                </button>
+                </button>}
                 <div className="task-main">
                   <button type="button" className="task-title task-edit-button" aria-label={`Edit "${task.title}"`} onClick={() => setEditing(task)}>{task.title}</button>
                   <div className="task-meta">

@@ -230,8 +230,22 @@ Apply **0010_non_cascading_task_parent.sql** before enabling this UI: referenced
 parents can no longer silently cascade-delete live children on permanent deletion.
 Whole-account purge remains tested. Existing migrations are immutable.
 
-Current full validation: **322 tests in 36 files, 34 browser/API scenarios**, all
+At that milestone, full validation was **322 tests in 36 files, 34 browser/API scenarios**, all
 existing gates green and zero dependency findings. Task cursors now preserve database
 microseconds. Dependency commands remain online-only and are explicitly rejected
 by generic sync; this is not completion of offline relationships or all core tasks.
 Task lifecycle/recovery UI, filtering/sorting and bulk operations remain next work.
+
+
+## Phase 1 task archive, deletion and recovery
+
+`TASK_LIFECYCLE_MILESTONE.md` documents task-editor lifecycle controls and the
+workspace-wide Completed/Archived/Trash views linked from Inbox and project tasks.
+New controls send versions and retain retry identity; legacy bodyless delete/restore
+remain compatible. Only explicit deleted-status queries expose recoverable Trash
+content, and the 30-day cutoff remains enforced server-side.
+
+Current full validation: **329 tests across 37 files and 39 browser/API scenarios**,
+all existing gates green, zero dependency findings. No new migration was added.
+Deploy the API before the UI; older servers cannot provide its lifecycle concurrency
+protection. Filtering/sorting and safe bulk operations are the next Phase 1 slices.

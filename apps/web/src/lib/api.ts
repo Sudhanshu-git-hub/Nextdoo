@@ -55,5 +55,7 @@ export interface Task {
   rescheduleCount: number;
   version: number;
   completedAt: string | null;
+  deletedAt?: string | null;
+  restoreUntil?: string | null;
   createdAt: string;
 }
