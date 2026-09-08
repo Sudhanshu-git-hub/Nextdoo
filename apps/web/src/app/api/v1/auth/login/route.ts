@@ -1,3 +1,5 @@
+import { runLoginAttempt } from '@/server/login-throttle';
+import { withAccountTransaction } from '@/server/account-security';
 import { AppError, loginSchema } from '@nextdoo/contracts';
 import { createSession, setSessionCookie, verifyPassword } from '@/server/auth';
 import { publicRoute, parseBody } from '@/server/http';
@@ -9,8 +11,12 @@ import { writeAuditLog } from '@/server/services/events';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export const POST = publicRoute({ routeName: 'auth.login', rateLimitPerMinute: 10 }, async (request) => {
+export const POST = publicRoute({ routeName: 'auth.login', rateLimitPerMinute: 10 }, async (request, ctx) => {
   const input = await parseBody(request, loginSchema);
+  return runLoginAttempt(input.email, ctx.ip, async () => {
+  const candidate = await findUserByEmail(input.email);
+  if (!candidate) throw new AppError('UNAUTHENTICATED', 'Email or password is incorrect.');
+  return withAccountTransaction(candidate.id, async () => {
   const user = await findUserByEmail(input.email);
 
   // Uniform failure: never reveal whether the address exists.
@@ -46,4 +52,6 @@ export const POST = publicRoute({ routeName: 'auth.login', rateLimitPerMinute: 1
     workspaceId: user.workspaceId,
     deletionCancelled: Boolean(user.deletionRequestedAt),
   };
+  });
+  });
 });

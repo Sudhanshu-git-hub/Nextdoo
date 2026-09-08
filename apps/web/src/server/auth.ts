@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { AppError, unauthenticated } from '@nextdoo/contracts';
 import { sessions, users, workspaces, workspaceMembers } from '@nextdoo/db';
 import { getDb } from './db';
+import { deletionExpired, withAccountTransaction } from './account-security';
 import { newId } from './ids';
 import { logger } from './observability';
 
@@ -88,7 +89,8 @@ export interface AuthContext {
 
 /** Creates a session and returns the raw token (shown to the client exactly once). */
 export async function createSession(userId: string, deviceLabel?: string): Promise<string> {
-  const db = getDb();
+  return withAccountTransaction(userId, async (db) => {
+
   const token = generateToken();
   const expiresAt = new Date(Date.now() + SESSION_TTL_DAYS * 86_400_000);
   await db.insert(sessions).values({
@@ -99,6 +101,7 @@ export async function createSession(userId: string, deviceLabel?: string): Promi
     expiresAt,
   });
   return token;
+  });
 }
 
 export async function setSessionCookie(token: string): Promise<void> {
@@ -130,6 +133,7 @@ export async function resolveSession(token: string | undefined): Promise<AuthCon
       timeZone: users.timeZone,
       userStatus: users.status,
       userDeletedAt: users.deletedAt,
+      deletionRequestedAt: users.deletionRequestedAt,
     })
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))
@@ -145,7 +149,7 @@ export async function resolveSession(token: string | undefined): Promise<AuthCon
   const row = rows[0];
   if (!row) return null;
   // A deleted or suspended account must not authenticate (PRD §19.2 #9).
-  if (row.userDeletedAt || row.userStatus !== 'ACTIVE') return null;
+  if (row.userDeletedAt || row.userStatus !== 'ACTIVE' || deletionExpired(row.deletionRequestedAt)) return null;
 
   const ws = await db
     .select({ id: workspaces.id })

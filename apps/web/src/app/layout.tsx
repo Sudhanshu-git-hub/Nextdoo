@@ -1,3 +1,5 @@
+// Per-request CSP nonces require dynamic HTML, not cached prerendered scripts.
+export const dynamic = 'force-dynamic';
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 

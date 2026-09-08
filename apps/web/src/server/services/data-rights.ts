@@ -17,6 +17,7 @@ import {
   workspaces,
 } from '@nextdoo/db';
 import { getDb } from '../db';
+import { withAccountTransaction } from '../account-security';
 import { revokeAllSessions, verifyPassword } from '../auth';
 import { writeAuditLog } from './events';
 import { absoluteUrl, sendMail } from '../mailer';
@@ -152,7 +153,8 @@ export interface DeletionStatus {
  * data instantly.
  */
 export async function requestAccountDeletion(userId: string, password: string): Promise<DeletionStatus> {
-  const db = getDb();
+  return withAccountTransaction(userId, async (db) => {
+
   const [user] = await db
     .select({ passwordHash: users.passwordHash, email: users.email, deletionRequestedAt: users.deletionRequestedAt })
     .from(users)
@@ -183,11 +185,13 @@ export async function requestAccountDeletion(userId: string, password: string): 
   await sendMail('account-deletion', user.email, absoluteUrl('/login'));
 
   return { scheduled: true, requestedAt: requestedAt.toISOString(), purgeAfter: purgeAfter.toISOString() };
+  });
 }
 
 /** Signing in during the grace window cancels the deletion. */
 export async function cancelAccountDeletion(userId: string): Promise<void> {
-  const db = getDb();
+  return withAccountTransaction(userId, async (db) => {
+
   const updated = await db
     .update(users)
     .set({ deletionRequestedAt: null, updatedAt: new Date() })
@@ -197,6 +201,7 @@ export async function cancelAccountDeletion(userId: string): Promise<void> {
   if (updated.length) {
     await writeAuditLog({ userId, action: 'account.deletion_cancelled', entityType: 'user', entityId: userId });
   }
+  });
 }
 
 export async function getDeletionStatus(userId: string): Promise<DeletionStatus> {

@@ -1,3 +1,4 @@
+import { assertRequestOrigin } from './request-security';
 import { NextResponse } from 'next/server';
 import { ZodError, type ZodTypeAny, type z } from 'zod';
 import { AppError, type ProblemDetails } from '@nextdoo/contracts';
@@ -83,6 +84,7 @@ export function authedRoute<T>(
     const started = performance.now();
 
     try {
+      assertRequestOrigin(request);
       const auth = await requireAuth();
 
       const limit = options.rateLimitPerMinute ?? 600;
@@ -135,6 +137,7 @@ export function publicRoute<T>(
     const requestId = newRequestId();
     const ip = clientIp(request);
     try {
+      assertRequestOrigin(request);
       const limit = options.rateLimitPerMinute ?? 10;
       const { ok, retryAfter } = rateLimit(`${options.routeName}:${ip}`, limit, 60_000);
       if (!ok) {
@@ -147,7 +150,9 @@ export function publicRoute<T>(
       const result = await handler(request, { requestId, ip });
       return jsonResponse(result, requestId, 200);
     } catch (error) {
-      return problemResponse(toProblem(error, requestId));
+      const response = problemResponse(toProblem(error, requestId));
+      if (error instanceof AppError && error.code === 'RATE_LIMITED' && 'retryAfter' in error) response.headers.set('Retry-After', String(error.retryAfter));
+      return response;
     }
   };
 }

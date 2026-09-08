@@ -16,7 +16,7 @@ const LEVEL_RANK: Record<LogLevel, number> = { debug: 10, info: 20, warn: 30, er
 /** Keys whose values are replaced with `[redacted]` at any depth. */
 const REDACTED_KEYS = new Set([
   'password', 'passwordhash', 'token', 'tokenhash', 'accesstoken', 'refreshtoken',
-  'authorization', 'cookie', 'secret', 'mfasecret', 'apikey', 'code',
+  'authorization', 'cookie', 'secret', 'mfasecret', 'mfasecretencrypted', 'apikey', 'code',
   // Task content is user data, not diagnostics.
   'title', 'description', 'body', 'note', 'text', 'payload',
 ]);
@@ -28,7 +28,7 @@ export function redact(value: unknown, depth = 0): unknown {
   if (typeof value === 'object') {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      out[k] = REDACTED_KEYS.has(k.toLowerCase()) ? '[redacted]' : redact(v, depth + 1);
+      out[k] = (REDACTED_KEYS.has(k.toLowerCase()) || (process.env.NODE_ENV === 'production' && /^(url|error|stack|to|email|lasterror)$/i.test(k))) ? '[redacted]' : redact(v, depth + 1);
     }
     return out;
   }

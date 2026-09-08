@@ -1,3 +1,4 @@
+import { AppError } from '@nextdoo/contracts';
 import { logger } from './observability';
 import { features, getEnv } from './env';
 
@@ -30,7 +31,7 @@ function render(kind: MailKind, url: string | null): Mail['subject'] extends nev
     case 'reset-password':
       return {
         subject: 'Reset your NEXTDOO password',
-        text: `Use this link to choose a new password:\n\n${url}\n\nThe link expires in 1 hour and can be used once. If you did not request this, ignore this message — your password has not changed.`,
+        text: `Use this link to choose a new password:\n\n${url}\n\nThe link expires in 30 minutes and can be used once. If you did not request this, ignore this message — your password has not changed.`,
       };
     case 'password-changed':
       return {
@@ -49,6 +50,7 @@ export async function sendMail(kind: MailKind, to: string, url: string | null = 
   const { subject } = render(kind, url);
 
   if (!features().email) {
+    if (process.env.NODE_ENV === 'production') throw new AppError('PROVIDER_UNAVAILABLE', 'Email delivery is not configured.');
     // Dev fallback. The address is logged because it is needed to act on the
     // message; the token is part of the URL and is single-use and short-lived.
     logger.info('mail.stub', { kind, to, subject, url });

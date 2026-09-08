@@ -88,3 +88,26 @@ test('unsupported recurring capture preserves the original text instead of silen
   await expect(page.getByText('Recurring task creation is not implemented yet. No task was created.', { exact: true })).toBeVisible();
   await expect(page.locator('#capture')).toHaveValue(text);
 });
+
+test('login backoff survives client IP changes', async ({ page }) => {
+  const email = `backoff-${randomUUID()}@test.local`;
+  await page.goto('/register');
+  await page.getByLabel('Email', { exact: true }).fill(email);
+  await page.getByLabel('Password', { exact: true }).fill('e2e-only-password-123');
+  await page.getByRole('button', { name: 'Create account', exact: true }).click();
+  await expect(page).toHaveURL(/\/today$/);
+  const attempt = (ip: string) => page.request.post('/api/v1/auth/login', {
+    headers: { Origin: 'http://localhost:3100', 'X-Forwarded-For': ip }, data: { email, password: 'wrong-password-123' },
+  });
+  expect((await attempt('192.0.2.1')).status()).toBe(401);
+  const blocked = await attempt('192.0.2.2');
+  expect(blocked.status()).toBe(429);
+  expect(Number(blocked.headers()['retry-after'])).toBeGreaterThan(0);
+});
+
+test('security headers protect the rendered login page', async ({ page }) => {
+  const response = await page.goto('/login');
+  expect(response!.headers()['content-security-policy']).toContain("'nonce-");
+  expect(response!.headers()['content-security-policy']).not.toContain("script-src 'self' 'unsafe-inline'");
+  expect(response!.headers()['strict-transport-security']).toContain('max-age=');
+});
