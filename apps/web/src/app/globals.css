@@ -130,6 +130,18 @@ label { display: block; font-size: 13px; color: var(--text-dim); margin-bottom: 
 }
 /* Virtualized task lists (PRD §6.9): height-only placeholders for rows outside the window. */
 .task-list-placeholder { list-style: none; }
+
+/* Calendar day/week/month views (PRD §6.9). */
+.cal-chip { display: flex; align-items: center; gap: 6px; width: 100%; margin-bottom: 5px; }
+.cal-chip .check { margin-top: 0; flex-shrink: 0; }
+.cal-title { flex: 1; min-width: 0; width: auto; margin: 0; text-align: left; white-space: normal; }
+.cal-compact { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-time { font-size: 11px; color: var(--text-dim); white-space: nowrap; }
+.cal-edit { flex-shrink: 0; }
+.cal-done .cal-title { text-decoration: line-through; color: var(--text-faint); }
+.cal-over-mark { font-size: 10.5px; color: var(--warn); margin-top: 4px; }
+.cal-month .card { min-height: 92px; }
+.cal-row-error { font-size: 11px; color: var(--danger); margin: 4px 0 0; }
 .task-row:hover { border-color: var(--border-strong); }
 .task-row.done .task-title { text-decoration: line-through; color: var(--text-faint); }
 .task-main { flex: 1; min-width: 0; }
