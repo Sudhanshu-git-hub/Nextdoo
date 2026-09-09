@@ -32,9 +32,11 @@ test('sections can be created, renamed and reordered; tasks move by keyboard and
   await destination.focus(); await destination.press('ArrowDown'); await destination.press('Enter');
   await page.getByRole('button', { name: 'Move "Board task"', exact: true }).focus(); await page.keyboard.press('Enter');
   await expect(ready.getByRole('button', { name: 'Edit "Board task"', exact: true })).toBeVisible();
+  await expect(page.locator('.project-board > [role="status"]')).toHaveText('Moved "Board task" to Ready.');
   const todo = page.getByRole('region', { name: 'To do section', exact: true });
   await ready.locator(`[data-task-id="${task.id}"]`).dragTo(todo);
   await expect(todo.getByRole('button', { name: 'Edit "Board task"', exact: true })).toBeVisible();
+  await expect(page.locator('.project-board > [role="status"]')).toHaveText('Moved "Board task" to To do.');
   const { default: AxeBuilder } = await import('@axe-core/playwright');
   expect((await new AxeBuilder({ page }).include('.project-board').withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze()).violations).toEqual([]);
   await page.reload(); await page.getByRole('button', { name: 'Open Board work', exact: true }).click(); await page.getByRole('button', { name: 'Board', exact: true }).click();
@@ -147,4 +149,38 @@ test('board task editor moves between projects and archived boards keep tasks vi
   await expect(page.getByLabel('Destination for "Board task"', { exact: true })).toBeDisabled();
   await expect(page.locator(`[data-task-id="${task.id}"]`)).toHaveAttribute('draggable', 'false');
   await expect(page.getByRole('button', { name: 'Edit "Board task"', exact: true })).toBeEnabled();
+});
+test('board moves optimistically, rolls back failure, retains the destination and safely retries', async ({ page }) => {
+ const { project, task } = await fixture(page); await open(page);
+ const section = (await (await page.request.get(`/api/v1/sections?projectId=${project.id}`)).json()).data[0];
+ const target = page.getByRole('region', { name: 'To do section', exact: true }), source = page.getByRole('region', { name: 'Unsectioned section', exact: true });
+ let release!: () => void; const gate = new Promise<void>((resolve) => { release = resolve; }); let first = true; const keys: string[] = [];
+ await page.route(`**/api/v1/tasks/${task.id}`, async (route) => {
+  if (route.request().method() !== 'PATCH') return route.continue(); keys.push(route.request().headers()['idempotency-key']!);
+  if (!first) return route.continue(); first = false; await gate; await route.abort('failed');
+ });
+ try {
+  await source.getByLabel('Destination for "Board task"', { exact: true }).selectOption(section.id); await source.getByRole('button', { name: 'Move "Board task"', exact: true }).click();
+  await expect(target.locator(`[data-task-id="${task.id}"]`)).toBeVisible(); await expect(source.locator(`[data-task-id="${task.id}"]`)).toHaveCount(0);
+  expect(await (await page.request.get(`/api/v1/tasks/${task.id}`)).json()).toMatchObject({ sectionId: null, version: task.version });
+  await expect(target.getByRole('button', { name: 'Edit "Board task"', exact: true })).toBeDisabled();
+ } finally { release(); }
+ await expect(source.locator(`[data-task-id="${task.id}"]`)).toBeVisible(); await expect(target.locator(`[data-task-id="${task.id}"]`)).toHaveCount(0);
+ await expect(page.locator('.project-board [role="alert"]')).toContainText('Could not move'); await expect(source.getByLabel('Destination for "Board task"', { exact: true })).toHaveValue(section.id);
+ await source.getByRole('button', { name: 'Move "Board task"', exact: true }).focus(); await page.keyboard.press('Enter');
+ await expect(page.locator('.project-board > [role="status"]')).toHaveText('Moved "Board task" to To do.'); await expect(target.locator(`[data-task-id="${task.id}"]`)).toBeVisible();
+ expect(keys).toHaveLength(2); expect(keys[0]).toBe(keys[1]); expect(await (await page.request.get(`/api/v1/tasks/${task.id}`)).json()).toMatchObject({ sectionId: section.id, version: task.version + 1 });
+});
+test('an optimistic move with a lost committed acknowledgement replays without another version increment', async ({ page }) => {
+ const { project, task } = await fixture(page); await open(page); const section = (await (await page.request.get(`/api/v1/sections?projectId=${project.id}`)).json()).data[0];
+ let lost = false; const keys: string[] = [];
+ await page.route(`**/api/v1/tasks/${task.id}`, async (route) => {
+  if (route.request().method() !== 'PATCH') return route.continue(); keys.push(route.request().headers()['idempotency-key']!);
+  if (lost) return route.continue(); lost = true; expect((await route.fetch()).status()).toBe(200); await route.abort('failed');
+ });
+ await page.getByLabel('Destination for "Board task"', { exact: true }).selectOption(section.id); await page.getByRole('button', { name: 'Move "Board task"', exact: true }).click();
+ await expect(page.locator('.project-board [role="alert"]')).toContainText('Could not move'); await expect(page.getByRole('region', { name: 'Unsectioned section', exact: true }).locator(`[data-task-id="${task.id}"]`)).toBeVisible();
+ expect(await (await page.request.get(`/api/v1/tasks/${task.id}`)).json()).toMatchObject({ sectionId: section.id, version: task.version + 1 });
+ await page.getByRole('button', { name: 'Move "Board task"', exact: true }).click(); await expect(page.locator('.project-board > [role="status"]')).toHaveText('Moved "Board task" to To do.');
+ expect(keys).toHaveLength(2); expect(keys[0]).toBe(keys[1]); expect(await (await page.request.get(`/api/v1/tasks/${task.id}`)).json()).toMatchObject({ sectionId: section.id, version: task.version + 1 });
 });

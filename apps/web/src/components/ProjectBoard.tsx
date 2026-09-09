@@ -18,6 +18,8 @@ export function ProjectBoard({ project, tasks, loading, error: taskError, onChan
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
+  const [pendingMove, setPendingMove] = useState<{ task: Task; baseline: Task[] } | null>(null);
+  const [destinations, setDestinations] = useState<Record<string, string>>({});
   const [announcement, setAnnouncement] = useState('');
   const status = useRef<HTMLParagraphElement>(null);
   const locked = useRef(false);
@@ -64,17 +66,23 @@ export function ProjectBoard({ project, tasks, loading, error: taskError, onChan
   async function move(task: Task, sectionId: string | null) {
     if (locked.current || archived || (task.sectionId ?? null) === sectionId) return;
     locked.current = true; setBusy(true); setError(null);
+    setPendingMove({ task: { ...task, sectionId }, baseline: tasks });
+    setDestinations((values) => ({ ...values, [task.id]: sectionId ?? '' }));
+    setAnnouncement(`Moving "${task.title}"; waiting for confirmation.`); status.current?.focus();
     try {
       await mutate(`/tasks/${task.id}`, { version: task.version, sectionId });
       await onChanged();
+      setDestinations((values) => { const { [task.id]: _removed, ...rest } = values; return rest; });
       setAnnouncement(`Moved "${task.title}" to ${sections.find((s) => s.id === sectionId)?.name ?? 'Unsectioned'}.`);
       status.current?.focus();
     } catch (caught) {
+      setPendingMove(null);
+      setAnnouncement('Move not confirmed. Review the error before retrying.'); status.current?.focus();
       if (caught instanceof ApiError && caught.isConflict) {
         setError('This task changed elsewhere. Refreshing tasks; your move was not applied. Review the latest task before trying again.');
         await onChanged();
       } else setError(caught instanceof ApiError ? caught.problem.detail : 'Could not move the task. Retry to check the same request.');
-    } finally { locked.current = false; setBusy(false); }
+    } finally { setPendingMove(null); locked.current = false; setBusy(false); }
   }
   function drop(event: DragEvent, sectionId: string | null) {
     event.preventDefault();
@@ -86,6 +94,9 @@ export function ProjectBoard({ project, tasks, loading, error: taskError, onChan
     } catch { /* Ignore foreign drag formats; the server revalidates all references. */ }
   }
   const disabled = busy || archived || loading || sectionsLoading || !!sectionError;
+  const baseRows = pendingMove && !tasks.length ? pendingMove.baseline : tasks;
+  const displayedTasks = baseRows.map((t) => pendingMove?.task.id === t.id ? pendingMove.task : t);
+  if (pendingMove && !baseRows.some((t) => t.id === pendingMove.task.id)) displayedTasks.push(pendingMove.task);
   const known = new Set(sections.map((s) => s.id));
   const columns = [...sections, { id: '', name: 'Unsectioned', version: 0, position: '' }];
   return <div className="project-board">
@@ -100,9 +111,9 @@ export function ProjectBoard({ project, tasks, loading, error: taskError, onChan
       <button disabled={disabled || !name.trim()} type="submit">Add section</button>
     </form>
     {sectionsLoading && <p role="status">Loading sections…</p>}
-    <div className="board-columns" aria-busy={loading || sectionsLoading}>
+    <fieldset disabled={!!pendingMove} style={{ border: 0, padding: 0, minWidth: 0 }} aria-label="Board task movement"><div className="board-columns" aria-busy={loading || sectionsLoading || !!pendingMove}>
       {columns.map((section, index) => {
-        const rows = tasks.filter((task) => section.id ? task.sectionId === section.id : !task.sectionId || !known.has(task.sectionId));
+        const rows = displayedTasks.filter((task) => section.id ? task.sectionId === section.id : !task.sectionId || !known.has(task.sectionId));
         return <section key={section.id} className="card board-column" data-section-id={section.id || undefined} aria-label={`${section.name} section`}
           onDragOver={(event) => { if (!disabled && event.dataTransfer.types.includes(DRAG_TYPE)) { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; } }} onDrop={(event) => drop(event, section.id || null)}>
           {section.id ? <SectionHeading section={section} disabled={disabled} first={index === 0} last={index === sections.length - 1}
@@ -111,10 +122,10 @@ export function ProjectBoard({ project, tasks, loading, error: taskError, onChan
           <p className="muted">{rows.length} loaded</p>
           <TaskList tasks={rows} loading={loading && !tasks.length} error={null} emptyTitle="No loaded tasks" emptyBody="Move a task here, or load more tasks below." onChanged={onChanged}
             onTaskDrag={disabled ? undefined : (task, event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData(DRAG_TYPE, JSON.stringify({ id: task.id, version: task.version })); }}
-            taskActions={(task) => <TaskDestination key={`${task.id}:${task.version}`} task={task} sections={sections} disabled={disabled} move={move} />} />
+            taskActions={(task) => <TaskDestination key={`${task.id}:${task.version}`} task={task} sections={sections} disabled={disabled} move={move} target={destinations[task.id] ?? task.sectionId ?? ''} setTarget={(value) => setDestinations((values) => ({ ...values, [task.id]: value }))} />} />
         </section>;
       })}
-    </div>
+    </div></fieldset>
   </div>;
 }
 
@@ -148,9 +159,8 @@ function SectionHeading({ section, disabled, first, last, rename, reorder }: {
     </form>}
   </>;
 }
-function TaskDestination({ task, sections, disabled, move }: { task: Task; sections: Section[]; disabled: boolean; move: (task: Task, id: string | null) => Promise<void> }) {
+function TaskDestination({ task, sections, disabled, move, target, setTarget }: { target: string; setTarget: (value: string) => void; task: Task; sections: Section[]; disabled: boolean; move: (task: Task, id: string | null) => Promise<void> }) {
   const current = task.sectionId ?? '';
-  const [target, setTarget] = useState(current);
   return <div className="row board-movement">
     <label className="sr-only" htmlFor={`destination-${task.id}`}>Destination for "{task.title}"</label>
     <select id={`destination-${task.id}`} value={target} disabled={disabled} onChange={(e) => setTarget(e.target.value)} aria-describedby="board-help">

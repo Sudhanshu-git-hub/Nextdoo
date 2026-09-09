@@ -132,3 +132,12 @@ blockers remain; scoped axe checks are not full WCAG certification.
 Aggregate project reporting is now described in
 [Project execution analytics milestone](PROJECT_ANALYTICS_MILESTONE.md). This board
 report retains its original validation counts and milestone-specific evidence.
+
+
+## 2026-09-09 acceptance follow-up
+
+The original milestone above is historical. PRD §6.9 optimistic card movement and
+rollback are now implemented without replacing the board. See
+[BOARD_OPTIMISTIC_ACCEPTANCE.md](BOARD_OPTIMISTIC_ACCEPTANCE.md): held-request,
+failure and lost-committed-response tests, retained destination selection, and
+**394 tests / 64 browser/API scenarios**, full local gates green.

@@ -26,7 +26,7 @@ No migration was needed: these workspace columns already existed. The shared cor
 
 Regression tests were added before implementation: missing service/helper imports failed initially; after API implementation but before the UI, the HTTP scenario passed and both UI scenarios failed. One test initially compared a raw database Date with its serialized string; it was corrected to compare the same instant without removing the preservation assertion.
 
-Final `pnpm verify`: **394 unit/integration/tooling tests across 43 files and 62 browser/API scenarios passed**, including all previous board, relationships, recurrence, lifecycle and bulk tests. Lint, all package typechecks, production build and coverage passed. Core coverage: **97.50% statements, 88.13% branches, 98.48% functions, 100% lines**. Frozen-lockfile installation and migration replay passed; dependency audit is **zero across all severities**; `git diff --check` passed.
+Final `pnpm verify`: **394 unit/integration/tooling tests across 43 files and 62 browser/API scenarios passed**, including all previous board, relationships, recurrence, lifecycle and bulk tests. Lint, all package typechecks, production build and coverage passed. Core coverage: **97.51% statements, 88.13% branches, 98.50% functions, 100% lines**. Frozen-lockfile installation and migration replay passed; dependency audit is **zero across all severities**; `git diff --check` passed.
 
 New real-DB tests cover overnight persistence, merged-field validation, owner/tenant denial, concurrent version conflicts, preservation of existing recurrence history, inherited versus explicit task zones, and rollback of settings/version/audit/sync when outbox writing fails. Core tests cover local-day DST duration, week boundaries, weekday preferences and overnight labels/nominal duration.
 
@@ -37,3 +37,11 @@ Five dedicated browser/API scenarios cover persistence, targeted Axe WCAG 2/2.1/
 The existing calendar remains a week grid with up to 100 loaded tasks, not complete paginated day/month/provider-aware capacity planning. Nominal workday preferences do not establish working weekdays, breaks, external-calendar availability or exact DST-shift elapsed capacity. Full workspace-local analytics/reviews and offline reconciliation remain separate Phase 1 work.
 
 Final PRD review also identified the board's remaining §6.9 optimistic-update/rollback requirement: its existing movement waits for server acknowledgement. That focused acceptance fix is next; the working board is not being rebuilt. See [PHASE1_COMPLETION_PLAN.md](PHASE1_COMPLETION_PLAN.md) for the broader remaining-work ledger.
+
+
+### Follow-up
+
+Workspace commit `f6dac35` passed remote Quality and integrity CI. The board
+acceptance detail noted above is now closed in
+[BOARD_OPTIMISTIC_ACCEPTANCE.md](BOARD_OPTIMISTIC_ACCEPTANCE.md). Coverage values
+above reflect the final expanded run, correcting the earlier intermediate values.

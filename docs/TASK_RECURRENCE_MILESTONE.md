@@ -68,3 +68,11 @@ Detailed local logs: `/home/user/nextdoo-recurrence/verify-closure.log`, `core-r
 ## Remaining work / release boundaries
 
 Personal-workspace settings/management is next; its workday validation policy needs review before implementation. Full offline recurrence/conflict reconciliation, historical-template migration, multi-workspace collaboration and template-wide metadata editing are not claimed. Existing unhandled outbox consumers remain pending, not falsely delivered. Production alert routing, distributed-load/large-history qualification, operational replay exercises and the other Phase 1 release gates remain open in [PHASE1_COMPLETION_PLAN.md](PHASE1_COMPLETION_PLAN.md).
+
+
+### Subsequent milestone status
+
+Recurrence commit `e1c2f24` passed remote Quality and integrity CI. The user then
+approved overnight workdays; personal-workspace settings were delivered and
+verified in [WORKSPACE_SETTINGS_MILESTONE.md](WORKSPACE_SETTINGS_MILESTONE.md).
+The earlier next-step note above describes this report's original closure point.

@@ -180,3 +180,15 @@ regression-first evidence, limits and **394 tests / 43 files, 62 browser/API sce
 full local gates and zero dependency findings. No new migration was needed. The
 recurrence commit's remote CI passed. Board optimistic movement/rollback is the
 remaining focused acceptance fix in the current task-management scope.
+
+
+## Board optimistic-movement acceptance closure — 2026-09-09
+
+A focused follow-up closes the remaining §6.9 card-movement/rollback requirement
+without replacing the board. The held-request regression failed before the change;
+it now proves immediate movement, rollback, preserved destination and stable retry.
+A lost-after-commit response test proves exactly one version increment. Full gates:
+**394 tests / 43 files, 64 browser/API scenarios**, zero audit findings. See
+[BOARD_OPTIMISTIC_ACCEPTANCE.md](BOARD_OPTIMISTIC_ACCEPTANCE.md). The separately
+pushed recurrence/workspace commits passed remote CI. All currently requested
+workflows are functional within documented bounds; Phase 1 remains incomplete.
