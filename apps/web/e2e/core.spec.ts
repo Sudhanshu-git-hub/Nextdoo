@@ -76,17 +76,22 @@ test('switching accounts cannot expose another workspace cache during a network 
   await expect(page.getByText(secret, { exact: true })).toHaveCount(0);
 });
 
-test('unsupported recurring capture preserves the original text instead of silently creating a one-off task', async ({ page }) => {
+test('recurring capture previews the series and persists real occurrences instead of silently creating a one-off task', async ({ page }) => {
   await page.goto('/register');
   await page.getByLabel('Email', { exact: true }).fill(`recurrence-${randomUUID()}@test.local`);
   await page.getByLabel('Password', { exact: true }).fill('e2e-only-password-123');
   await page.getByRole('button', { name: 'Create account', exact: true }).click();
   await expect(page).toHaveURL(/\/today$/);
-  const text = `Practice ${randomUUID()} every day today at 11:59pm for 30 minutes`;
+  const text = `Practice ${randomUUID()} every day tomorrow at 11:59pm for 30 minutes`;
   await page.locator('#capture').fill(text);
   await page.locator('#capture').press('Enter');
-  await expect(page.getByText('Recurring task creation is not implemented yet. No task was created.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Confirm interpreted task details' })).toContainText('Repeats daily');
   await expect(page.locator('#capture')).toHaveValue(text);
+  await page.getByRole('button', { name: 'Save as shown', exact: true }).click();
+  await expect(page.locator('#capture')).toHaveValue('');
+  await page.goto('/inbox');
+  await page.getByRole('link', { name: 'Manage recurrence', exact: true }).first().click();
+  await expect(page.locator('[data-task-id]')).toHaveCount(50);
 });
 
 test('login backoff survives client IP changes', async ({ page }) => {

@@ -1,6 +1,6 @@
 import { deliverMail } from './mail-delivery';
 import { and, eq, isNotNull, isNull, lt, lte, sql as raw } from 'drizzle-orm';
-import { authTokens, idempotencyKeys, reminders, users, purgeAccount, deliverDueReminders } from '@nextdoo/db';
+import { authTokens, idempotencyKeys, reminders, users, purgeAccount, deliverDueReminders, runRecurrenceGeneration } from '@nextdoo/db';
 import { db, logger, type Job, type JobResult } from './runtime';
 
 /**
@@ -138,6 +138,7 @@ const purgeAuthenticationAttempts: Job = {
 };
 
 export const JOBS: Job[] = [
+  { name: 'recurrence.generate', intervalMs: 60000, run: async () => { const result = await runRecurrenceGeneration(db); if (result.details.failed) logger.warn('recurrence.generation_failed', result.details); return result; } },
   purgeAuthenticationAttempts,
   { name: 'mail.deliver', intervalMs: 10000, run: () => deliverMail(1) },
   dispatchReminders,

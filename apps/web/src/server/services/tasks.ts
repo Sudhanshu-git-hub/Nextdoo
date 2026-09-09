@@ -1,3 +1,4 @@
+import { serialiseTaskRecord as serialise } from '@nextdoo/db';
 import { taskOrder } from '../task-order';
 import { createTag } from './projects';
 import { and, eq, getTableColumns, gt, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
@@ -12,7 +13,7 @@ import {
   versionConflict,
 } from '@nextdoo/contracts';
 import { nextStatus } from '@nextdoo/core';
-import { projects, tasks, taskTags, taskDependencies, syncTombstones } from '@nextdoo/db';
+import { projects, tasks, taskTags, taskDependencies, taskOccurrences, syncTombstones } from '@nextdoo/db';
 import { getDb } from '../db';
 import { newId } from '../ids';
 import { appendTrackingEvent, publishEvent, recordSyncChange, writeAudit } from './events';
@@ -40,33 +41,6 @@ export interface TaskActor {
 export type TaskRow = typeof tasks.$inferSelect;
 export const TASK_RESTORE_WINDOW_MS = 30 * 86_400_000;
 
-function serialise(task: TaskRow) {
-  return {
-    id: task.id,
-    workspaceId: task.workspaceId,
-    projectId: task.projectId,
-    sectionId: task.sectionId,
-    parentTaskId: task.parentTaskId,
-    title: task.title,
-    description: task.description,
-    status: task.status,
-    priority: task.priority,
-    dueAt: task.dueAt?.toISOString() ?? null,
-    timeZone: task.timeZone,
-    estimateMinutes: task.estimateMinutes,
-    actualMinutes: task.actualMinutes,
-    actualSeconds: task.actualMinutes * 60 + task.actualSecondsRemainder,
-    position: Number(task.position),
-    rescheduleCount: task.rescheduleCount,
-    version: task.version,
-    completedAt: task.completedAt?.toISOString() ?? null,
-    archivedAt: task.archivedAt?.toISOString() ?? null,
-    deletedAt: task.deletedAt?.toISOString() ?? null,
-    restoreUntil: task.status === 'DELETED' && task.deletedAt ? new Date(task.deletedAt.getTime() + TASK_RESTORE_WINDOW_MS).toISOString() : null,
-    createdAt: task.createdAt.toISOString(),
-    updatedAt: task.updatedAt.toISOString(),
-  };
-}
 
 export type SerialisedTask = ReturnType<typeof serialise>;
 
@@ -88,7 +62,7 @@ export async function createTask(actor: TaskActor, input: CreateTaskInput, optio
   const now = new Date();
 
   return withWorkspaceTransaction(actor.workspaceId, async (tx) => {
-    if (input.recurrenceRule) throw new AppError('VALIDATION_FAILED', 'Recurring task creation is not implemented yet. No task was created.');
+
     await enforceTaskLimit(actor.userId, actor.workspaceId);
     if (input.projectName !== undefined) {
       if (input.projectId) throw new AppError('VALIDATION_FAILED', 'Choose a project ID or a project name, not both.');
@@ -187,6 +161,11 @@ export async function createTask(actor: TaskActor, input: CreateTaskInput, optio
       requestId: actor.requestId ?? null,
     });
 
+    if (input.recurrenceRule) {
+      const { attachRecurrence } = await import('./recurrence');
+      await attachRecurrence(actor, id, { version: created.version, rule: input.recurrenceRule });
+      return { ...serialise(await loadTask(actor.workspaceId, id)), tagIds: input.tagIds };
+    }
     return { ...serialise(created), tagIds: input.tagIds };
   });
 }
@@ -354,6 +333,7 @@ export async function completeTask(
     });
 
     await cancelRemindersForTask(taskId);
+    if (current.recurrenceRuleId) await tx.update(taskOccurrences).set({ status: 'COMPLETED', updatedAt: new Date() }).where(and(eq(taskOccurrences.taskId, taskId), eq(taskOccurrences.recurrenceRuleId, current.recurrenceRuleId)));
     await scheduleTrackingEvaluation(actor.workspaceId, taskId);
     return serialise(updated);
   });
@@ -401,6 +381,7 @@ export async function reopenTask(actor: TaskActor, taskId: string, version: numb
       entityType: 'task',
       entityId: taskId,
     });
+    if (current.recurrenceRuleId) await tx.update(taskOccurrences).set({ status: 'PENDING', updatedAt: new Date() }).where(and(eq(taskOccurrences.taskId, taskId), eq(taskOccurrences.recurrenceRuleId, current.recurrenceRuleId)));
     await scheduleTrackingEvaluation(actor.workspaceId, taskId);
     return serialise(updated);
   });
@@ -614,6 +595,7 @@ export async function restoreTask(actor: TaskActor, taskId: string, version?: nu
       entityId: taskId,
     });
     await writeAudit(tx, { workspaceId: actor.workspaceId, actorId: actor.userId, action: 'task.restored', targetType: 'task', targetId: taskId, requestId: actor.requestId, metadata: { fromStatus: current.status, version: updated.version } });
+    if (current.recurrenceRuleId) await tx.update(taskOccurrences).set({ status: 'PENDING', updatedAt: new Date() }).where(and(eq(taskOccurrences.taskId, taskId), eq(taskOccurrences.recurrenceRuleId, current.recurrenceRuleId)));
     await scheduleTrackingEvaluation(actor.workspaceId, taskId);
     return serialise(updated);
   });

@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { TaskEditor } from './TaskEditor';
 import { useState, type DragEvent, type ReactNode } from 'react';
 import { api, ApiError, type Task } from '@/lib/api';
@@ -127,6 +128,7 @@ export function TaskList({
                       <span title="Times this task moved date">moved {task.rescheduleCount}×</span>
                     )}
                   </div>
+                  {task.recurrenceRuleId && <Link className="history-link" href={`/recurrences/${task.recurrenceRuleId}`}>Manage recurrence</Link>}
                   {taskActions?.(task)}
                   {rowError?.id === task.id && (
                     <div className="banner banner-error" role="alert" style={{ marginTop: 8, marginBottom: 0 }}>

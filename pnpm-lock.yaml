@@ -189,6 +189,9 @@ importers:
       '@nextdoo/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@nextdoo/core':
+        specifier: workspace:*
+        version: link:../core
       drizzle-orm:
         specifier: 0.45.2
         version: 0.45.2(pg@8.23.0)(postgres@3.4.5)

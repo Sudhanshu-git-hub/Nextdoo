@@ -107,6 +107,8 @@ export const recurrenceRuleSchema = z
     count: z.number().int().min(1).max(1000).optional(),
     timeZone,
   })
+  .refine((r) => r.freq === 'WEEKLY' || r.byWeekday === undefined, { message: 'Weekdays apply only to weekly rules' })
+  .refine((r) => r.freq === 'MONTHLY' || r.byMonthDay === undefined, { message: 'Monthly day applies only to monthly rules' })
   .refine((r) => !(r.until && r.count), { message: 'Use either `until` or `count`, not both' })
   .refine((r) => r.freq !== 'WEEKLY' || !r.byWeekday || r.byWeekday.length > 0, {
     message: 'Weekly recurrence needs at least one weekday',
@@ -366,3 +368,10 @@ export const bulkTaskSchema = z.discriminatedUnion('operation', [
   z.object({ ...bulkSelection, operation: z.literal('reschedule'), dueAt: isoDateTime.nullable(), reason: z.string().max(500).optional() }).strict(),
 ]);
 export type BulkTaskInput = z.infer<typeof bulkTaskSchema>;
+
+export const attachRecurrenceSchema = z.object({ version: z.number().int().min(1), rule: recurrenceRuleSchema }).strict();
+export const changeRecurrenceSchema = z.object({
+  version: z.number().int().min(1), rule: recurrenceRuleSchema.optional(), startsAt: isoDateTime.optional(), active: z.boolean().optional(),
+}).strict().refine((v) => v.rule ? !!v.startsAt && v.active === undefined : v.active !== undefined && !v.startsAt, { message: 'Change the schedule and start together, or pause/resume the series' });
+export type AttachRecurrenceInput = z.infer<typeof attachRecurrenceSchema>;
+export type ChangeRecurrenceInput = z.infer<typeof changeRecurrenceSchema>;

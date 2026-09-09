@@ -13,12 +13,15 @@ PRD v1.1 §4.1, §19 and §21 are the acceptance authority. The working PRD and 
 The PRD has not been rewritten. Retain Next.js, `/api/v1`, camelCase, current
 pagination, the fixed Arena branch, immutable migrations and all recovered features.
 
-The current increment delivers **atomic bulk complete/archive/reschedule**, on top
-of filtering, task recovery, relationships, projects/sections and online editing.
-The user explicitly selected the all-or-nothing policy. Evidence is in
-[TASK_BULK_MILESTONE.md](TASK_BULK_MILESTONE.md): **363 service/unit/tooling tests,
-50 browser/API scenarios**, existing local gates green. This is bounded behavior
-verification, not full acceptance of every row below.
+The current increment delivers **online recurrence**, on top of previously verified
+boards/sections, subtasks/relationships and atomic bulk task commands. The latest
+user authorization is explicitly bounded: boards → subtasks → recurrence → personal
+workspace settings; do not start AI, billing, desktop or full offline mode. Recurrence
+DST and preserve-generated-history decisions were confirmed by the user. Evidence:
+[TASK_RECURRENCE_MILESTONE.md](TASK_RECURRENCE_MILESTONE.md), **386 unit/integration
+and tooling tests, 57 browser/API scenarios**, full local gates green. The earlier
+bulk milestone's 363/50 evidence remains historical, not the current suite count.
+This is bounded behavior verification, not full acceptance of every row below.
 
 ## Milestone status: evidence rather than percentage complete
 
@@ -26,16 +29,17 @@ verification, not full acceptance of every row below.
 |---|---|---|
 | M1 Foundation | Authentication/recovery/MFA/session and tenant guards; migrations; HTTP conventions; shell; local CI-equivalent gates | Production email delivery; distributed rate limiting; complete tracing/metrics and alert verification; staging/rollback qualification |
 | M2 Core task management | Online capture/editor, tags/priority/due/estimate, projects/lifecycle, sections/board, subtasks/dependencies, archive/Trash/recovery, query filters/sorts, atomic bulk commands | Rich descriptions/location and complete task-field UX; list virtualization above 200; collection scalability; required capture/mutation instrumentation and core performance/a11y acceptance |
-| M3 Planning and execution | Week task calendar/movement, focus/time workflows, reminders with durable DB/SMTP foundations, complete/reschedule | Recurrence persisted/generated/edited/skipped end to end; day/month calendar and full calendar pagination; workspace-local planning settings/capacity; offline timers; real browser/desktop delivery and snooze/status acceptance |
+| M3 Planning and execution | Week task calendar/movement, focus/time workflows, reminders with durable DB/SMTP foundations, complete/reschedule; bounded recurrence generation, future rule edits, occurrence lifecycle and retries | Day/month calendar and full calendar pagination; workspace-local planning settings/capacity; offline timers; real browser/desktop delivery and snooze/status acceptance |
 | M4 Tracking and analytics | Append-only task events, inline calculation/input snapshots, Unmeasured handling, task/project summaries and project analytics | Source-event drilldown/corrections/backfill; independent score/tracking/wellbeing controls; workspace-local daily/weekly reporting; review UX and full TR matrix; durable jobs/consumer and freshness/telemetry qualification |
 | M5 Cross-platform reliability | Server push/pull/version/tombstone protection; scoped IndexedDB queue primitives and Today cached fallback | UI enqueue/reconcile/recovery and conflict views; full SY-01–SY-10 across devices; 5,000 mutation drain; Windows Tauri/SQLite/WebView2 client, notifications, packaging/signing/update/rollback |
 | M6 Commercial readiness | Server entitlement limits; authenticated JSON export; reauthenticated deletion/grace/purge; audit trail | Real Google Calendar two-way OAuth/sync/revocation; provider billing/webhooks/refunds/reconciliation; attachments/upload/scan/download gating; expiring CSV/JSON exports; support/status/dashboards and operational acceptance |
 
 ### Specific current implementation evidence
 
-- `services/tasks.ts` explicitly rejects recurring creation rather than pretending
-  to persist it. `packages/core/src/recurrence.ts` and schema tables are foundations,
-  not an occurrence worker, lifecycle API or tested recurring UI.
+- Recurring creation is atomic; the shared DB generator, scheduled worker,
+  lifecycle APIs, confirmation UI and paginated series management now have real-DB
+  and browser evidence. Snapshot-less legacy scaffold rows remain unscheduled.
+  Generic sync explicitly rejects recurrence commands; offline recurrence is not claimed.
 - `QuickCapture.tsx` currently sends HTTP parse/create requests; keeping failed text
   in the input is not durable offline capture. `use-task-pages.ts` limits cached
   fallback to Today semantics. New filtering/bulk does not claim offline parity.
@@ -59,7 +63,7 @@ verification, not full acceptance of every row below.
 | 2 | Duplicate mutation does not duplicate task | Bounded server/HTTP/sync tests pass; full cross-platform acceptance open |
 | 3 | Completion appears on another device | Server delta tested; complete connected-client reconciliation open |
 | 4 | Conflicting titles preserve both versions | Server/queue storage evidence; complete conflict recovery UI open |
-| 5 | Worker retries do not duplicate recurrence | OPEN: no production occurrence workflow |
+| 5 | Worker retries do not duplicate recurrence | Tested locally: concurrent real-DB generation, due-state recheck, HTTP replay and lost-ack retry; production/load qualification remains open |
 | 6 | Completion cancels reminders | Tested single-task/sync paths and now atomic bulk; real notification delivery remains separately open |
 | 7 | Calendar disconnect deletes OAuth credentials | OPEN: real provider workflow absent |
 | 8 | Client cannot grant billing access | Local entitlement guards tested; actual billing/webhook acceptance open |
@@ -76,10 +80,16 @@ command. All release gates in §19.4 remain required, not only this checklist.
 
 ## Execution order from here
 
-1. **Finish core/planning foundations:** bounded rich-task and workspace settings
-   slices, virtualized large lists, then persisted recurrence and occurrence actions.
-   Add regression-first worker replay, due-zone/DST, skip and history-preservation
-   tests. Keep existing task/version/relationship/reminder invariants.
+1. **Current authorized next milestone: personal-workspace settings/management.**
+   Review workday-hour validation (same-day versus overnight), then implement the
+   existing workspace fields/API/UI with tenant/version/idempotency and regression
+   gates. Boards/sections and subtasks are retained; recurrence is now verified.
+   Rich-task completion, virtualization and broader planning remain backlog, not
+   permission to expand this increment.
+
+The following steps remain the broader Phase 1 backlog, **not authorization to
+start AI, billing, desktop, full offline mode or other deferred integrations now**:
+
 2. **Finish execution and review:** complete calendar views/pagination/capacity and
    reminder/time workflow acceptance; implement reviewed score controls, source
    event correction/backfill and local-time reports with explicit TR matrix evidence.
@@ -107,9 +117,11 @@ silently choosing new semantics. No artificial completion percentage or ETA is g
 These do not block all local engineering, but they do block honest full Phase 1
 acceptance and must be resolved before implementing their affected semantics:
 
-- **Recurrence DST edge behavior:** define nonexistent/ambiguous local-time behavior
-  and future-rule edits before accepting the DST/history guarantees. Existing pure
-  helpers alone do not settle the user-visible behavior or integration contract.
+- **Workspace workday policy:** confirm whether configured hours can cross
+  midnight before implementing the next settings milestone.
+- **Recurrence decisions resolved:** gaps shift by the clock transition, folds use
+  the earlier instant, generated history is preserved and revised rules start after
+  the generated range. See the recurrence report for bounds and acceptance evidence.
 - **Tracking/review policy:** resolve carried-forward TR-03 example preconditions
   (available weight 0.80 versus 0.65), review page/email choice, visibility versus
   retention policy, independent wellbeing settings and external-calendar capacity

@@ -290,11 +290,15 @@ export const recurrenceRules = pgTable(
     timeZone: varchar('time_zone', { length: 64 }).notNull(),
     seriesStart: timestamp('series_start', { withTimezone: true }).notNull(),
     lastGeneratedAt: timestamp('last_generated_at', { withTimezone: true }),
+    templateSnapshot: jsonb('template_snapshot'),
+    generationError: varchar('generation_error', { length: 100 }),
+    failureCount: integer('failure_count').notNull().default(0),
+    nextRunAt: timestamp('next_run_at', { withTimezone: true }).notNull().defaultNow(),
     active: boolean('active').notNull().default(true),
     version: integer('version').notNull().default(1),
     ...timestamps,
   },
-  (t) => [index('recurrence_rules_ws_active_idx').on(t.workspaceId, t.active)],
+  (t) => [index('recurrence_rules_ws_active_idx').on(t.workspaceId, t.active), index('recurrence_rules_due_idx').on(t.nextRunAt, t.id).where(sql`${t.active} AND ${t.templateSnapshot} IS NOT NULL`)],
 );
 
 export const taskOccurrences = pgTable(
@@ -309,7 +313,7 @@ export const taskOccurrences = pgTable(
     status: occurrenceStatusEnum('status').notNull().default('PENDING'),
     ...timestamps,
   },
-  (t) => [uniqueIndex('task_occurrences_key_unique').on(t.recurrenceRuleId, t.occurrenceKey)],
+  (t) => [uniqueIndex('task_occurrences_key_unique').on(t.recurrenceRuleId, t.occurrenceKey), uniqueIndex('task_occurrences_task_unique').on(t.taskId).where(sql`${t.taskId} IS NOT NULL`)],
 );
 
 // ----------------------------------------------------------------- reminders & timers

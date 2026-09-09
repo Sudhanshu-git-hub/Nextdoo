@@ -82,6 +82,7 @@ export async function pushMutations(
 
   for (const mutation of input.mutations) {
     try {
+      if (['recurrenceRule', 'recurrenceRuleId'].some((field) => field in mutation.payload)) throw new AppError('VALIDATION_FAILED', 'Recurrence commands require the online recurrence endpoints.');
       if (['addDependencyId', 'removeDependencyId', 'dependsOnTaskIds'].some((field) => field in mutation.payload)) {
         throw new AppError('VALIDATION_FAILED', 'Relationship commands require the online relationships endpoint.');
       }

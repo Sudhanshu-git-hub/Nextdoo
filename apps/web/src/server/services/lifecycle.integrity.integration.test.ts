@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { createTaskSchema } from '@nextdoo/contracts';
-import { reminders, tasks, subscriptions } from '@nextdoo/db';
+import { reminders, tasks, subscriptions, recurrenceRules, taskOccurrences } from '@nextdoo/db';
 import { requireTestDatabase } from '../../../../../tests/database';
 import { getDb } from '../db';
 import { getPlan, registerUser } from './accounts';
@@ -15,11 +15,16 @@ async function fixture() {
   const input = createTaskSchema.parse({ workspaceId: u.workspaceId, title: 'Lifecycle integrity', dueAt: '2026-09-09T12:00:00.000Z' });
   return { actor, input, task: await createTask(actor, input) };
 }
-it('does not silently discard accepted recurrence data when no recurrence writer exists', async () => {
+it('persists accepted recurrence data atomically instead of silently discarding it', async () => {
   const { actor, input } = await fixture();
-  const recurring = createTaskSchema.parse({ ...input, recurrenceRule: { freq: 'DAILY', interval: 1, timeZone: 'UTC' } });
-  await expect(createTask(actor, recurring)).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
-  expect(await getDb().select().from(tasks).where(eq(tasks.workspaceId, actor.workspaceId))).toHaveLength(1);
+  const recurring = createTaskSchema.parse({ ...input, recurrenceRule: { freq: 'DAILY', interval: 1, count: 2, timeZone: 'UTC' } });
+  const saved = await createTask(actor, recurring);
+  expect(saved.recurrenceRuleId).toBeTruthy();
+  expect(await getDb().select().from(recurrenceRules).where(eq(recurrenceRules.id, saved.recurrenceRuleId!))).toHaveLength(1);
+  expect(await getDb().select().from(taskOccurrences).where(eq(taskOccurrences.recurrenceRuleId, saved.recurrenceRuleId!))).toHaveLength(2);
+  expect(await getDb().select().from(tasks).where(eq(tasks.workspaceId, actor.workspaceId))).toHaveLength(3);
+  await expect(createTask(actor, { ...recurring, dueAt: null })).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+  expect(await getDb().select().from(tasks).where(eq(tasks.workspaceId, actor.workspaceId))).toHaveLength(3);
 });
 it('restoration cannot revive an expired deletion or bypass the task limit', async () => {
   const { actor, task } = await fixture();

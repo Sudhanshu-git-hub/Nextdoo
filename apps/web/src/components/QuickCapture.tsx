@@ -49,7 +49,7 @@ export function QuickCapture({ workspaceId, onCreated }: { workspaceId: string; 
         body: JSON.stringify({ text: value, timeZone }),
       });
 
-      if (result.requiresConfirmation || result.tags?.value.length || result.project) {
+      if (result.recurrence || result.requiresConfirmation || result.tags?.value.length || result.project) {
         setParsed(result);
         setAnnouncement('Please confirm the interpreted details before saving.');
         return;
@@ -119,7 +119,7 @@ export function QuickCapture({ workspaceId, onCreated }: { workspaceId: string; 
         </div>
         <p id="capture-hint" className="muted" style={{ marginTop: 6 }}>
           Press <span className="kbd">N</span> to focus. Dates, durations and <span className="kbd">!p1</span> are supported.
-          Use #tags and +existing-project with confirmation. Recurring capture is not available yet.
+          Use #tags and +existing-project with confirmation. Recurring capture needs a first date and confirmation.
         </p>
       </form>
 
@@ -140,6 +140,7 @@ export function QuickCapture({ workspaceId, onCreated }: { workspaceId: string; 
                 </span>
               )}
               {parsed.tags && <p>Tags: {parsed.tags.value.join(", ")}</p>}
+              {parsed.recurrence && <p>Repeats {parsed.recurrence.value.freq.toLowerCase()}, interval {parsed.recurrence.value.interval ?? 1}, in {timeZone}. This creates a series with up to 50 future tasks within 60 days, subject to your task limit. A first due date is required; reminders and relationships are not copied.</p>}
               {parsed.project && <p>Project: {parsed.project.value} (must already exist)</p>}
               {parsed.estimateMinutes && <span> · Estimate {parsed.estimateMinutes.value} min</span>}
             </div>

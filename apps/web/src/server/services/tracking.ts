@@ -48,13 +48,16 @@ export async function buildScoringInput(workspaceId: string, taskId: string): Pr
   const task = rows[0];
   if (!task) return null;
 
+  let occurrenceSkipped: boolean | undefined;
   let expected: number | null = null;
   let completed: number | null = null;
   if (task.recurrenceRuleId) {
     const occ = await db
-      .select({ status: taskOccurrences.status })
+      .select({ status: taskOccurrences.status, taskId: taskOccurrences.taskId })
       .from(taskOccurrences)
       .where(eq(taskOccurrences.recurrenceRuleId, task.recurrenceRuleId));
+    const own = occ.find((o) => o.taskId === taskId);
+    if (own) occurrenceSkipped = own.status === 'SKIPPED';
     if (occ.length) {
       expected = occ.length;
       completed = occ.filter((o) => o.status === 'COMPLETED').length;
@@ -76,7 +79,7 @@ export async function buildScoringInput(workspaceId: string, taskId: string): Pr
     expectedOccurrences: expected,
     completedOccurrences: completed,
     rescheduleCount: task.rescheduleCount,
-    skipped: skipped.length > 0,
+    skipped: occurrenceSkipped ?? skipped.length > 0,
     evaluatedAt: new Date(),
   };
 }

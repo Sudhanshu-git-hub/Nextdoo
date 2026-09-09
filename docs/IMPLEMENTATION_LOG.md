@@ -151,3 +151,20 @@ production gaps are explicitly carried forward in `docs/REPAIR_REPORT.md`.
 
 After resuming the interrupted documentation turn, `pnpm verify` was repeated
 successfully (233 tests, 5 E2E, all gates); evidence: `final-resume-verify.log`.
+
+
+## Separately authorized task-management continuation — 2026-09-09
+
+The quality/integrity stop point above remains historical. Subsequent user-approved
+project, board, relationship, lifecycle, filtering and bulk milestones are recorded
+in their dedicated reports. The next dependency, recurrence, now has a shared real-task
+generator, independently scheduled worker, scoped/versioned/idempotent APIs and an
+online capture/editor/series-management workflow. User-approved DST and preserve-
+generated-history policies, regression failures/fixes, bounds and release limitations
+are in [TASK_RECURRENCE_MILESTONE.md](TASK_RECURRENCE_MILESTONE.md).
+
+Final local validation: **386 tests / 41 files, 57 browser/API scenarios**, lint,
+types, coverage, production build and migration replay passed; audit is zero across
+all severities. No working board/subtask implementation was replaced. Personal-
+workspace settings is next, pending workday-hour policy review. Phase 1 is incomplete;
+AI, billing, desktop and full offline mode were not started.

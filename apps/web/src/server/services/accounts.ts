@@ -1,6 +1,7 @@
+import { readEffectivePlan } from '@nextdoo/db';
 import { and, eq, isNull } from 'drizzle-orm';
 import { AppError } from '@nextdoo/contracts';
-import { subscriptions, users, workspaces, workspaceMembers } from '@nextdoo/db';
+import { users, workspaces, workspaceMembers, subscriptions } from '@nextdoo/db';
 import { getDb } from '../db';
 import { newId } from '../ids';
 import { writeAudit } from './events';
@@ -106,21 +107,4 @@ export async function getWorkspace(workspaceId: string) {
 }
 
 /** Resolves the effective plan from verified billing state, never from the client. */
-export async function getPlan(userId: string): Promise<'FREE' | 'PRO' | 'TEAM' | 'ENTERPRISE'> {
-  const db = getDb();
-  const rows = await db
-    .select({ plan: subscriptions.plan, status: subscriptions.status, currentPeriodEnd: subscriptions.currentPeriodEnd, graceEndsAt: subscriptions.graceEndsAt })
-    .from(subscriptions)
-    .where(eq(subscriptions.userId, userId))
-    .limit(1);
-  const sub = rows[0];
-  if (!sub) return 'FREE';
-  if (sub.status === 'CANCELED' && sub.currentPeriodEnd && sub.currentPeriodEnd > new Date()) return sub.plan;
-  if (sub.status === 'GRACE_PERIOD' || sub.status === 'PAST_DUE') {
-    const deadline = sub.graceEndsAt ?? (sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd.getTime() + 7 * 86400000) : null);
-    return deadline && deadline > new Date() ? sub.plan : 'FREE';
-  }
-  // Only these states grant paid entitlements.
-  const entitled = ['TRIALING', 'ACTIVE'];
-  return entitled.includes(sub.status) ? sub.plan : 'FREE';
-}
+export async function getPlan(userId: string) { return readEffectivePlan(getDb(), userId); }
