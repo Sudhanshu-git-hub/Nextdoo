@@ -210,3 +210,33 @@ build, migration 0012/replay and zero dependency findings. Native/background bro
 notifications, enabled reminder SMTP, general outbox consumers and the remainder of
 Phase 1 are explicitly open. Durable tracking/freshness is next; no AI, billing,
 desktop or full offline feature was started.
+
+
+## Durable tracking and freshness — 2026-09-09
+
+Implemented the next user-selected online milestone without changing the PRD,
+mathematical score weights or existing UTC/current-task reporting cohorts.
+[TRACKING_DURABILITY_MILESTONE.md](TRACKING_DURABILITY_MILESTONE.md) records the
+pipeline, API/UI contracts, regression evidence, deployment bounds and remaining
+M4/operational gaps.
+
+Highlights: shared DB calculation engine version 2; transactional invalidation for
+web and standalone producers; per-consumer outbox receipts; leased, fenced work
+with an initial attempt plus five retries; due-time/cohort/version reconciliation;
+complete scoped event hashes and immutable source snapshots/history; result-event
+publication atomic with result/checkpoint; freshness notices and resumable evidence;
+audited CAS/idempotent single-task recovery with lost-acknowledgement protection.
+
+Regression-first tests exposed foreign-workspace skip contamination, tied-time
+source-event loss and a held-poll recovery race. All were fixed without weakening
+existing assertions. A real standalone worker is killed mid-calculation in an
+isolated migrated database and a new process recovers its persisted claim safely.
+
+Final local gates: **422 tests / 46 files and 75 browser/API scenarios**, lint,
+types, coverage and build passed. Frozen install, migrations 0013/0014/replay and
+zero-finding dependency audit passed. Remote CI is verified against the pushed
+milestone commit, separately from local evidence.
+
+Date-range corrections/backfill, workspace-local reporting, reviewed controls,
+TR-03 policy, routed alerts/load SLOs and wider Phase 1 integrations remain open.
+No AI, billing, desktop or full offline feature was started.

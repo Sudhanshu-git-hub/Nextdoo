@@ -1,207 +1,28 @@
-import { createHash } from 'node:crypto';
-import { and, asc, desc, eq, gte, inArray, isNull, lte } from 'drizzle-orm';
-import { calculateScore, type ScoringInput } from '@nextdoo/core';
-import { tasks, taskOccurrences, trackingEvents, trackingResults } from '@nextdoo/db';
-import { getDb } from '../db';
-import { newId } from '../ids';
+import { and, asc, desc, eq, gte, gt, inArray, isNull, lte, sql } from 'drizzle-orm';
+import { tasks, trackingEvents, trackingResults, buildScoringInput as buildInput, evaluateTrackingInTransaction, type StoredResult } from '@nextdoo/db';
+import { getDb, withTransaction } from '../db';
+import { readTrackingFreshness } from './tracking-freshness';
 import { logger } from '../observability';
 import { withWorkspaceTransaction } from './transactions';
-
-/**
- * Tracking calculation pipeline (PRD §7.6).
- *
- * Results are content-addressed on (task, occurrence, version, inputHash) so
- * recomputing with unchanged inputs is a no-op. Prior results are superseded,
- * never mutated — the history stays auditable.
- */
-
-export const CALCULATION_VERSION = 1;
-
-function hashInputs(input: ScoringInput): string {
-  return createHash('sha256')
-    .update(
-      JSON.stringify({
-        c: input.completed,
-        d: input.dueAt?.toISOString() ?? null,
-        ca: input.completedAt?.toISOString() ?? null,
-        e: input.estimateMinutes,
-        a: input.actualMinutes,
-        eo: input.expectedOccurrences,
-        co: input.completedOccurrences,
-        r: input.rescheduleCount,
-        s: input.skipped,
-        overdue: input.dueAt !== null && input.dueAt < (input.evaluatedAt ?? new Date()),
-      }),
-    )
-    .digest('hex')
-    .slice(0, 64);
+export { CALCULATION_VERSION, type StoredResult } from '@nextdoo/db';
+export function buildScoringInput(workspaceId: string, taskId: string) { return buildInput(getDb(), workspaceId, taskId); }
+export function evaluateTask(workspaceId: string, taskId: string, options: { recalculated?: boolean } = {}) {
+ return withWorkspaceTransaction(workspaceId, (db) => evaluateTrackingInTransaction(db, workspaceId, taskId, options));
 }
-
-/** Assembles scoring inputs from the durable record. */
-export async function buildScoringInput(workspaceId: string, taskId: string): Promise<ScoringInput | null> {
-  const db = getDb();
-  const rows = await db
-    .select()
-    .from(tasks)
-    .where(and(eq(tasks.id, taskId), eq(tasks.workspaceId, workspaceId)))
-    .limit(1);
-  const task = rows[0];
-  if (!task) return null;
-
-  let occurrenceSkipped: boolean | undefined;
-  let expected: number | null = null;
-  let completed: number | null = null;
-  if (task.recurrenceRuleId) {
-    const occ = await db
-      .select({ status: taskOccurrences.status, taskId: taskOccurrences.taskId })
-      .from(taskOccurrences)
-      .where(eq(taskOccurrences.recurrenceRuleId, task.recurrenceRuleId));
-    const own = occ.find((o) => o.taskId === taskId);
-    if (own) occurrenceSkipped = own.status === 'SKIPPED';
-    if (occ.length) {
-      expected = occ.length;
-      completed = occ.filter((o) => o.status === 'COMPLETED').length;
-    }
-  }
-
-  const skipped = await db
-    .select({ id: trackingEvents.id })
-    .from(trackingEvents)
-    .where(and(eq(trackingEvents.taskId, taskId), eq(trackingEvents.type, 'TASK_SKIPPED')))
-    .limit(1);
-
-  return {
-    completed: task.status === 'COMPLETED',
-    dueAt: task.dueAt,
-    completedAt: task.completedAt,
-    estimateMinutes: task.estimateMinutes,
-    actualMinutes: task.actualMinutes * 60 + task.actualSecondsRemainder > 0 ? task.actualMinutes + task.actualSecondsRemainder / 60 : null,
-    expectedOccurrences: expected,
-    completedOccurrences: completed,
-    rescheduleCount: task.rescheduleCount,
-    skipped: occurrenceSkipped ?? skipped.length > 0,
-    evaluatedAt: new Date(),
-  };
-}
-
-export interface StoredResult {
-  id: string;
-  taskId: string;
-  score: number | null;
-  outcome: string;
-  components: unknown;
-  explanation: string;
-  measuredWeight: number;
-  calculationVersion: number;
-  recalculated: boolean;
-  createdAt: string;
-}
-
-/**
- * Computes and persists an execution result.
- * Idempotent: identical inputs return the existing row untouched.
- */
-export async function evaluateTask(
-  workspaceId: string,
-  taskId: string,
-  options: { recalculated?: boolean } = {},
-): Promise<StoredResult | null> {
-  return withWorkspaceTransaction(workspaceId, async (db) => {
-    // Lock the durable task before assembling inputs, not after computing them.
-    await db.select({ id: tasks.id }).from(tasks)
-      .where(and(eq(tasks.id, taskId), eq(tasks.workspaceId, workspaceId))).for('update');
-  const input = await buildScoringInput(workspaceId, taskId);
-  if (!input) return null;
-
-  const result = calculateScore(input);
-  const inputHash = hashInputs(input);
-
-  const existing = await db
-    .select()
-    .from(trackingResults)
-    .where(
-      and(
-        eq(trackingResults.taskId, taskId),
-        eq(trackingResults.calculationVersion, CALCULATION_VERSION),
-        eq(trackingResults.inputHash, inputHash),
-        isNull(trackingResults.supersededAt),
-      ),
-    )
-    .limit(1);
-
-  if (existing[0]) {
-    const row = existing[0];
-    return {
-      id: row.id,
-      taskId: row.taskId,
-      score: row.score === null ? null : Number(row.score),
-      outcome: row.outcome,
-      components: row.components,
-      explanation: row.explanation,
-      measuredWeight: Number(row.measuredWeight),
-      calculationVersion: row.calculationVersion,
-      recalculated: row.recalculated,
-      createdAt: row.createdAt.toISOString(),
-    };
-  }
-
-    const tx = db;
-    // Supersede prior results rather than deleting them.
-    await tx
-      .update(trackingResults)
-      .set({ supersededAt: new Date() })
-      .where(and(eq(trackingResults.taskId, taskId), isNull(trackingResults.supersededAt)));
-
-    const [row] = await tx
-      .insert(trackingResults)
-      .values({
-        id: newId(),
-        workspaceId,
-        taskId,
-        occurrenceKey: null,
-        score: result.score === null ? null : String(result.score),
-        outcome: result.outcome,
-        components: result.components,
-        explanation: result.explanation,
-        measuredWeight: String(result.measuredWeight),
-        calculationVersion: CALCULATION_VERSION,
-        inputHash,
-        inputSnapshot: JSON.parse(JSON.stringify(input)) as Record<string, unknown>,
-        recalculated: options.recalculated ?? false,
-      })
-      .returning();
-
-    if (!row) return null;
-    return {
-      id: row.id,
-      taskId: row.taskId,
-      score: row.score === null ? null : Number(row.score),
-      outcome: row.outcome,
-      components: row.components,
-      explanation: row.explanation,
-      measuredWeight: Number(row.measuredWeight),
-      calculationVersion: row.calculationVersion,
-      recalculated: row.recalculated,
-      createdAt: row.createdAt.toISOString(),
-    };
-  });
-}
-
-/**
- * Evaluates inline in the caller's transaction. Failure must roll back the
- * mutation rather than leave silently stale analytics; durable jobs are later scope.
+/** Best-effort immediate feedback. A real savepoint isolates calculation failure;
+ * the task, append-only events and durable invalidation still commit together.
  */
 export async function scheduleTrackingEvaluation(workspaceId: string, taskId: string): Promise<void> {
-  try {
-    await evaluateTask(workspaceId, taskId);
-  } catch (error) {
-    logger.error('tracking.evaluate.failed', {
-      workspaceId,
-      taskId,
-      error: error instanceof Error ? error.message : 'unknown',
-    });
-    throw error;
-  }
+ await withWorkspaceTransaction(workspaceId, async (db) => {
+  try { await db.transaction(async (tx) => {
+    const [settings] = await tx.execute<{ timeout: string; now: string }>(sql`select current_setting('statement_timeout') as timeout,
+      to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as now`);
+    await tx.execute(sql`select set_config('statement_timeout','500ms',true)`);
+    await evaluateTrackingInTransaction(tx as unknown as typeof db, workspaceId, taskId, { now: new Date(settings!.now), streamBudgetMs: 500 });
+    await tx.execute(sql`select set_config('statement_timeout',${settings!.timeout},true)`);
+  }); }
+  catch { logger.warn('tracking.fast_path_deferred', { workspaceId, taskId }); }
+ });
 }
 
 export async function getResultForTask(workspaceId: string, taskId: string): Promise<StoredResult | null> {
@@ -236,8 +57,12 @@ export async function getResultForTask(workspaceId: string, taskId: string): Pro
 
 export type Summary = import('@nextdoo/contracts').ExecutionSummary;
 
+export function getSummary(workspaceId: string, period: 'day' | 'week', reference: Date, projectId?: string): Promise<Summary> {
+ return withTransaction(() => readSummary(workspaceId, period, reference, projectId), { isolationLevel: 'repeatable read', accessMode: 'read only' });
+}
+
 /** Daily and weekly analytics (PRD §7.8). */
-export async function getSummary(
+async function readSummary(
   workspaceId: string,
   period: 'day' | 'week',
   reference: Date,
@@ -258,6 +83,7 @@ export async function getSummary(
         eq(tasks.workspaceId, workspaceId),
         ...(projectId ? [eq(tasks.projectId, projectId)] : []),
         isNull(tasks.deletedAt),
+        sql`${tasks.status}<>'DELETED'`,
         gte(tasks.dueAt, from),
         lte(tasks.dueAt, to),
       ),
@@ -280,6 +106,11 @@ export async function getSummary(
    * window happened to be scored inside it.
    */
   const plannedIds = planned.map((t) => t.id);
+  const states = [...(await readTrackingFreshness(workspaceId,plannedIds)).values()];
+  const freshCount = states.filter((state)=>state.status==='FRESH').length;
+  const freshness = { observedAt:new Date().toISOString(),freshCount,staleCount:planned.length-freshCount,
+   pendingCount:states.filter((state)=>state.status==='PENDING').length,retryingCount:states.filter((state)=>state.status==='RETRYING').length,
+   failedCount:states.filter((state)=>state.status==='FAILED').length };
   const results = plannedIds.length
     ? await db
         .select({ score: trackingResults.score, outcome: trackingResults.outcome })
@@ -335,6 +166,7 @@ export async function getSummary(
 
   return {
     period,
+    freshness,
     from: from.toISOString(),
     to: to.toISOString(),
     plannedCount: planned.length,
@@ -358,17 +190,18 @@ export async function getSummary(
   };
 }
 
-export async function listTrackingEvents(workspaceId: string, taskId: string) {
+export async function listTrackingEvents(workspaceId: string, taskId: string, after = 0, limit = 200) {
   const db = getDb();
   return db
     .select({
       id: trackingEvents.id,
+      sequence: trackingEvents.sequence,
       type: trackingEvents.type,
       occurredAt: trackingEvents.occurredAt,
       payload: trackingEvents.payload,
     })
     .from(trackingEvents)
-    .where(and(eq(trackingEvents.workspaceId, workspaceId), eq(trackingEvents.taskId, taskId)))
-    .orderBy(asc(trackingEvents.occurredAt))
-    .limit(200);
+    .where(and(eq(trackingEvents.workspaceId, workspaceId), eq(trackingEvents.taskId, taskId), gt(trackingEvents.sequence, after)))
+    .orderBy(asc(trackingEvents.sequence))
+    .limit(limit);
 }

@@ -303,3 +303,39 @@ delays) and expose a generic error in history. After fixing the cause, an owner 
 explicitly snooze a failed eligible reminder to create a new delivery identity;
 never manually reset a sent source or delete receipt history to force replay.
 See `docs/NOTIFICATION_DELIVERY_MILESTONE.md` for migration, retry and privacy details.
+
+
+### Durable tracking and freshness
+
+Apply migrations **0013 and 0014**, then run both the compatible web application
+and `pnpm dev:worker` against the same database. The worker registers separate
+`outbox.relay`, `tracking.reconcile` and `tracking.evaluate` jobs (at boot and every
+10 seconds). PostgreSQL holds durable revisions, consumer receipts, attempt counts
+and two-minute claim leases; no web-process in-memory queue is required.
+
+Use a task's **Tracking** link or **Analytics → Tracking status and evidence**.
+Workspace/project summaries and task status poll every five seconds while visible.
+The task detail distinguishes current, pending, retrying and exhausted tracking;
+old numerical results are explicitly marked stale. Evidence/history pages retain
+loaded rows on failed continuation. Request a new evaluation with a reason after
+fixing an exhausted calculation, rather than deleting results/events or manually
+resetting a claim. Lost acknowledgements replay the same request identity.
+
+The initial attempt plus five retries use 1/2/4/8/15-minute backoff. Crashes consume
+a persisted attempt and are recovered after lease expiry; stale tokens cannot
+publish over newer work. Batch/statement/stream bounds are documented in
+`TRACKING_DURABILITY_MILESTONE.md` and are not a measured end-to-end freshness SLA.
+Exhaustion emits `tracking.evaluate.exhausted` with a support reference. Configure
+real monitoring/on-call routing separately; an emitted log is not proof of alert
+receipt. Unimplemented outbox subscribers remain unacknowledged.
+
+The full test suite now includes a real worker crash/restart acceptance test. Run
+it **only against an isolated test PostgreSQL service** using a role allowed to
+create and drop its uniquely named disposable test database (`CREATEDB`, as in CI).
+This privilege is for testing, not a requirement for the production application
+role. The test migrates and replays that database independently and cleans it up.
+
+Current local full acceptance: **422 tests / 46 files and 75 browser/API scenarios**,
+all gates green and zero dependency findings. The report distinguishes this slice
+from full corrections/range backfill, workspace-local review, wellbeing/retention
+policies and the remaining operational/provider qualifications.

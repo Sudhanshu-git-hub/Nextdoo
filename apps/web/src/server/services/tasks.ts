@@ -303,7 +303,7 @@ export async function completeTask(
       deviceId: actor.deviceId ?? null,
       payload: { dueAt: current.dueAt?.toISOString() ?? null },
       // Deterministic: replaying the same completion cannot create a second event.
-      idempotencyKey: `complete:${taskId}:${when.toISOString()}`,
+      idempotencyKey: `complete:${taskId}:${updated.version}:${when.toISOString()}`,
     });
 
     await recordSyncChange(tx, {

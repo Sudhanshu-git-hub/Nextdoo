@@ -18,13 +18,16 @@ non-billing MVP gaps**, prioritizing broken/incomplete notifications/durable job
 tracking/analytics, export/deletion, entitlement/authorization and task management.
 AI, billing integration, desktop and full offline mode remain excluded.
 
-The current verified milestone is **reminder lifecycle and durable in-app notifications**:
-[NOTIFICATION_DELIVERY_MILESTONE.md](NOTIFICATION_DELIVERY_MILESTONE.md). Final local
-validation: **405 unit/integration/tooling tests in 44 files and 69 browser/API
-scenarios**, lint, typecheck, coverage and build passed; migration replay passed;
-dependency audit zero. This closes the in-app slice, **not browser/desktop/email
-notification acceptance or Phase 1 as a whole**. Existing boards, subtasks,
-recurrence and workspace settings were retained and revalidated.
+The current locally verified milestone is **durable tracking and freshness**:
+[TRACKING_DURABILITY_MILESTONE.md](TRACKING_DURABILITY_MILESTONE.md). Final local
+validation: **422 tests in 46 files and 75 browser/API scenarios**, lint, typecheck,
+coverage and build passed; migrations 0013/0014 and replay passed; dependency audit
+zero. Remote CI is checked on the pushed commit and reported at milestone closure.
+This closes the bounded durable-evaluation/freshness slice, **not all M4 or Phase 1**.
+
+The prior [in-app notification milestone](NOTIFICATION_DELIVERY_MILESTONE.md)
+remains verified within its documented scope. Existing task/bulk, board, recurrence,
+workspace, notification and data-integrity acceptance was retained in the full run.
 
 ## Milestone status: evidence rather than percentage complete
 
@@ -33,7 +36,7 @@ recurrence and workspace settings were retained and revalidated.
 | M1 Foundation | Authentication/recovery/MFA/session and tenant guards; migrations; HTTP conventions; shell; local CI-equivalent gates | Production email delivery; distributed rate limiting; complete tracing/metrics and alert verification; staging/rollback qualification |
 | M2 Core task management | Online capture/editor, tags/priority/due/estimate, projects/lifecycle, sections/board with optimistic movement and rollback, subtasks/dependencies, archive/Trash/recovery, query filters/sorts, atomic bulk commands; owner-managed workspace defaults | Rich descriptions/location and complete task-field UX; list virtualization above 200; collection scalability; required capture/mutation instrumentation and core performance/a11y acceptance |
 | M3 Planning and execution | Workspace-local week task calendar/movement and Today, configured overnight workday guideline, focus/time workflows, durable in-app notifications, reminder status/history/read/snooze/cancel and bounded isolated dispatch retries, complete/reschedule; bounded recurrence generation, future rule edits, occurrence lifecycle and retries | Day/month calendar and full calendar pagination; complete provider-aware capacity planning; offline timers; real browser/background push and enabled reminder email delivery; desktop delivery remains excluded from current work |
-| M4 Tracking and analytics | Append-only task events, inline calculation/input snapshots, Unmeasured handling, task/project summaries and project analytics | Source-event drilldown/corrections/backfill; independent score/tracking/wellbeing controls; workspace-local daily/weekly reporting; review UX and full TR matrix; durable jobs/consumer and freshness/telemetry qualification |
+| M4 Tracking and analytics | Ordered append-only events, shared versioned engine, durable outbox consumer/queue with fenced leases and five retries, due/cohort freshness, immutable input/history drilldown, owner single-task re-evaluation, numeric-score visibility and live UTC task/project summaries | Date-range recalculation and full corrections/review workflows; independent tracking/wellbeing controls and retention policy; workspace-local reporting and richer trends; unresolved TR-03/full TR matrix; routed alerts and sustained freshness/load SLO qualification |
 | M5 Cross-platform reliability | Server push/pull/version/tombstone protection; scoped IndexedDB queue primitives and Today cached fallback | UI enqueue/reconcile/recovery and conflict views; full SY-01–SY-10 across devices; 5,000 mutation drain; Windows Tauri/SQLite/WebView2 client, notifications, packaging/signing/update/rollback |
 | M6 Commercial readiness | Server entitlement limits; authenticated JSON export with legacy notification-reference privacy guards; reauthenticated deletion/grace/purge; audit trail | Real Google Calendar two-way OAuth/sync/revocation; provider billing/webhooks/refunds/reconciliation; attachments/upload/scan/download gating; expiring CSV/JSON exports; support/status/dashboards and operational acceptance |
 
@@ -48,9 +51,15 @@ recurrence and workspace settings were retained and revalidated.
   fallback to Today semantics. New filtering/bulk does not claim offline parity.
 - `CalendarView.tsx` is a week grid and requests up to 100 tasks without continuation.
   It is not day/week/month provider-aware capacity planning.
-- `services/tracking.ts` calculates inline. `apps/worker/src/jobs.ts` explicitly
-  reports `NO_CONSUMER_REGISTERED` for unhandled outbox events instead of falsely
-  marking them delivered. A tracking result row is not a qualified durable pipeline.
+- Tracking now uses a shared DB engine and actual `outbox.relay`,
+  `tracking.reconcile` and `tracking.evaluate` jobs. Persisted attempt leases,
+  crash/restart and stale-token fencing are tested, not inferred from table presence.
+  The web fast path is savepoint-isolated. A per-consumer receipt does not falsely
+  mark unrelated outbox consumers delivered; those integrations remain open.
+- Workspace/project summaries retain their current UTC/current-task cohorts and
+  expose matching-cohort freshness. Task evidence is paginated; failed recovery
+  preserves reasons, idempotency identity and prior history. Per-task re-evaluation
+  does not substitute for the still-open date-range corrections workflow.
 - The repository has `apps/web` and `apps/worker`, not an implemented Windows app.
 - Calendar/billing/attachment database tables and optional environment names exist,
   but their required real workflows are not implemented. Configuration names are
@@ -91,11 +100,12 @@ command. All release gates in §19.4 remain required, not only this checklist.
 1. **Verified in-app notification/reminder slice:** retain the new delivery identity,
    retry/rollback, tenant/deletion guards and user-visible history. External channels,
    automatic connected-client updates and production SLO/alert exercises remain open.
-2. **Next: durable tracking evaluation and freshness.** Replace the missing-consumer
-   gap with real bounded, idempotent work and visible stale/failure state, preserving
-   current score math and event history. Then address source-event drilldown,
-   workspace-local summaries and reviewed controls/corrections. Stop for the tracking
-   policy decisions below rather than silently changing cohorts or score examples.
+2. **Verified durable tracking/freshness slice:** retain ordered ingestion, real
+   bounded workers, durable retry/claim recovery, visible freshness and paginated
+   source/result evidence. Remaining M4 work includes date-range recalculation,
+   workspace-local summaries, richer review and approved controls/corrections.
+   **Resolve the tracking policy decisions below before changing those semantics**;
+   current score math and cohorts have deliberately not been changed.
 3. **Data rights, limits and authorization:** verify/reinforce existing export quotas,
    account deletion and permission boundaries. Deliver asynchronous, expiring exports
    only with reviewed storage/expiry design and real integration evidence. Retention,

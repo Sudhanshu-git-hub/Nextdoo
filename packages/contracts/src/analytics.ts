@@ -1,4 +1,5 @@
 export interface ExecutionSummary {
+  freshness: TrackingSummaryFreshness;
   period: 'day' | 'week';
   from: string;
   to: string;
@@ -30,4 +31,24 @@ export interface ProjectAnalytics extends Omit<ExecutionSummary, 'averageScore'>
   cohort: 'current-project-due-date';
   scoresEnabled: boolean;
   averageScore?: number | null;
+}
+
+export interface TrackingFreshness {
+ status: 'FRESH' | 'PENDING' | 'RETRYING' | 'FAILED';
+ processing: boolean;
+ revision: number;
+ attempts: number;
+ evaluatedAt: string | null;
+ nextEvaluationAt: string | null;
+ nextAttemptAt: string | null;
+ errorCode: string | null;
+ reference: string | null;
+}
+export interface TrackingSummaryFreshness {
+ observedAt: string;
+ freshCount: number;
+ staleCount: number;
+ pendingCount: number;
+ retryingCount: number;
+ failedCount: number;
 }

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ProjectAnalytics as Report } from '@nextdoo/contracts';
 import { api, ApiError } from '@/lib/api';
+import { TrackingFreshnessNotice } from './TrackingFreshnessNotice';
 import { formatTrackedDuration } from '@/lib/format-duration';
 
 type Query = { period: 'day' | 'week'; date: string };
@@ -14,18 +15,19 @@ export function ProjectAnalytics({ projectId }: { projectId: string }) {
   const [report, setReport] = useState<Report | null>(null);
   const [loading, setLoading] = useState(true), [error, setError] = useState<string | null>(null);
   const request = useRef<AbortController | null>(null);
-  const load = useCallback(async () => {
+  const load = useCallback(async (background = false) => {
+    if (background && request.current) return;
     request.current?.abort();
     const controller = new AbortController(); request.current = controller;
-    setLoading(true); setError(null); setReport(null);
+    if (!background) { setLoading(true); setReport(null); }
     try {
       const result = await api<Report>(`/projects/${projectId}/analytics?${new URLSearchParams(query)}`, { signal: controller.signal });
-      if (!controller.signal.aborted) setReport(result);
+      if (!controller.signal.aborted) { setReport(result); setError(null); }
     } catch (caught) {
-      if (!controller.signal.aborted) setError(caught instanceof ApiError ? caught.problem.detail : 'Could not load your project analytics. Please retry.');
-    } finally { if (!controller.signal.aborted) setLoading(false); }
+      if (!controller.signal.aborted) setError(caught instanceof ApiError ? `${caught.problem.detail} Request ID: ${caught.problem.request_id ?? 'unavailable'}` : 'Could not load your project analytics. Please retry.');
+    } finally { if (!controller.signal.aborted) setLoading(false); if (request.current === controller) request.current = null; }
   }, [projectId, query]);
-  useEffect(() => { void load(); return () => request.current?.abort(); }, [load]);
+  useEffect(() => { void load(); const interval = setInterval(() => { if (!document.hidden) void load(true); }, 5000); return () => { clearInterval(interval); request.current?.abort(); }; }, [load]);
 
   return <section aria-label="Project execution analytics" className="project-analytics">
     <h2>Execution analytics</h2>
@@ -42,6 +44,7 @@ export function ProjectAnalytics({ projectId }: { projectId: string }) {
     {loading && <p role="status">Loading project report…</p>}
     {error && <div className="banner banner-error" role="alert">{error} <button onClick={() => void load()}>Retry report</button></div>}
     {!loading && report && <>
+      <TrackingFreshnessNotice freshness={report.freshness} />
       <p role="status">Report window: {report.from.slice(0, 10)} through {report.to.slice(0, 10)}, inclusive (UTC).</p>
       {report.plannedCount === 0 ? <div className="empty"><h3>No tasks due in this window</h3><p>Choose another date or add a due date to a project task. No score or rate can be measured for an empty window.</p></div> : <>
         <dl className="grid grid-3">

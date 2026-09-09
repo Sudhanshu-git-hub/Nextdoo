@@ -121,6 +121,7 @@ export function TaskList({
                         })}
                       </span>
                     )}
+                    {task.status !== 'DELETED' && <Link href={`/analytics?taskId=${task.id}`} className="history-link">Tracking</Link>}
                     {task.status !== 'DELETED' && <Link href={`/notifications?taskId=${task.id}`} className="history-link">Reminders</Link>}
                     {task.priority !== 'NONE' && (
                       <span className={`pill pill-${task.priority.toLowerCase()}`}>{task.priority.toLowerCase()}</span>

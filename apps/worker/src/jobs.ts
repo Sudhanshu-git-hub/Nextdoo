@@ -1,6 +1,6 @@
 import { deliverMail } from './mail-delivery';
 import { and, eq, isNotNull, isNull, lt, lte, sql as raw } from 'drizzle-orm';
-import { authTokens, idempotencyKeys, reminders, users, purgeAccount, deliverDueReminders, runRecurrenceGeneration } from '@nextdoo/db';
+import { authTokens, idempotencyKeys, reminders, users, purgeAccount, deliverDueReminders, runRecurrenceGeneration, relayTrackingOutbox, reconcileTracking, runTrackingEvaluation } from '@nextdoo/db';
 import { db, logger, type Job, type JobResult } from './runtime';
 
 /**
@@ -42,12 +42,35 @@ const relayOutbox: Job = {
   name: 'outbox.relay',
   intervalMs: 10_000,
   async run(): Promise<JobResult> {
-    // No consumers are registered: preserving the event is mandatory. A pending
-    // backlog is actionable; fabricated published_at timestamps destroy evidence.
+    const tracking = await relayTrackingOutbox(db);
+    // A tracking receipt is NOT delivery by sync/other future consumers.
     const blocked = await db.execute(raw`update outbox set last_error='NO_CONSUMER_REGISTERED'
-      where published_at is null and last_error is null returning id`);
+      where id in (select o.id from outbox o where o.published_at is null and o.last_error is null
+       and not exists(select 1 from tracking_outbox_receipts r where r.outbox_id=o.id)
+       order by o.occurred_at,o.id limit 100) returning id`);
     if (blocked.length) logger.warn('outbox.consumer_unavailable', { pending: blocked.length });
-    return { processed: 0, details: { blocked: blocked.length } };
+    if (tracking.deferred) logger.warn('tracking.relay_deferred', tracking);
+    return { processed: tracking.received, details: { ...tracking, blocked: blocked.length } };
+  },
+};
+
+const reconcileTrackingJob: Job = {
+  name: 'tracking.reconcile', intervalMs: 10000,
+  async run() {
+    const result = await reconcileTracking(db);
+    if (result.deferred) logger.warn('tracking.reconciliation_deferred', result);
+    return { processed: result.queued, details: result };
+  },
+};
+const evaluateTrackingJob: Job = {
+  name: 'tracking.evaluate', intervalMs: 10000,
+  async run() {
+    const result = await runTrackingEvaluation(db);
+    for (const failure of result.failures) logger.error(failure.attempts===6 ? 'tracking.evaluate.exhausted' : 'tracking.evaluate.retrying', {
+      ...failure, reference: `tracking-${failure.taskId}-${failure.revision}`,
+    });
+    if (result.deferred) logger.warn('tracking.evaluation_deferred', { count: result.deferred });
+    return { processed: result.processed, details: result };
   },
 };
 
@@ -145,6 +168,8 @@ export const JOBS: Job[] = [
   dispatchReminders,
   requeueStuckReminders,
   relayOutbox,
+  reconcileTrackingJob,
+  evaluateTrackingJob,
   purgeAccounts,
   purgeAuthTokens,
   purgeIdempotencyKeys,

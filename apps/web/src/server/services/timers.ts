@@ -94,7 +94,7 @@ export async function startTimer(actor: TimerActor, taskId: string, deviceId: st
       lastTransitionAt: incomingOlder ? canonical.startedAt : now,
     }).returning();
     if (!created) throw new AppError('INTERNAL_ERROR', 'Timer could not be started.');
-    await appendTrackingEvent(tx, { workspaceId: actor.workspaceId, taskId, type: 'TASK_STARTED', actorId: actor.userId, occurredAt: now, deviceId });
+    await appendTrackingEvent(tx, { workspaceId: actor.workspaceId, taskId, type: 'TASK_STARTED', actorId: actor.userId, occurredAt: now, deviceId, idempotencyKey: `timer-start:${created.id}` });
     if (incomingOlder) {
       const seconds = created.accumulatedSeconds, minutes = seconds / 60;
       await applyDurationToTask(tx, actor, taskId, seconds);
@@ -157,6 +157,7 @@ export async function updateTimer(actor: TimerActor, timerId: string, action: 'p
         workspaceId: actor.workspaceId,
         taskId: row.taskId,
         type: 'TASK_PAUSED',
+        idempotencyKey: `timer-pause:${timerId}:${updated.version}`,
         actorId: actor.userId,
         occurredAt: now,
       });

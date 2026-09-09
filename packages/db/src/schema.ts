@@ -242,6 +242,7 @@ export const tasks = pgTable(
     ...timestamps,
   },
   (t) => [
+    uniqueIndex('tasks_id_workspace_unique').on(t.id,t.workspaceId),
     index('tasks_ws_status_due_idx').on(t.workspaceId, t.status, t.dueAt),
     index('tasks_project_idx').on(t.projectId),
     index('tasks_parent_idx').on(t.parentTaskId),
@@ -283,6 +284,7 @@ export const recurrenceRules = pgTable(
   'recurrence_rules',
   {
     id: uuid('id').primaryKey(),
+    trackingRevision: integer('tracking_revision').notNull().default(0),
     workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
     /** The template task this series belongs to. */
     templateTaskId: uuid('template_task_id').notNull().references(() => tasks.id, { onDelete: 'cascade' }),
@@ -377,6 +379,7 @@ export const trackingEvents = pgTable(
   'tracking_events',
   {
     id: uuid('id').primaryKey(),
+    sequence: bigserial('sequence', { mode: 'number' }).notNull(),
     workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
     taskId: uuid('task_id').notNull(),
     occurrenceKey: varchar('occurrence_key', { length: 120 }),
@@ -393,6 +396,8 @@ export const trackingEvents = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
+    uniqueIndex('tracking_events_sequence_unique').on(t.sequence),
+    index('tracking_events_stream_idx').on(t.workspaceId,t.taskId,t.sequence),
     uniqueIndex('tracking_events_idem_unique').on(t.idempotencyKey),
     index('tracking_events_task_time_idx').on(t.taskId, t.occurredAt),
     index('tracking_events_ws_time_idx').on(t.workspaceId, t.occurredAt),
@@ -816,3 +821,40 @@ export const mailDeliveries = pgTable('mail_deliveries', {
   lastError: varchar('last_error', { length: 80 }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index('mail_delivery_due').on(t.status, t.nextAttemptAt)]);
+
+/** Durable invalidation, queue and consumer checkpoint; workspace/task ownership is a composite FK. */
+export const trackingJobs = pgTable('tracking_jobs', {
+ taskId: uuid('task_id').primaryKey(),
+ workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+ revision: integer('revision').notNull().default(1),
+ queuedRevision: integer('queued_revision').notNull().default(0),
+ acknowledgedRevision: integer('acknowledged_revision').notNull().default(0),
+ evaluatedRevision: integer('evaluated_revision').notNull().default(0),
+ evaluatedCohortRevision: integer('evaluated_cohort_revision').notNull().default(0),
+ queuedCohortRevision: integer('queued_cohort_revision').notNull().default(0),
+ calculationVersion: integer('calculation_version').notNull().default(0),
+ queuedCalculationVersion: integer('queued_calculation_version').notNull().default(0),
+ nextEvaluationAt: timestamp('next_evaluation_at', { withTimezone: true }),
+ evaluatedAt: timestamp('evaluated_at', { withTimezone: true }),
+ requestedAt: timestamp('requested_at', { withTimezone: true }).notNull().defaultNow(),
+ queuedAt: timestamp('queued_at', { withTimezone: true }),
+ claimToken: uuid('claim_token'),
+ leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),
+ attempts: integer('attempts').notNull().default(0),
+ nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
+ lastError: varchar('last_error', { length: 80 }),
+ lastErrorAt: timestamp('last_error_at', { withTimezone: true }),
+}, (t) => [index('tracking_jobs_workspace_idx').on(t.workspaceId, t.taskId),
+ index('tracking_jobs_ready_idx').on(t.nextAttemptAt,t.queuedAt).where(sql`${t.queuedRevision}>${t.acknowledgedRevision} AND ${t.attempts}<6`),
+ index('tracking_jobs_clock_idx').on(t.nextEvaluationAt).where(sql`${t.nextEvaluationAt} IS NOT NULL`),
+ index('tracking_jobs_expired_lease_idx').on(t.leaseExpiresAt).where(sql`${t.claimToken} IS NOT NULL`),
+ check('tracking_jobs_attempts_check',sql`${t.attempts} BETWEEN 0 AND 6`),
+ check('tracking_jobs_lease_pair',sql`(${t.claimToken} IS NULL) = (${t.leaseExpiresAt} IS NULL)`),
+ foreignKey({ columns: [t.taskId, t.workspaceId], foreignColumns: [tasks.id, tasks.workspaceId] }).onDelete('cascade')]);
+
+/** Per-consumer receipts never pretend other outbox consumers have delivered. */
+export const trackingOutboxReceipts = pgTable('tracking_outbox_receipts', {
+ outboxId: uuid('outbox_id').primaryKey().references(() => outbox.id, { onDelete: 'cascade' }),
+ workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+ receivedAt: timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
+});
