@@ -34,7 +34,7 @@ test('editor keeps a conflicting draft and reapplies only deliberately changed f
   await page.goto('/inbox'); await page.getByRole('button', { name: 'Edit "Original"' }).click();
   const editor = page.getByRole('dialog', { name: 'Edit task' });
   await editor.getByLabel('Title', { exact: true }).fill('My draft');
-  await editor.getByLabel('Notes', { exact: true }).fill('<script>private notes</script>');
+  await editor.getByLabel('Description', { exact: true }).fill('<script>private notes</script>');
   await page.request.patch(`/api/v1/tasks/${initial.id}`, { headers: { ...origin, 'Idempotency-Key': randomUUID() }, data: { version: initial.version, title: 'Other device', priority: 'HIGH' } });
   await editor.getByRole('button', { name: 'Save changes', exact: true }).click();
   await expect(editor.getByLabel('Title', { exact: true })).toHaveValue('My draft');

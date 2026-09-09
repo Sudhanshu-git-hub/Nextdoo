@@ -34,7 +34,7 @@ workspace, notification and data-integrity acceptance was retained in the full r
 | PRD milestone | Working, tested foundation | Remaining completion work |
 |---|---|---|
 | M1 Foundation | Authentication/recovery/MFA/session and tenant guards; migrations; HTTP conventions; shell; local CI-equivalent gates | Production email delivery; distributed rate limiting; complete tracing/metrics and alert verification; staging/rollback qualification |
-| M2 Core task management | Online capture/editor, tags/priority/due/estimate, projects/lifecycle, sections/board with optimistic movement and rollback, subtasks/dependencies, archive/Trash/recovery, query filters/sorts, atomic bulk commands; owner-managed workspace defaults; free-text task `location` end to end (contracts, services, sync writable field, recurrence inheritance, editor) per [TASK_LOCATION_MILESTONE.md](TASK_LOCATION_MILESTONE.md); windowed list rendering above 200 loaded rows (virtualization, PRD §6.9) per [TASK_VIRTUALIZATION_MILESTONE.md](TASK_VIRTUALIZATION_MILESTONE.md) | Rich description editor and complete task-field UX; collection scalability; required capture/mutation instrumentation and core performance/a11y acceptance |
+| M2 Core task management | Online capture/editor, tags/priority/due/estimate, projects/lifecycle, sections/board with optimistic movement and rollback, subtasks/dependencies, archive/Trash/recovery, query filters/sorts, atomic bulk commands; owner-managed workspace defaults; free-text task `location` end to end (contracts, services, sync writable field, recurrence inheritance, editor) per [TASK_LOCATION_MILESTONE.md](TASK_LOCATION_MILESTONE.md); windowed list rendering above 200 loaded rows (virtualization, PRD §6.9) per [TASK_VIRTUALIZATION_MILESTONE.md](TASK_VIRTUALIZATION_MILESTONE.md); rich task description — Markdown source storage with a single safe core renderer, editor edit/preview, 20k limit UX, conflict rendering and search/sync compatibility per [RICH_DESCRIPTION_MILESTONE.md](RICH_DESCRIPTION_MILESTONE.md) | Collection scalability; required capture/mutation instrumentation and core performance/a11y acceptance |
 | M3 Planning and execution | Workspace-local week task calendar/movement and Today, configured overnight workday guideline, focus/time workflows, durable in-app notifications, reminder status/history/read/snooze/cancel and bounded isolated dispatch retries, complete/reschedule; bounded recurrence generation, future rule edits, occurrence lifecycle and retries; day/week/month workspace-local calendar with full cursor pagination over the visible period per [CALENDAR_MILESTONE.md](CALENDAR_MILESTONE.md) | Complete provider-aware capacity planning; offline timers; real browser/background push and enabled reminder email delivery; desktop delivery remains excluded from current work |
 | M4 Tracking and analytics | Ordered append-only events, shared versioned engine, durable outbox consumer/queue with fenced leases and five retries, due/cohort freshness, immutable input/history drilldown, owner single-task re-evaluation, numeric-score visibility and live UTC task/project summaries | Date-range recalculation and full corrections/review workflows; independent tracking/wellbeing controls and retention policy; workspace-local reporting and richer trends; unresolved TR-03/full TR matrix; routed alerts and sustained freshness/load SLO qualification |
 | M5 Cross-platform reliability | Server push/pull/version/tombstone protection; scoped IndexedDB queue primitives and Today cached fallback | UI enqueue/reconcile/recovery and conflict views; full SY-01–SY-10 across devices; 5,000 mutation drain; Windows Tauri/SQLite/WebView2 client, notifications, packaging/signing/update/rollback |
@@ -49,6 +49,12 @@ workspace, notification and data-integrity acceptance was retained in the full r
 - `QuickCapture.tsx` currently sends HTTP parse/create requests; keeping failed text
   in the input is not durable offline capture. `use-task-pages.ts` limits cached
   fallback to Today semantics. New filtering/bulk does not claim offline parity.
+- Task descriptions are stored as plain Markdown source (no migration, no
+  API/sync/search change); the only rendering path is a pure core renderer
+  with a tag/attribute whitelist and `http/https/mailto` link allowlist,
+  with editor edit/preview, a 20k limit counter and conflict rendering.
+  List rows, calendar chips and board cards intentionally show no
+  description text (not required by the PRD).
 - `CalendarView.tsx` now renders day, week and month grids in the workspace
   time zone with cursor pagination that loads full weeks and months (120-task
   E2E in both week and month), local day-boundary correctness, select/move
@@ -135,7 +141,15 @@ command. All release gates in §19.4 remain required, not only this checklist.
    cursor pagination with dedupe/abort/retry, skeletons/empty/error states,
    tenant isolation and axe on all three views, 7 browser E2E verified; see
    [CALENDAR_MILESTONE.md](CALENDAR_MILESTONE.md).
-   Remaining: rich description editor and complete task-field UX. Preserve the delivered board,
+   Rich task description (PRD §6.3) — Markdown source stored as plain text
+   (20k limit, sync and search unchanged), one safe core renderer
+   (tag/attribute whitelist, link scheme allowlist), editor edit/preview
+   with counter and limit UX, rendered conflict notes with draft
+   preservation, 45 renderer unit tests and 6 browser E2E verified; see
+   [RICH_DESCRIPTION_MILESTONE.md](RICH_DESCRIPTION_MILESTONE.md).
+   Remaining: collection scalability and the required
+   capture/mutation instrumentation plus core performance/a11y acceptance.
+   Preserve the delivered board,
    relationships, recurrence and workspace semantics; qualify
    accessible/performance acceptance rather than checking off a route or
    schema.

@@ -4,6 +4,8 @@ import { TaskRecurrenceActions } from './TaskRecurrenceActions';
 import { TaskRelations } from './TaskRelations';
 import { useEffect, useRef, useState } from 'react';
 import { api, ApiError, type Task } from '@/lib/api';
+import { renderDescription } from '@nextdoo/core/description';
+const DESCRIPTION_MAX = 20000;
 interface Detail extends Task { tagIds: string[]; timeZone: string | null }
 interface Project { id: string; name: string; status: string }
 interface Tag { id: string; name: string }
@@ -32,6 +34,7 @@ function TaskEditorForm({ task, onClose, onSaved, onNavigate, onBack }: {
   const [base, setBase] = useState<Draft | null>(null), [draft, setDraft] = useState<Draft | null>(null);
   const [version, setVersion] = useState(task.version), [projects, setProjects] = useState<Project[]>([]), [tags, setTags] = useState<Tag[]>([]);
   const [busy, setBusy] = useState(false), [error, setError] = useState<string | null>(null), [conflict, setConflict] = useState<Detail | null>(null);
+  const [descriptionMode, setDescriptionMode] = useState<'edit' | 'preview'>('edit');
   const identity = useRef<{ body: string; key: string } | null>(null);
   const dirty = Boolean(base && draft && JSON.stringify(base) !== JSON.stringify(draft));
   useEffect(() => { const element = dialog.current!; element.showModal(); return () => element.close(); }, []);
@@ -87,7 +90,11 @@ function TaskEditorForm({ task, onClose, onSaved, onNavigate, onBack }: {
     {error && <div className="banner banner-error" role="alert" id="task-editor-error">{error}</div>}
     {conflict && <section className="banner banner-warn" aria-label="Latest server version">
       <p>The task changed elsewhere. Your draft below has not been replaced.</p>
-      <p><strong>Server title:</strong> {conflict.title}</p><p><strong>Server notes:</strong> {conflict.description || 'None'}</p>
+      <p><strong>Server title:</strong> {conflict.title}</p>
+      <p><strong>Server notes:</strong></p>
+      {conflict.description
+        ? <div className="description-preview" role="region" aria-label="Server description"><div dangerouslySetInnerHTML={{ __html: renderDescription(conflict.description) }} /></div>
+        : <p className="muted">None</p>}
       <p>Priority: {conflict.priority}; due: {conflict.dueAt || 'None'}; estimate: {conflict.estimateMinutes ?? 'None'}; location: {conflict.location || 'None'}; project: {projects.find((p) => p.id === conflict.projectId)?.name ?? 'Inbox'}; tags: {conflict.tagIds.map((id) => tags.find((t) => t.id === id)?.name ?? id).join(', ') || 'None'}.</p>
       <button disabled={busy} onClick={() => { setVersion(conflict.version); setTaskStatus(conflict.status); setRecurrenceId(conflict.recurrenceRuleId); setConflict(null); setError(null); }}>Keep my changes against this version</button>{' '}
       <button disabled={busy} onClick={() => { if (window.confirm('Replace your draft with the server version?')) { const d = draftOf(conflict); setBase(d); setDraft(d); setVersion(conflict.version); setTaskStatus(conflict.status); setRecurrenceId(conflict.recurrenceRuleId); setConflict(null); setError(null); } }}>Use server version</button>
@@ -95,7 +102,34 @@ function TaskEditorForm({ task, onClose, onSaved, onNavigate, onBack }: {
     {!draft ? <p role="status">{error ? 'Details unavailable.' : 'Loading task details…'}</p> : <form onSubmit={save} aria-describedby={error ? 'task-editor-error' : undefined}>
       <fieldset disabled={busy || relationsBusy || lifecycleBusy || recurrenceBusy} style={{ border: 0, padding: 0 }}>
         <label htmlFor="edit-title">Title</label><input autoFocus id="edit-title" required maxLength={500} value={draft.title} onChange={(e) => change('title', e.target.value)} />
-        <label htmlFor="edit-notes">Notes</label><textarea id="edit-notes" maxLength={20000} rows={4} value={draft.description} onChange={(e) => change('description', e.target.value)} />
+        <div className="row" style={{ marginTop: 12, alignItems: 'baseline', gap: 10 }}>
+          <label htmlFor="edit-notes">Description</label>
+          <button
+            type="button"
+            className="btn-ghost btn-sm"
+            aria-pressed={descriptionMode === 'preview'}
+            disabled={busy || relationsBusy || lifecycleBusy || recurrenceBusy}
+            onClick={() => setDescriptionMode((mode) => (mode === 'preview' ? 'edit' : 'preview'))}
+          >
+            {descriptionMode === 'preview' ? 'Edit description' : 'Preview description'}
+          </button>
+          <span id="edit-description-count" className={`muted${draft.description.length >= DESCRIPTION_MAX ? ' desc-count-limit' : ''}`}>
+            {draft.description.length.toLocaleString()} / {DESCRIPTION_MAX.toLocaleString()} characters
+          </span>
+        </div>
+        <p id="edit-notes-help" className="muted">Markdown supported: **bold**, *italic*, ~~strikethrough~~, `code`, ## headings, - lists, - [ ] checklists, &gt; quotes, --- rules and [links](https://…). Raw HTML is shown as plain text.</p>
+        <textarea
+          id="edit-notes"
+          hidden={descriptionMode === 'preview'}
+          rows={6}
+          maxLength={DESCRIPTION_MAX}
+          value={draft.description}
+          aria-describedby="edit-notes-help edit-description-count"
+          onChange={(e) => change('description', e.target.value)}
+        />
+        <div id="description-preview" className="description-preview" role="region" aria-label="Description preview" hidden={descriptionMode === 'edit'}>
+          {draft.description.trim() === '' ? <p className="muted">No description yet.</p> : <div dangerouslySetInnerHTML={{ __html: renderDescription(draft.description) }} />}
+        </div>
         <label htmlFor="edit-location">Location</label><input id="edit-location" maxLength={500} value={draft.location} onChange={(e) => change('location', e.target.value)} />
         <label htmlFor="edit-project">Project</label><select id="edit-project" value={draft.projectId} onChange={(e) => change('projectId', e.target.value)}><option value="">Inbox (unfiled)</option>{projects.map((p) => <option key={p.id} value={p.id} disabled={p.status !== 'ACTIVE'}>{p.name}{p.status !== 'ACTIVE' ? ' (archived)' : ''}</option>)}</select>
         <label htmlFor="edit-priority">Priority</label><select id="edit-priority" value={draft.priority} onChange={(e) => change('priority', e.target.value as Task['priority'])}>{['NONE', 'LOW', 'MEDIUM', 'HIGH'].map((p) => <option key={p}>{p}</option>)}</select>
