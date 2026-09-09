@@ -168,3 +168,15 @@ types, coverage, production build and migration replay passed; audit is zero acr
 all severities. No working board/subtask implementation was replaced. Personal-
 workspace settings is next, pending workday-hour policy review. Phase 1 is incomplete;
 AI, billing, desktop and full offline mode were not started.
+
+
+## Personal-workspace settings — 2026-09-09
+
+After the user selected overnight hours, implemented owner-only versioned settings,
+transactional audit/sync/outbox, persistent guarded UI and workspace-local capture,
+Today and week-calendar defaults. Existing task instants and recurrence history are
+preserved. [WORKSPACE_SETTINGS_MILESTONE.md](WORKSPACE_SETTINGS_MILESTONE.md) records
+regression-first evidence, limits and **394 tests / 43 files, 62 browser/API scenarios**,
+full local gates and zero dependency findings. No new migration was needed. The
+recurrence commit's remote CI passed. Board optimistic movement/rollback is the
+remaining focused acceptance fix in the current task-management scope.

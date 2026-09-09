@@ -1,4 +1,6 @@
 'use client';
+import { localParts, localDateKey, zonedTimeToUtc, workspaceWeek, workdayDescription } from '@nextdoo/core/calendar';
+import { useWorkspace } from '@/components/WorkspaceContext';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, ApiError, type Task } from '@/lib/api';
@@ -10,9 +12,11 @@ import { api, ApiError, type Task } from '@/lib/api';
  * drop target *and* a keyboard-reachable button, satisfying the accessible
  * alternative requirement (PRD §8.8).
  */
-type Week = [Date, Date, Date, Date, Date, Date, Date];
+
 
 export function CalendarView({ workspaceId }: { workspaceId: string }) {
+  const workspace = useWorkspace();
+  const { timeZone, weekStart } = workspace;
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -20,25 +24,13 @@ export function CalendarView({ workspaceId }: { workspaceId: string }) {
   const [selected, setSelected] = useState<Task | null>(null);
   const [status, setStatus] = useState('');
 
-  /** Exactly seven days, typed as a tuple so first/last access is provably safe. */
-  const days = useMemo<Week>(() => {
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    start.setDate(start.getDate() - start.getDay() + weekOffset * 7);
-    const at = (i: number) => {
-      const d = new Date(start);
-      d.setDate(start.getDate() + i);
-      return d;
-    };
-    return [at(0), at(1), at(2), at(3), at(4), at(5), at(6)];
-  }, [weekOffset]);
+  const { days, end } = useMemo(() => workspaceWeek(new Date(), timeZone, weekStart, weekOffset), [timeZone, weekStart, weekOffset]);
 
   const load = useCallback(async () => {
     setError(null);
     try {
       const from = days[0];
-      const to = new Date(days[6]);
-      to.setHours(23, 59, 59, 999);
+      const to = end;
       const response = await api<{ data: Task[] }>(
         `/tasks?workspaceId=${workspaceId}&dueAfter=${encodeURIComponent(from.toISOString())}&dueBefore=${encodeURIComponent(to.toISOString())}&limit=100`,
       );
@@ -48,21 +40,20 @@ export function CalendarView({ workspaceId }: { workspaceId: string }) {
     } finally {
       setLoading(false);
     }
-  }, [workspaceId, days]);
+  }, [workspaceId, days, end]);
 
   useEffect(() => { void load(); }, [load]);
 
   async function moveTo(task: Task, day: Date) {
-    const target = new Date(day);
-    const original = task.dueAt ? new Date(task.dueAt) : null;
-    target.setHours(original?.getHours() ?? 9, original?.getMinutes() ?? 0, 0, 0);
+    const date = localParts(day, timeZone), original = task.dueAt ? localParts(new Date(task.dueAt), timeZone) : null;
+    const target = zonedTimeToUtc(date.year, date.month, date.day, original?.hour ?? Math.floor(workspace.workdayStartMinute / 60), original?.minute ?? workspace.workdayStartMinute % 60, timeZone);
     try {
       await api(`/tasks/${task.id}/reschedule`, {
         method: 'POST',
         headers: { 'Idempotency-Key': crypto.randomUUID() },
         body: JSON.stringify({ version: task.version, dueAt: target.toISOString(), reason: 'Moved on calendar' }),
       });
-      setStatus(`Moved "${task.title}" to ${day.toLocaleDateString(undefined, { weekday: 'long' })}`);
+      setStatus(`Moved "${task.title}" to ${day.toLocaleDateString(undefined, { timeZone, weekday: 'long' })}`);
       setSelected(null);
       void load();
     } catch (caught) {
@@ -76,8 +67,8 @@ export function CalendarView({ workspaceId }: { workspaceId: string }) {
         <div>
           <h1>Calendar</h1>
           <p className="subtitle">
-            {days[0].toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} –{' '}
-            {days[6].toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+            {days[0].toLocaleDateString(undefined, { timeZone, month: 'short', day: 'numeric' })} –{' '}
+            {days[6].toLocaleDateString(undefined, { timeZone, month: 'short', day: 'numeric' })}
           </p>
         </div>
         <div className="row">
@@ -87,6 +78,8 @@ export function CalendarView({ workspaceId }: { workspaceId: string }) {
         </div>
       </div>
 
+      <p>Calendar time zone: {timeZone}</p>
+      <p>Configured workday: {workdayDescription(workspace.workdayStartMinute, workspace.workdayEndMinute)}</p>
       {error && <div className="banner banner-error" role="alert">{error}</div>}
 
       {selected && (
@@ -98,8 +91,8 @@ export function CalendarView({ workspaceId }: { workspaceId: string }) {
 
       <div className="grid" style={{ gridTemplateColumns: 'repeat(7, minmax(0,1fr))' }} role="list">
         {days.map((day) => {
-          const isToday = day.toDateString() === new Date().toDateString();
-          const dayTasks = tasks.filter((t) => t.dueAt && new Date(t.dueAt).toDateString() === day.toDateString());
+          const isToday = localDateKey(day, timeZone) === localDateKey(new Date(), timeZone);
+          const dayTasks = tasks.filter((t) => t.dueAt && localDateKey(new Date(t.dueAt), timeZone) === localDateKey(day, timeZone));
           return (
             <div
               key={day.toISOString()}
@@ -116,9 +109,9 @@ export function CalendarView({ workspaceId }: { workspaceId: string }) {
             >
               <div className="spread" style={{ marginBottom: 8 }}>
                 <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>
-                  {day.toLocaleDateString(undefined, { weekday: 'short' })}
+                  {day.toLocaleDateString(undefined, { timeZone, weekday: 'short' })}
                 </div>
-                <div style={{ fontWeight: isToday ? 700 : 400, fontSize: 13 }}>{day.getDate()}</div>
+                <div style={{ fontWeight: isToday ? 700 : 400, fontSize: 13 }}>{localParts(day, timeZone).day}</div>
               </div>
 
               {selected && (

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import type { EntitlementLimits, Plan } from '@nextdoo/contracts';
 import { api, ApiError } from '@/lib/api';
+import { WorkspaceSettings } from '@/components/WorkspaceSettings';
 import { MfaSettings } from '@/components/MfaSettings';
 import { AuditLog } from '@/components/AuditLog';
 
@@ -126,6 +127,7 @@ export function SettingsView({
         </div>
       </div>
 
+      <WorkspaceSettings />
       {notice && <div className="banner banner-info" role="status">{notice}</div>}
       {error && <div className="banner banner-error" role="alert">{error}</div>}
 
@@ -158,7 +160,7 @@ export function SettingsView({
                   )}
                 </td>
               </tr>
-              <tr><th scope="row">Time zone</th><td>{timeZone}</td></tr>
+              <tr><th scope="row">Browser time zone</th><td>{timeZone}</td></tr>
               <tr><th scope="row">Plan</th><td>{entitlements.plan}</td></tr>
             </tbody>
           </table>

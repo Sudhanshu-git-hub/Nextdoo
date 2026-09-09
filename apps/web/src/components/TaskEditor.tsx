@@ -24,6 +24,7 @@ function TaskEditorForm({ task, onClose, onSaved, onNavigate, onBack }: {
   task: Task; onClose: () => void; onSaved: () => void; onNavigate: (task: Task) => void; onBack?: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const [taskTimeZone, setTaskTimeZone] = useState(task.timeZone ?? null);
   const [recurrenceId, setRecurrenceId] = useState(task.recurrenceRuleId);
   const [recurrenceBusy, setRecurrenceBusy] = useState(false), [recurrenceDraft, setRecurrenceDraft] = useState(false);
   const [lifecycleBusy, setLifecycleBusy] = useState(false), [taskStatus, setTaskStatus] = useState(task.status);
@@ -37,7 +38,7 @@ function TaskEditorForm({ task, onClose, onSaved, onNavigate, onBack }: {
   useEffect(() => {
     const controller = new AbortController();
     void Promise.all([api<Detail>(`/tasks/${task.id}`, { signal: controller.signal }), api<{ data: Project[] }>('/projects', { signal: controller.signal }), api<{ data: Tag[] }>('/tags', { signal: controller.signal })])
-      .then(([detail, p, t]) => { if (controller.signal.aborted) return; const d = draftOf(detail); setBase(d); setDraft(d); setVersion(detail.version); setTaskStatus(detail.status); setRecurrenceId(detail.recurrenceRuleId); setProjects(p.data); setTags(t.data); })
+      .then(([detail, p, t]) => { if (controller.signal.aborted) return; const d = draftOf(detail); setBase(d); setDraft(d); setVersion(detail.version); setTaskStatus(detail.status); setRecurrenceId(detail.recurrenceRuleId); setTaskTimeZone(detail.timeZone); setProjects(p.data); setTags(t.data); })
       .catch((e) => { if (!controller.signal.aborted) setError(e instanceof ApiError ? e.problem.detail : 'Could not load task details. Close and retry.'); });
     return () => controller.abort();
   }, [task.id]);
@@ -75,7 +76,7 @@ function TaskEditorForm({ task, onClose, onSaved, onNavigate, onBack }: {
   }
   async function reloadDetails() {
     const detail = await api<Detail>(`/tasks/${task.id}`);
-    const d = draftOf(detail); setBase(d); setDraft(d); setVersion(detail.version); setTaskStatus(detail.status); setRecurrenceId(detail.recurrenceRuleId); setConflict(null); setError(null);
+    const d = draftOf(detail); setBase(d); setDraft(d); setVersion(detail.version); setTaskStatus(detail.status); setRecurrenceId(detail.recurrenceRuleId); setTaskTimeZone(detail.timeZone); setConflict(null); setError(null);
   }
   function change<K extends keyof Draft>(key: K, value: Draft[K]) { setDraft((d) => d && ({ ...d, [key]: value })); }
   return <dialog ref={dialog} aria-labelledby="task-editor-title" className="task-editor" onCancel={(e) => { e.preventDefault(); close(); }}>
@@ -115,7 +116,7 @@ function TaskEditorForm({ task, onClose, onSaved, onNavigate, onBack }: {
         onChanged={(nextVersion) => { if (nextVersion !== undefined) setVersion(nextVersion); onSaved(); }}
         onOpen={(next) => navigate(() => onNavigate(next))} />}
     </details>
-    {draft && <TaskRecurrenceActions taskId={task.id} version={version} recurrenceId={recurrenceId}
+    {draft && <TaskRecurrenceActions timeZone={taskTimeZone} taskId={task.id} version={version} recurrenceId={recurrenceId}
       disabled={busy || relationsBusy || lifecycleBusy || dirty || relationDraft || !!conflict}
       onBusyChange={setRecurrenceBusy} onDraftChange={setRecurrenceDraft} onReload={reloadDetails} onSaved={onSaved} />}
     {draft && <div style={{ marginTop: 20 }}><h3>Task lifecycle</h3>

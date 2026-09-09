@@ -1,4 +1,5 @@
 'use client';
+import { useWorkspace } from './WorkspaceContext';
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -15,10 +16,12 @@ const LINKS = [
 ];
 
 export function Sidebar() {
+  const workspace = useWorkspace();
   const pathname = usePathname();
   return (
     <nav className="sidebar" aria-label="Main navigation">
       <div className="brand">NEXT<span>DOO</span></div>
+      <p className="muted" style={{ overflowWrap: 'anywhere' }}>{workspace.name}</p>
       {LINKS.map((link) => (
         <Link
           key={link.href}

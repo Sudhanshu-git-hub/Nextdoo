@@ -50,6 +50,7 @@ export interface Task {
   status: 'ACTIVE' | 'COMPLETED' | 'ARCHIVED' | 'DELETED';
   priority: 'NONE' | 'LOW' | 'MEDIUM' | 'HIGH';
   dueAt: string | null;
+  timeZone?: string | null;
   estimateMinutes: number | null;
   actualMinutes: number;
   actualSeconds: number;

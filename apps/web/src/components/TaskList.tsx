@@ -1,4 +1,5 @@
 'use client';
+import { useWorkspace } from './WorkspaceContext';
 
 import Link from 'next/link';
 import { TaskEditor } from './TaskEditor';
@@ -31,6 +32,7 @@ export function TaskList({
   onTaskDrag?: (task: Task, event: DragEvent<HTMLLIElement>) => void;
   taskActions?: (task: Task) => ReactNode;
 }) {
+  const { timeZone } = useWorkspace();
   const [editing, setEditing] = useState<Task | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null);
@@ -115,7 +117,7 @@ export function TaskList({
                       <span className={overdue ? 'pill pill-late' : 'pill'}>
                         {overdue ? 'Overdue · ' : ''}
                         {new Date(task.dueAt).toLocaleString(undefined, {
-                          month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+                          timeZone, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
                         })}
                       </span>
                     )}

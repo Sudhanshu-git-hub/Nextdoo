@@ -13,23 +13,23 @@ PRD v1.1 §4.1, §19 and §21 are the acceptance authority. The working PRD and 
 The PRD has not been rewritten. Retain Next.js, `/api/v1`, camelCase, current
 pagination, the fixed Arena branch, immutable migrations and all recovered features.
 
-The current increment delivers **online recurrence**, on top of previously verified
-boards/sections, subtasks/relationships and atomic bulk task commands. The latest
-user authorization is explicitly bounded: boards → subtasks → recurrence → personal
-workspace settings; do not start AI, billing, desktop or full offline mode. Recurrence
-DST and preserve-generated-history decisions were confirmed by the user. Evidence:
-[TASK_RECURRENCE_MILESTONE.md](TASK_RECURRENCE_MILESTONE.md), **386 unit/integration
-and tooling tests, 57 browser/API scenarios**, full local gates green. The earlier
-bulk milestone's 363/50 evidence remains historical, not the current suite count.
-This is bounded behavior verification, not full acceptance of every row below.
+The current increment delivers **personal-workspace settings**, following committed
+recurrence (`e1c2f24`) and the existing boards/sections, subtasks and bulk workflows.
+The latest authorization remains boards → subtasks → recurrence → workspace settings;
+no AI, billing, desktop or full offline mode. The user approved overnight workdays.
+Evidence: [WORKSPACE_SETTINGS_MILESTONE.md](WORKSPACE_SETTINGS_MILESTONE.md),
+**394 unit/integration/tooling tests and 62 browser/API scenarios**, all local gates
+green. Recurrence's remote CI also passed. Final board review identified the remaining
+optimistic-movement/rollback acceptance detail; that focused fix is next. This is
+not full acceptance of every Phase 1 row below.
 
 ## Milestone status: evidence rather than percentage complete
 
 | PRD milestone | Working, tested foundation | Remaining completion work |
 |---|---|---|
 | M1 Foundation | Authentication/recovery/MFA/session and tenant guards; migrations; HTTP conventions; shell; local CI-equivalent gates | Production email delivery; distributed rate limiting; complete tracing/metrics and alert verification; staging/rollback qualification |
-| M2 Core task management | Online capture/editor, tags/priority/due/estimate, projects/lifecycle, sections/board, subtasks/dependencies, archive/Trash/recovery, query filters/sorts, atomic bulk commands | Rich descriptions/location and complete task-field UX; list virtualization above 200; collection scalability; required capture/mutation instrumentation and core performance/a11y acceptance |
-| M3 Planning and execution | Week task calendar/movement, focus/time workflows, reminders with durable DB/SMTP foundations, complete/reschedule; bounded recurrence generation, future rule edits, occurrence lifecycle and retries | Day/month calendar and full calendar pagination; workspace-local planning settings/capacity; offline timers; real browser/desktop delivery and snooze/status acceptance |
+| M2 Core task management | Online capture/editor, tags/priority/due/estimate, projects/lifecycle, sections/board, subtasks/dependencies, archive/Trash/recovery, query filters/sorts, atomic bulk commands; owner-managed workspace defaults | Board optimistic movement/rollback; rich descriptions/location and complete task-field UX; list virtualization above 200; collection scalability; required capture/mutation instrumentation and core performance/a11y acceptance |
+| M3 Planning and execution | Workspace-local week task calendar/movement and Today, configured overnight workday guideline, focus/time workflows, reminders with durable DB/SMTP foundations, complete/reschedule; bounded recurrence generation, future rule edits, occurrence lifecycle and retries | Day/month calendar and full calendar pagination; complete provider-aware capacity planning; offline timers; real browser/desktop delivery and snooze/status acceptance |
 | M4 Tracking and analytics | Append-only task events, inline calculation/input snapshots, Unmeasured handling, task/project summaries and project analytics | Source-event drilldown/corrections/backfill; independent score/tracking/wellbeing controls; workspace-local daily/weekly reporting; review UX and full TR matrix; durable jobs/consumer and freshness/telemetry qualification |
 | M5 Cross-platform reliability | Server push/pull/version/tombstone protection; scoped IndexedDB queue primitives and Today cached fallback | UI enqueue/reconcile/recovery and conflict views; full SY-01–SY-10 across devices; 5,000 mutation drain; Windows Tauri/SQLite/WebView2 client, notifications, packaging/signing/update/rollback |
 | M6 Commercial readiness | Server entitlement limits; authenticated JSON export; reauthenticated deletion/grace/purge; audit trail | Real Google Calendar two-way OAuth/sync/revocation; provider billing/webhooks/refunds/reconciliation; attachments/upload/scan/download gating; expiring CSV/JSON exports; support/status/dashboards and operational acceptance |
@@ -80,12 +80,11 @@ command. All release gates in §19.4 remain required, not only this checklist.
 
 ## Execution order from here
 
-1. **Current authorized next milestone: personal-workspace settings/management.**
-   Review workday-hour validation (same-day versus overnight), then implement the
-   existing workspace fields/API/UI with tenant/version/idempotency and regression
-   gates. Boards/sections and subtasks are retained; recurrence is now verified.
-   Rich-task completion, virtualization and broader planning remain backlog, not
-   permission to expand this increment.
+1. **Close the remaining board acceptance detail:** add optimistic movement and
+   rollback without replacing the existing board, preserve uncertain-response retry
+   identity and keyboard controls, and rerun full gates. Personal-workspace settings
+   and recurrence are now locally verified. Other rich-task, virtualization and
+   broader planning requirements remain backlog, not permission to expand scope.
 
 The following steps remain the broader Phase 1 backlog, **not authorization to
 start AI, billing, desktop, full offline mode or other deferred integrations now**:
@@ -117,8 +116,9 @@ silently choosing new semantics. No artificial completion percentage or ETA is g
 These do not block all local engineering, but they do block honest full Phase 1
 acceptance and must be resolved before implementing their affected semantics:
 
-- **Workspace workday policy:** confirm whether configured hours can cross
-  midnight before implementing the next settings milestone.
+- **Workspace workday decision resolved:** overnight ranges are supported with
+  an explicit next-day label; equal times are rejected. Nominal hours are not a
+  promise of elapsed capacity. See the workspace settings report.
 - **Recurrence decisions resolved:** gaps shift by the clock transition, folds use
   the earlier instant, generated history is preserved and revised rules start after
   the generated range. See the recurrence report for bounds and acceptance evidence.

@@ -16,6 +16,7 @@ export const DOMAIN_EVENT_TYPE = [
   'task.archived',
   'task.deleted',
   'task.restored',
+  'workspace.updated',
   'recurrence.created',
   'recurrence.updated',
   'recurrence.occurrence_generated',

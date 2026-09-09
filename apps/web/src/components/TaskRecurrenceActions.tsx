@@ -1,12 +1,14 @@
 'use client';
+import { useWorkspace } from './WorkspaceContext';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { RecurrenceRuleFields, parseRule, ruleDraft } from './RecurrenceRuleFields';
-export function TaskRecurrenceActions({ taskId, version, recurrenceId, disabled, onBusyChange, onDraftChange, onReload, onSaved }: {
- taskId: string; version: number; recurrenceId?: string | null; disabled: boolean; onBusyChange: (busy: boolean) => void; onDraftChange: (dirty: boolean) => void; onReload: () => Promise<void>; onSaved: () => void;
+export function TaskRecurrenceActions({ taskId, version, recurrenceId, timeZone, disabled, onBusyChange, onDraftChange, onReload, onSaved }: {
+ timeZone: string | null; taskId: string; version: number; recurrenceId?: string | null; disabled: boolean; onBusyChange: (busy: boolean) => void; onDraftChange: (dirty: boolean) => void; onReload: () => Promise<void>; onSaved: () => void;
 }) {
- const [initial] = useState(() => ruleDraft()); const [draft, setDraft] = useState(initial), [error, setError] = useState<string | null>(null), [busy, setBusy] = useState(false);
+ const workspace = useWorkspace();
+ const [initial] = useState(() => ruleDraft({ freq: 'DAILY', interval: 1, timeZone: timeZone ?? workspace.timeZone })); const [draft, setDraft] = useState(initial), [error, setError] = useState<string | null>(null), [busy, setBusy] = useState(false);
  const attempt = useRef<{ body: string; key: string } | null>(null), locked = useRef(false);
  useEffect(() => { onDraftChange(!recurrenceId && JSON.stringify(draft) !== JSON.stringify(initial)); }, [draft, initial, recurrenceId, onDraftChange]);
  async function start(e: React.FormEvent) {

@@ -4,3 +4,4 @@ export * from './recurrence';
 export * from './nl-parse';
 export * from './sync-merge';
 export * from './totp';
+export * from './calendar';

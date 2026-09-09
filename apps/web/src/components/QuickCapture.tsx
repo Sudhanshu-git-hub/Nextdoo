@@ -1,4 +1,5 @@
 'use client';
+import { useWorkspace } from './WorkspaceContext';
 
 import { useEffect, useRef, useState } from 'react';
 import type { ParseResult } from '@nextdoo/core';
@@ -34,7 +35,7 @@ export function QuickCapture({ workspaceId, onCreated }: { workspaceId: string; 
     return () => window.removeEventListener('keydown', onKey);
   }, [parsed]);
 
-  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const { timeZone } = useWorkspace();
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -135,7 +136,7 @@ export function QuickCapture({ workspaceId, onCreated }: { workspaceId: string; 
             <div className="muted" style={{ marginTop: 4 }}>
               {parsed.dueAt && (
                 <span>
-                  Due {new Date(parsed.dueAt.value).toLocaleString()}{' '}
+                  Due {new Date(parsed.dueAt.value).toLocaleString(undefined, { timeZone })}{' '}
                   ({Math.round(parsed.dueAt.confidence * 100)}% confident)
                 </span>
               )}

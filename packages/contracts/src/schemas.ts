@@ -375,3 +375,13 @@ export const changeRecurrenceSchema = z.object({
 }).strict().refine((v) => v.rule ? !!v.startsAt && v.active === undefined : v.active !== undefined && !v.startsAt, { message: 'Change the schedule and start together, or pause/resume the series' });
 export type AttachRecurrenceInput = z.infer<typeof attachRecurrenceSchema>;
 export type ChangeRecurrenceInput = z.infer<typeof changeRecurrenceSchema>;
+
+const workspaceFields = {
+ name: z.string().trim().min(1).max(200), timeZone,
+ weekStart: z.number().int().min(0).max(6),
+ workdayStartMinute: z.number().int().min(0).max(1439), workdayEndMinute: z.number().int().min(0).max(1439),
+};
+export const workspaceSettingsSchema = z.object(workspaceFields).strict().refine((v) => v.workdayStartMinute !== v.workdayEndMinute, { message: 'Choose different workday start and end times. An earlier end means the next day.' });
+export const updateWorkspaceSchema = z.object(workspaceFields).partial().extend({ version: z.number().int().min(1) }).strict().refine((v) => Object.keys(v).length > 1, { message: 'Choose at least one setting to change' });
+export type WorkspaceSettings = z.infer<typeof workspaceSettingsSchema>;
+export type UpdateWorkspaceInput = z.infer<typeof updateWorkspaceSchema>;

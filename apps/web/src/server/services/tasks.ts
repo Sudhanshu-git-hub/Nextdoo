@@ -13,7 +13,7 @@ import {
   versionConflict,
 } from '@nextdoo/contracts';
 import { nextStatus } from '@nextdoo/core';
-import { projects, tasks, taskTags, taskDependencies, taskOccurrences, syncTombstones } from '@nextdoo/db';
+import { projects, tasks, taskTags, taskDependencies, taskOccurrences, syncTombstones, workspaces } from '@nextdoo/db';
 import { getDb } from '../db';
 import { newId } from '../ids';
 import { appendTrackingEvent, publishEvent, recordSyncChange, writeAudit } from './events';
@@ -98,7 +98,7 @@ export async function createTask(actor: TaskActor, input: CreateTaskInput, optio
         description: input.description ?? null,
         priority: input.priority,
         dueAt: input.dueAt ? new Date(input.dueAt) : null,
-        timeZone: input.timeZone ?? null,
+        timeZone: input.timeZone ?? (await tx.select({ timeZone: workspaces.timeZone }).from(workspaces).where(eq(workspaces.id, actor.workspaceId)))[0]?.timeZone ?? 'UTC',
         estimateMinutes: input.estimateMinutes ?? null,
         position: String(now.getTime()),
         createdAt: now,

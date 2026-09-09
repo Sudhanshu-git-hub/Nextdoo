@@ -1,4 +1,6 @@
 'use client';
+import { localDayBounds, workdayMinutes } from '@nextdoo/core/calendar';
+import { useWorkspace } from '@/components/WorkspaceContext';
 
 import { useEffect, useMemo } from 'react';
 import { useTaskPages } from '@/lib/use-task-pages';
@@ -14,10 +16,11 @@ import { TaskList } from '@/components/TaskList';
  * is how a planner starts lying to its user.
  */
 export function TodayView({ workspaceId }: { workspaceId: string }) {
+  const { timeZone, workdayStartMinute, workdayEndMinute } = useWorkspace();
   const filters = useMemo(() => {
-    const end = new Date(); end.setHours(23, 59, 59, 999);
+    const { end } = localDayBounds(new Date(), timeZone);
     return `status=ACTIVE&dueBefore=${encodeURIComponent(end.toISOString())}`;
-  }, []);
+  }, [timeZone]);
   const page = useTaskPages(workspaceId, filters, true);
   const { tasks, loading, stale, reload: load } = page;
   // Drain the offline queue whenever connectivity returns.
@@ -31,8 +34,8 @@ export function TodayView({ workspaceId }: { workspaceId: string }) {
   }, [workspaceId, load]);
 
   const now = new Date();
-  const overdue = tasks.filter((t) => t.dueAt && new Date(t.dueAt) < startOfToday());
-  const today = tasks.filter((t) => !t.dueAt || new Date(t.dueAt) >= startOfToday());
+  const overdue = tasks.filter((t) => t.dueAt && new Date(t.dueAt) < localDayBounds(now, timeZone).start);
+  const today = tasks.filter((t) => !t.dueAt || new Date(t.dueAt) >= localDayBounds(now, timeZone).start);
   const plannedMinutes = tasks.reduce((sum, t) => sum + (t.estimateMinutes ?? 0), 0);
 
   return (
@@ -41,7 +44,7 @@ export function TodayView({ workspaceId }: { workspaceId: string }) {
         <div>
           <h1>Today</h1>
           <p className="subtitle">
-            {now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
+            {now.toLocaleDateString(undefined, { timeZone, weekday: 'long', month: 'long', day: 'numeric' })}
             {plannedMinutes > 0 && ` · ${formatMinutes(plannedMinutes)} planned in loaded tasks`}
           </p>
         </div>
@@ -55,10 +58,10 @@ export function TodayView({ workspaceId }: { workspaceId: string }) {
 
       <QuickCapture workspaceId={workspaceId} onCreated={load} />
 
-      {plannedMinutes > 480 && (
+      {plannedMinutes > workdayMinutes(workdayStartMinute, workdayEndMinute) && (
         <div className="banner banner-warn" role="status">
-          You have planned {formatMinutes(plannedMinutes)} of work in the loaded tasks. That is more than a typical working day —
-          consider moving something.
+          You have planned {formatMinutes(plannedMinutes)} of work in the loaded tasks. That exceeds your configured workday ({formatMinutes(workdayMinutes(workdayStartMinute, workdayEndMinute))}).
+          This is a planning guideline, not a guarantee of available time; consider moving something.
         </div>
       )}
 
@@ -94,11 +97,7 @@ export function TodayView({ workspaceId }: { workspaceId: string }) {
   );
 }
 
-function startOfToday(): Date {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
+
 
 function formatMinutes(minutes: number): string {
   const h = Math.floor(minutes / 60);
