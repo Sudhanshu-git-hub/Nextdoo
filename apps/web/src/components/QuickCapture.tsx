@@ -19,6 +19,20 @@ export function QuickCapture({ workspaceId, onCreated }: { workspaceId: string; 
   const [announcement, setAnnouncement] = useState('');
   const mutation = useRef<{ body: string; key: string } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // PRD §20.3: capture latency = time from capture UI open (first focus) to save.
+  const openedAt = useRef<number | null>(null);
+
+  function markOpened() {
+    if (openedAt.current === null) openedAt.current = performance.now();
+  }
+
+  /** Best-effort, content-free telemetry (schema-strict on the server). */
+  function reportCapture(success: boolean, confirmed: boolean) {
+    if (openedAt.current === null) return;
+    const latencyMs = Math.max(0, Math.round(performance.now() - openedAt.current));
+    openedAt.current = null;
+    void api('/telemetry/capture', { method: 'POST', body: JSON.stringify({ latencyMs, success, confirmed }) }).catch(() => undefined);
+  }
 
   // `N` focuses capture from anywhere, unless the user is already typing.
   useEffect(() => {
@@ -55,15 +69,16 @@ export function QuickCapture({ workspaceId, onCreated }: { workspaceId: string; 
         setAnnouncement('Please confirm the interpreted details before saving.');
         return;
       }
-      await create(result);
+      await create(result, false);
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.problem.detail : 'Could not save the task.');
+      reportCapture(false, false);
     } finally {
       setBusy(false);
     }
   }
 
-  async function create(result: ParseResult) {
+  async function create(result: ParseResult, confirmed: boolean) {
     setBusy(true);
     setError(null);
     try {
@@ -86,12 +101,14 @@ export function QuickCapture({ workspaceId, onCreated }: { workspaceId: string; 
       setParsed(null);
       setAnnouncement(`Task added: ${result.title}`);
       onCreated();
+      reportCapture(true, confirmed);
     } catch (caught) {
       setError(
         caught instanceof ApiError
           ? caught.problem.detail
           : 'Could not save the task. It has been kept in the box.',
       );
+      reportCapture(false, confirmed);
     } finally {
       setBusy(false);
     }
@@ -108,6 +125,9 @@ export function QuickCapture({ workspaceId, onCreated }: { workspaceId: string; 
             id="capture"
             ref={inputRef}
             value={text}
+            onFocus={markOpened}
+            onKeyUp={markOpened}
+            onBlur={() => { if (text === '') openedAt.current = null; }}
             onChange={(e) => { setText(e.target.value); setParsed(null); }}
             placeholder="Add a task…  e.g. Prepare Q3 report tomorrow at 2pm for 90 minutes"
             aria-describedby="capture-hint"
@@ -147,7 +167,7 @@ export function QuickCapture({ workspaceId, onCreated }: { workspaceId: string; 
             </div>
           </div>
           <div className="row" style={{ marginTop: 10 }}>
-            <button type="button" className="btn-primary btn-sm" onClick={() => create(parsed)} disabled={busy}>
+            <button type="button" className="btn-primary btn-sm" onClick={() => void create(parsed, true)} disabled={busy}>
               Save as shown
             </button>
             <button type="button" className="btn-sm" onClick={() => setParsed(null)}>

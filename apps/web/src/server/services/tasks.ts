@@ -20,6 +20,7 @@ import { appendTrackingEvent, publishEvent, recordSyncChange, writeAudit } from 
 import { scheduleTrackingEvaluation } from './tracking';
 import { assertTaskReferences } from './task-references';
 import { withWorkspaceTransaction } from './transactions';
+import { withTaskMetric, recordActiveTaskCount, type MutationChannel } from '../metrics';
 import { enforceTaskLimit } from './entitlements';
 
 /**
@@ -36,6 +37,25 @@ export interface TaskActor {
   workspaceId: string;
   requestId?: string;
   deviceId?: string | null;
+  /** Which channel initiated the mutation (metric tagging; defaults to http). */
+  via?: MutationChannel;
+}
+
+/**
+ * Emits the active-task count gauge after a count-changing mutation. The
+ * read happens after the transaction committed; a failure here must never
+ * fail the already-committed mutation.
+ */
+async function emitActiveTaskCount(workspaceId: string): Promise<void> {
+  try {
+    const rows = await getDb()
+      .select({ count: sql<number>`count(*)` })
+      .from(tasks)
+      .where(and(eq(tasks.workspaceId, workspaceId), eq(tasks.status, 'ACTIVE')));
+    recordActiveTaskCount(workspaceId, Number(rows[0]?.count ?? 0));
+  } catch {
+    // Gauge emission is best-effort by design.
+  }
 }
 
 export type TaskRow = typeof tasks.$inferSelect;
@@ -58,6 +78,10 @@ export async function loadTask(workspaceId: string, taskId: string): Promise<Tas
 }
 
 export async function createTask(actor: TaskActor, input: CreateTaskInput, options: { id?: string } = {}): Promise<SerialisedTask> {
+  return withTaskMetric(actor.workspaceId, actor.via ?? 'http', 'create', () => createTaskCore(actor, input, options), () => emitActiveTaskCount(actor.workspaceId));
+}
+
+async function createTaskCore(actor: TaskActor, input: CreateTaskInput, options: { id?: string } = {}): Promise<SerialisedTask> {
   const id = options.id ?? newId();
   const now = new Date();
 
@@ -176,6 +200,14 @@ export async function updateTask(
   taskId: string,
   input: UpdateTaskInput,
 ): Promise<SerialisedTask> {
+  return withTaskMetric(actor.workspaceId, actor.via ?? 'http', 'update', () => updateTaskCore(actor, taskId, input));
+}
+
+async function updateTaskCore(
+  actor: TaskActor,
+  taskId: string,
+  input: UpdateTaskInput,
+): Promise<SerialisedTask> {
 
   return withWorkspaceTransaction(actor.workspaceId, async (tx) => {
     const rows = await tx
@@ -269,6 +301,15 @@ export async function completeTask(
   version: number,
   completedAt?: string,
 ): Promise<SerialisedTask> {
+  return withTaskMetric(actor.workspaceId, actor.via ?? 'http', 'complete', () => completeTaskCore(actor, taskId, version, completedAt), () => emitActiveTaskCount(actor.workspaceId));
+}
+
+async function completeTaskCore(
+  actor: TaskActor,
+  taskId: string,
+  version: number,
+  completedAt?: string,
+): Promise<SerialisedTask> {
   const when = completedAt ? new Date(completedAt) : new Date();
 
   return withWorkspaceTransaction(actor.workspaceId, async (tx) => {
@@ -343,6 +384,10 @@ export async function completeTask(
 }
 
 export async function reopenTask(actor: TaskActor, taskId: string, version: number): Promise<SerialisedTask> {
+  return withTaskMetric(actor.workspaceId, actor.via ?? 'http', 'reopen', () => reopenTaskCore(actor, taskId, version), () => emitActiveTaskCount(actor.workspaceId));
+}
+
+async function reopenTaskCore(actor: TaskActor, taskId: string, version: number): Promise<SerialisedTask> {
   return withWorkspaceTransaction(actor.workspaceId, async (tx) => {
     const rows = await tx
       .select()
@@ -390,6 +435,16 @@ export async function reopenTask(actor: TaskActor, taskId: string, version: numb
 }
 
 export async function rescheduleTask(
+  actor: TaskActor,
+  taskId: string,
+  version: number,
+  dueAt: string | null,
+  reason?: string,
+): Promise<SerialisedTask> {
+  return withTaskMetric(actor.workspaceId, actor.via ?? 'http', 'reschedule', () => rescheduleTaskCore(actor, taskId, version, dueAt, reason));
+}
+
+async function rescheduleTaskCore(
   actor: TaskActor,
   taskId: string,
   version: number,
@@ -448,6 +503,10 @@ export async function rescheduleTask(
 }
 
 export async function archiveTask(actor: TaskActor, taskId: string, version: number): Promise<SerialisedTask> {
+  return withTaskMetric(actor.workspaceId, actor.via ?? 'http', 'archive', () => archiveTaskCore(actor, taskId, version), () => emitActiveTaskCount(actor.workspaceId));
+}
+
+async function archiveTaskCore(actor: TaskActor, taskId: string, version: number): Promise<SerialisedTask> {
   return withWorkspaceTransaction(actor.workspaceId, async (tx) => {
     const rows = await tx
       .select()
@@ -489,6 +548,10 @@ export async function archiveTask(actor: TaskActor, taskId: string, version: num
 
 /** Soft delete with a tombstone and a 30-day restore window (PRD §13.5). */
 export async function deleteTask(actor: TaskActor, taskId: string, version?: number): Promise<void> {
+  return withTaskMetric(actor.workspaceId, actor.via ?? 'http', 'delete', () => deleteTaskCore(actor, taskId, version), () => emitActiveTaskCount(actor.workspaceId));
+}
+
+async function deleteTaskCore(actor: TaskActor, taskId: string, version?: number): Promise<void> {
   if (version !== undefined) taskVersionSchema.parse({ version });
   await withWorkspaceTransaction(actor.workspaceId, async (tx) => {
     const rows = await tx
@@ -549,6 +612,10 @@ export async function deleteTask(actor: TaskActor, taskId: string, version?: num
 }
 
 export async function restoreTask(actor: TaskActor, taskId: string, version?: number): Promise<SerialisedTask> {
+  return withTaskMetric(actor.workspaceId, actor.via ?? 'http', 'restore', () => restoreTaskCore(actor, taskId, version), () => emitActiveTaskCount(actor.workspaceId));
+}
+
+async function restoreTaskCore(actor: TaskActor, taskId: string, version?: number): Promise<SerialisedTask> {
   if (version !== undefined) taskVersionSchema.parse({ version });
   return withWorkspaceTransaction(actor.workspaceId, async (tx) => {
     const rows = await tx

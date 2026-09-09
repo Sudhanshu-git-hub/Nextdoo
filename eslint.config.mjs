@@ -8,7 +8,7 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   {
     files: ['**/*.{ts,tsx,mts,mjs}'],
-    languageOptions: { globals: { process: 'readonly', console: 'readonly', URL: 'readonly', Buffer: 'readonly', setInterval: 'readonly', clearInterval: 'readonly' } },
+    languageOptions: { globals: { process: 'readonly', console: 'readonly', URL: 'readonly', Buffer: 'readonly', setInterval: 'readonly', clearInterval: 'readonly', fetch: 'readonly', performance: 'readonly', setTimeout: 'readonly' } },
     plugins: { 'unused-imports': unusedImports },
     rules: {
       // Existing Drizzle transaction adapters use explicit any; typecheck still

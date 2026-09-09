@@ -79,6 +79,8 @@ export async function pushMutations(
 ): Promise<{ results: MutationResult[]; cursor: number }> {
   if (input.workspaceId !== undefined && input.workspaceId !== actor.workspaceId) throw new AppError('FORBIDDEN', 'The queued workspace is not the authenticated workspace.');
   const results: MutationResult[] = [];
+  // Tag the mutation channel for M2 metrics (task creation/mutation rates).
+  const syncActor: TaskActor = { userId: actor.userId, workspaceId: actor.workspaceId, via: 'sync' };
 
   for (const mutation of input.mutations) {
     try {
@@ -86,7 +88,7 @@ export async function pushMutations(
       if (['addDependencyId', 'removeDependencyId', 'dependsOnTaskIds'].some((field) => field in mutation.payload)) {
         throw new AppError('VALIDATION_FAILED', 'Relationship commands require the online relationships endpoint.');
       }
-      results.push(await applyMutation(actor, input.deviceId, mutation));
+      results.push(await applyMutation(syncActor, input.deviceId, mutation));
     } catch (error) {
       // Isolate the failure: the rest of the batch still applies.
       logger.warn('sync.mutation.failed', {

@@ -371,6 +371,19 @@ export type UpdateTaskRelationsInput = z.infer<typeof updateTaskRelationsSchema>
 
 
 export const taskVersionSchema = z.object({ version: z.number().int().min(1) });
+
+/**
+ * Client-reported capture telemetry (PRD §20.3 "task capture latency",
+ * §21.3 M2 instrumentation). Strict by design: no task content may be
+ * accepted, ever.
+ */
+export const captureTelemetrySchema = z
+  .object({
+    latencyMs: z.number().int().min(0).max(3_600_000),
+    success: z.boolean(),
+    confirmed: z.boolean(),
+  })
+  .strict();
 /** Preserve legacy bodyless delete/restore; new clients always send version. */
 export const optionalTaskVersionSchema = z.object({ version: z.number().int().min(1).optional() });
 

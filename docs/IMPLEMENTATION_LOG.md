@@ -240,3 +240,35 @@ milestone commit, separately from local evidence.
 Date-range corrections/backfill, workspace-local reporting, reviewed controls,
 TR-03 policy, routed alerts/load SLOs and wider Phase 1 integrations remain open.
 No AI, billing, desktop or full offline feature was started.
+
+## M2 capture/mutation instrumentation + collection-scale performance acceptance — 2026-09-10
+
+Implemented the next M2 increment without changing the PRD, the existing
+APIs or any verified milestone.
+[M2_INSTRUMENTATION_MILESTONE.md](M2_INSTRUMENTATION_MILESTONE.md) records the
+PRD requirements, design decisions, test evidence, measured baseline and the
+remaining operational gate.
+
+Highlights: typed metric events over the existing structured-log sink
+(`task.created`/`task.create_failed`, `task.mutated`/`task.mutation_failed`,
+`workspace.active_tasks` gauge, `task.capture`) with one instrumentation seam
+covering HTTP, bulk and sync (channel-tagged via the actor); a strict,
+content-free `POST /api/v1/telemetry/capture` endpoint fed by
+client-measured open→save latency in QuickCapture (fire-and-forget, never
+blocks capture); 1,000-task inbox E2E proving full cursor pagination, bounded
+virtualized DOM and exact deep-page order; and a repeatable API latency
+baseline (`scripts/perf-baseline.mjs`) measuring all seven read/write
+operations at 1,000 seeded tasks — every p95 within the PRD §19.4 budgets
+(read 9.7–15.4 ms vs 300 ms; write 21.0–27.3 ms vs 500 ms) as a local
+reference, with the staging load test itself remaining an operational
+qualification.
+
+Final local gates: **51 test files / 498 unit+integration tests** and
+**105/105 browser/API scenarios** (baseline 50/492 and 102), lint (0
+warnings), types, coverage (87.41% statements) and build passed. Remote CI is
+verified against the pushed milestone commit, separately from local evidence.
+
+The only remaining M2 completion work is the PRD §19.4 staging load test
+execution (staging environment + load generator), plus deployment-side
+collector/alerting wiring for the new events. No M3, provider, billing,
+desktop or full-offline work was started.
