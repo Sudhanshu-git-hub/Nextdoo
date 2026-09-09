@@ -38,7 +38,7 @@ workspace, notification and data-integrity acceptance was retained in the full r
 | M3 Planning and execution | Workspace-local week task calendar/movement and Today, configured overnight workday guideline, focus/time workflows, durable in-app notifications, reminder status/history/read/snooze/cancel and bounded isolated dispatch retries, complete/reschedule; bounded recurrence generation, future rule edits, occurrence lifecycle and retries | Day/month calendar and full calendar pagination; complete provider-aware capacity planning; offline timers; real browser/background push and enabled reminder email delivery; desktop delivery remains excluded from current work |
 | M4 Tracking and analytics | Ordered append-only events, shared versioned engine, durable outbox consumer/queue with fenced leases and five retries, due/cohort freshness, immutable input/history drilldown, owner single-task re-evaluation, numeric-score visibility and live UTC task/project summaries | Date-range recalculation and full corrections/review workflows; independent tracking/wellbeing controls and retention policy; workspace-local reporting and richer trends; unresolved TR-03/full TR matrix; routed alerts and sustained freshness/load SLO qualification |
 | M5 Cross-platform reliability | Server push/pull/version/tombstone protection; scoped IndexedDB queue primitives and Today cached fallback | UI enqueue/reconcile/recovery and conflict views; full SY-01–SY-10 across devices; 5,000 mutation drain; Windows Tauri/SQLite/WebView2 client, notifications, packaging/signing/update/rollback |
-| M6 Commercial readiness | Server entitlement limits; authenticated JSON export with legacy notification-reference privacy guards; reauthenticated deletion/grace/purge; audit trail | Real Google Calendar two-way OAuth/sync/revocation; provider billing/webhooks/refunds/reconciliation; attachments/upload/scan/download gating; expiring CSV/JSON exports; support/status/dashboards and operational acceptance |
+| M6 Commercial readiness | Server entitlement limits; authenticated JSON export with legacy notification-reference privacy guards; reauthenticated deletion/grace/purge; audit trail; asynchronous expiring JSON/CSV exports (bounded worker generation, signed 24-hour downloads, plan quota plus durable hourly limit, purge-aware artifact deletion) per [DATA_EXPORT_MILESTONE.md](DATA_EXPORT_MILESTONE.md) | Real Google Calendar two-way OAuth/sync/revocation; provider billing/webhooks/refunds/reconciliation; attachments/upload/scan/download gating; support/status/dashboards and operational acceptance |
 
 ### Specific current implementation evidence
 
@@ -107,9 +107,14 @@ command. All release gates in §19.4 remain required, not only this checklist.
    **Resolve the tracking policy decisions below before changing those semantics**;
    current score math and cohorts have deliberately not been changed.
 3. **Data rights, limits and authorization:** verify/reinforce existing export quotas,
-   account deletion and permission boundaries. Deliver asynchronous, expiring exports
-   only with reviewed storage/expiry design and real integration evidence. Retention,
-   backup deletion and distributed limits still need operational resources.
+   account deletion and permission boundaries. **Delivered:** asynchronous, expiring
+   JSON/CSV exports with reviewed storage/expiry design and real integration evidence —
+   see [DATA_EXPORT_MILESTONE.md](DATA_EXPORT_MILESTONE.md) (bounded `export.generate`
+   and `exports.expire` worker jobs with claim/lease fencing, signed 24-hour download
+   tokens, FREE 1/day quota plus durable 3-per-hour limit, tenant-scoped reads, artifact
+   deletion on expiry and account purge; 9 integration regressions and 4 browser E2E
+   verified). Retention, backup deletion and distributed limits still need
+   operational resources.
 4. **Remaining task/planning UX:** rich fields/location, large-list virtualization,
    complete calendar pagination and day/month views. Preserve the delivered board,
    relationships, recurrence and workspace semantics; qualify accessible/performance

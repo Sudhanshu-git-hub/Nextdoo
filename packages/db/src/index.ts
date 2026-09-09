@@ -12,3 +12,20 @@ export { generateRecurrenceBatch, generateRecurrenceInTransaction, runRecurrence
 export { buildScoringInput, evaluateTrackingInTransaction, CALCULATION_VERSION, type StoredResult } from './tracking-engine';
 
 export { relayTrackingOutbox, reconcileTracking, runTrackingEvaluation, recoverTrackingClaims, runTrackingCycle } from './tracking-work';
+export {
+  createDurableFileExportStore,
+  assertExportObjectKey,
+  defaultExportStorageRoot,
+  type ExportArtifactStore,
+} from './export-storage';
+export {
+  buildExportArtifact,
+  computeRollups,
+  expireExports,
+  recoverStaleExportClaims,
+  runExportGeneration,
+  CSV_COLUMNS,
+  type ExportFormat,
+  type ExportGenerationResult,
+  type DailyRollup,
+} from './export-work';

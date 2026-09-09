@@ -1,6 +1,6 @@
 import { deliverMail } from './mail-delivery';
 import { and, eq, isNotNull, isNull, lt, lte, sql as raw } from 'drizzle-orm';
-import { authTokens, idempotencyKeys, reminders, users, purgeAccount, deliverDueReminders, runRecurrenceGeneration, relayTrackingOutbox, reconcileTracking, runTrackingEvaluation } from '@nextdoo/db';
+import { authTokens, idempotencyKeys, reminders, users, purgeAccount, deliverDueReminders, runRecurrenceGeneration, relayTrackingOutbox, reconcileTracking, runTrackingEvaluation, createDurableFileExportStore, expireExports, runExportGeneration } from '@nextdoo/db';
 import { db, logger, type Job, type JobResult } from './runtime';
 
 /**
@@ -74,6 +74,9 @@ const evaluateTrackingJob: Job = {
   },
 };
 
+/** Shared artifact store for generation, expiry and purge cleanup. */
+const exportStore = createDurableFileExportStore();
+
 /** Deletes accounts whose 30-day grace period has elapsed (PRD §12.4). */
 const purgeAccounts: Job = {
   name: 'accounts.purge',
@@ -90,7 +93,8 @@ const purgeAccounts: Job = {
     let purged = 0;
     for (const user of due) {
       try {
-        if (!await purgeAccount(db, user.id, cutoff)) continue;
+        // Artifact files are removed alongside the rows (PRD §11.9).
+        if (!await purgeAccount(db, user.id, cutoff, { artifactStore: exportStore })) continue;
         purged += 1;
         // Retain only the opaque identifier here; audit evidence follows its own retention.
         logger.info('account.purged', { userId: user.id });
@@ -102,6 +106,41 @@ const purgeAccounts: Job = {
       }
     }
     return { processed: purged };
+  },
+};
+
+/**
+ * Generates requested exports (PRD §12.4: on demand, 2 retries, notify user
+ * with retry link on exhaustion). Durable state and fencing live in
+ * PostgreSQL; artifacts land in the shared export storage.
+ */
+const generateExports: Job = {
+  name: 'export.generate',
+  intervalMs: 10_000,
+  async run(): Promise<JobResult> {
+    const result = await runExportGeneration(db, { store: exportStore });
+    for (const failure of result.failures) {
+      logger.error('export.generate.exhausted', {
+        exportId: failure.exportId,
+        attempts: failure.attempts,
+        error: failure.error,
+        reference: `export-${failure.exportId}`,
+      });
+    }
+    if (result.retrying) logger.warn('export.generate.retrying', { retrying: result.retrying });
+    if (result.deferred) logger.warn('export.generate.deferred', { deferred: result.deferred });
+    return { processed: result.processed, details: { ...result, failures: result.failures } };
+  },
+};
+
+/** Removes artifacts past their 24-hour window and marks rows EXPIRED (PRD §13.5). */
+const expireExportArtifacts: Job = {
+  name: 'exports.expire',
+  intervalMs: 60_000,
+  async run(): Promise<JobResult> {
+    const result = await expireExports(db, { store: exportStore });
+    if (result.expired) logger.info('exports.expired', result);
+    return { processed: result.expired };
   },
 };
 
@@ -170,6 +209,8 @@ export const JOBS: Job[] = [
   relayOutbox,
   reconcileTrackingJob,
   evaluateTrackingJob,
+  generateExports,
+  expireExportArtifacts,
   purgeAccounts,
   purgeAuthTokens,
   purgeIdempotencyKeys,

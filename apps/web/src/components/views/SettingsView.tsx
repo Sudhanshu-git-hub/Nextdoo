@@ -7,6 +7,7 @@ import { api, ApiError } from '@/lib/api';
 import { WorkspaceSettings } from '@/components/WorkspaceSettings';
 import { MfaSettings } from '@/components/MfaSettings';
 import { AuditLog } from '@/components/AuditLog';
+import { DataExport } from '@/components/DataExport';
 
 interface EntitlementSnapshot {
   plan: Plan;
@@ -285,6 +286,8 @@ export function SettingsView({
             </>
           )}
         </section>
+
+        <DataExport exportsPerDay={entitlements.limits.exportsPerDay} />
 
         <AuditLog />
       </div>

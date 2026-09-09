@@ -100,7 +100,7 @@ export function authedRoute<T>(
       const ctx: RouteContext = { requestId, auth, ip };
 
       const perform = async () => {
-        const match = /^\/api\/v1\/(?:tasks|projects|sections|timers|reminders)\/([^/]+)/.exec(new URL(request.url).pathname);
+        const match = /^\/api\/v1\/(?:tasks|projects|sections|timers|reminders|exports)\/([^/]+)/.exec(new URL(request.url).pathname);
         // Static bulk command is not a task UUID. Keep all resource-ID validation otherwise.
         if (match && !(options.routeName === 'tasks.bulk' && new URL(request.url).pathname === '/api/v1/tasks/bulk')) {
           let id: string;

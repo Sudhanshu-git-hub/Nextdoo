@@ -93,6 +93,22 @@ export const accountDeletionSchema = z.object({
   confirm: z.literal('DELETE'),
 });
 
+// ---------------------------------------------------------------- exports
+
+export const exportFormat = z.enum(['json', 'csv']);
+
+export const requestExportSchema = z.object({
+  format: exportFormat,
+});
+
+export const exportQuerySchema = z.object({
+  cursor: z.string().max(2048).optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(25),
+});
+
+export type RequestExportInput = z.infer<typeof requestExportSchema>;
+export type ExportQueryInput = z.infer<typeof exportQuerySchema>;
+
 // ---------------------------------------------------------------- recurrence
 
 export const recurrenceRuleSchema = z

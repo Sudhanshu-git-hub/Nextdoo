@@ -738,9 +738,18 @@ export const exports = pgTable(
     /** Short-lived by policy (PRD §13.5: 24 hours). */
     expiresAt: timestamp('expires_at', { withTimezone: true }),
     error: varchar('error', { length: 300 }),
+    /** Initial attempt plus two retries (PRD §12.4: export.generate, retries 2). */
+    attempts: integer('attempts').notNull().default(0),
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    claimToken: uuid('claim_token'),
+    leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),
     ...timestamps,
   },
-  (t) => [index('exports_user_status_idx').on(t.userId, t.status)],
+  (t) => [index('exports_user_status_idx').on(t.userId, t.status),
+  index('exports_ready_idx').on(t.userId,t.nextAttemptAt).where(sql`${t.status} = 'PENDING' AND ${t.claimToken} IS NULL AND ${t.attempts} < 3`),
+  index('exports_claimed_idx').on(t.leaseExpiresAt).where(sql`${t.claimToken} IS NOT NULL`),
+  index('exports_expiring_idx').on(t.expiresAt).where(sql`${t.status} = 'READY' AND ${t.expiresAt} IS NOT NULL`)],
 );
 
 export const userPreferences = pgTable(
