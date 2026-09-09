@@ -138,6 +138,7 @@ export const createTaskSchema = z.object({
   workspaceId: uuid,
   title: z.string().trim().min(1, 'Title is required').max(500),
   description: z.string().max(20_000).nullish(),
+  location: z.string().trim().max(500).nullish(),
   projectId: uuid.nullish(),
   sectionId: uuid.nullish(),
   parentTaskId: uuid.nullish(),
@@ -156,6 +157,7 @@ export const updateTaskSchema = z
   .object({
     title: z.string().trim().min(1).max(500).optional(),
     description: z.string().max(20_000).nullish(),
+    location: z.string().trim().max(500).nullish(),
     projectId: uuid.nullish(),
     sectionId: uuid.nullish(),
     priority: z.enum(TASK_PRIORITY).optional(),

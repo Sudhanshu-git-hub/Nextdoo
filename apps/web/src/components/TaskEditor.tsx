@@ -7,9 +7,9 @@ import { api, ApiError, type Task } from '@/lib/api';
 interface Detail extends Task { tagIds: string[]; timeZone: string | null }
 interface Project { id: string; name: string; status: string }
 interface Tag { id: string; name: string }
-interface Draft { title: string; description: string; projectId: string; priority: Task['priority']; due: string; estimate: string; tagIds: string[]; newTags: string }
+interface Draft { title: string; description: string; location: string; projectId: string; priority: Task['priority']; due: string; estimate: string; tagIds: string[]; newTags: string }
 const localTime = (iso: string | null) => { if (!iso) return ''; const d = new Date(iso); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); };
-const draftOf = (t: Detail): Draft => ({ title: t.title, description: t.description ?? '', projectId: t.projectId ?? '', priority: t.priority, due: localTime(t.dueAt), estimate: t.estimateMinutes?.toString() ?? '', tagIds: t.tagIds, newTags: '' });
+const draftOf = (t: Detail): Draft => ({ title: t.title, description: t.description ?? '', location: t.location ?? '', projectId: t.projectId ?? '', priority: t.priority, due: localTime(t.dueAt), estimate: t.estimateMinutes?.toString() ?? '', tagIds: t.tagIds, newTags: '' });
 export function TaskEditor({ task, onClose, onSaved }: { task: Task; onClose: () => void; onSaved: () => void }) {
   const [history, setHistory] = useState<Task[]>([task]);
   const changed = useRef(false);
@@ -49,6 +49,7 @@ function TaskEditorForm({ task, onClose, onSaved, onNavigate, onBack }: {
     const patch: Record<string, unknown> = { version };
     if (draft.title !== base.title) patch.title = draft.title;
     if (draft.description !== base.description) patch.description = draft.description || null;
+    if (draft.location !== base.location) patch.location = draft.location || null;
     if (draft.projectId !== base.projectId) patch.projectId = draft.projectId || null;
     if (draft.priority !== base.priority) patch.priority = draft.priority;
     if (draft.estimate !== base.estimate) patch.estimateMinutes = draft.estimate === '' ? null : Number(draft.estimate);
@@ -87,7 +88,7 @@ function TaskEditorForm({ task, onClose, onSaved, onNavigate, onBack }: {
     {conflict && <section className="banner banner-warn" aria-label="Latest server version">
       <p>The task changed elsewhere. Your draft below has not been replaced.</p>
       <p><strong>Server title:</strong> {conflict.title}</p><p><strong>Server notes:</strong> {conflict.description || 'None'}</p>
-      <p>Priority: {conflict.priority}; due: {conflict.dueAt || 'None'}; estimate: {conflict.estimateMinutes ?? 'None'}; project: {projects.find((p) => p.id === conflict.projectId)?.name ?? 'Inbox'}; tags: {conflict.tagIds.map((id) => tags.find((t) => t.id === id)?.name ?? id).join(', ') || 'None'}.</p>
+      <p>Priority: {conflict.priority}; due: {conflict.dueAt || 'None'}; estimate: {conflict.estimateMinutes ?? 'None'}; location: {conflict.location || 'None'}; project: {projects.find((p) => p.id === conflict.projectId)?.name ?? 'Inbox'}; tags: {conflict.tagIds.map((id) => tags.find((t) => t.id === id)?.name ?? id).join(', ') || 'None'}.</p>
       <button disabled={busy} onClick={() => { setVersion(conflict.version); setTaskStatus(conflict.status); setRecurrenceId(conflict.recurrenceRuleId); setConflict(null); setError(null); }}>Keep my changes against this version</button>{' '}
       <button disabled={busy} onClick={() => { if (window.confirm('Replace your draft with the server version?')) { const d = draftOf(conflict); setBase(d); setDraft(d); setVersion(conflict.version); setTaskStatus(conflict.status); setRecurrenceId(conflict.recurrenceRuleId); setConflict(null); setError(null); } }}>Use server version</button>
     </section>}
@@ -95,6 +96,7 @@ function TaskEditorForm({ task, onClose, onSaved, onNavigate, onBack }: {
       <fieldset disabled={busy || relationsBusy || lifecycleBusy || recurrenceBusy} style={{ border: 0, padding: 0 }}>
         <label htmlFor="edit-title">Title</label><input autoFocus id="edit-title" required maxLength={500} value={draft.title} onChange={(e) => change('title', e.target.value)} />
         <label htmlFor="edit-notes">Notes</label><textarea id="edit-notes" maxLength={20000} rows={4} value={draft.description} onChange={(e) => change('description', e.target.value)} />
+        <label htmlFor="edit-location">Location</label><input id="edit-location" maxLength={500} value={draft.location} onChange={(e) => change('location', e.target.value)} />
         <label htmlFor="edit-project">Project</label><select id="edit-project" value={draft.projectId} onChange={(e) => change('projectId', e.target.value)}><option value="">Inbox (unfiled)</option>{projects.map((p) => <option key={p.id} value={p.id} disabled={p.status !== 'ACTIVE'}>{p.name}{p.status !== 'ACTIVE' ? ' (archived)' : ''}</option>)}</select>
         <label htmlFor="edit-priority">Priority</label><select id="edit-priority" value={draft.priority} onChange={(e) => change('priority', e.target.value as Task['priority'])}>{['NONE', 'LOW', 'MEDIUM', 'HIGH'].map((p) => <option key={p}>{p}</option>)}</select>
         <label htmlFor="edit-due">Due date and time ({Intl.DateTimeFormat().resolvedOptions().timeZone})</label><input id="edit-due" type="datetime-local" value={draft.due} onChange={(e) => change('due', e.target.value)} />

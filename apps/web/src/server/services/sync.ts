@@ -33,7 +33,7 @@ export interface MutationResult {
 
 /** Fields a client may write. Anything else is ignored rather than trusted. */
 const WRITABLE_TASK_FIELDS = new Set([
-  'title', 'description', 'projectId', 'sectionId', 'priority',
+  'title', 'description', 'location', 'projectId', 'sectionId', 'priority',
   'dueAt', 'timeZone', 'estimateMinutes', 'position', 'status', 'tagIds', 'parentTaskId', 'completedAt',
 ]);
 

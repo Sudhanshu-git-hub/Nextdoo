@@ -3,8 +3,8 @@ import { gunzipSync } from 'node:zlib';
 import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { expect, it } from 'vitest';
-import { eq, sql } from 'drizzle-orm';
+import { beforeAll, expect, it } from 'vitest';
+import { eq, inArray, sql } from 'drizzle-orm';
 import {
   createDurableFileExportStore,
   exports,
@@ -25,6 +25,13 @@ import { createTask, completeTask } from './tasks';
 import { requestExport, listExports, getExport, authorizeExportDownload, signExportDownloadToken } from './exports';
 
 await requireTestDatabase();
+
+// The suite asserts on global pass counts, so start from a clean feature-owned
+// table set even when the shared scratch database keeps rows from earlier runs.
+beforeAll(async () => {
+  await getDb().delete(exports);
+  await getDb().delete(notifications).where(inArray(notifications.type, ['export_ready', 'export_failed']));
+});
 
 function freshStore(): { store: ExportArtifactStore; root: string } {
   const root = mkdtempSync(join(tmpdir(), 'nextdoo-export-test-'));

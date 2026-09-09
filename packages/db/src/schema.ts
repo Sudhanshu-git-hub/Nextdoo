@@ -222,6 +222,7 @@ export const tasks = pgTable(
     parentTaskId: uuid('parent_task_id'),
     title: varchar('title', { length: 500 }).notNull(),
     description: text('description'),
+    location: varchar('location', { length: 500 }),
     status: taskStatusEnum('status').notNull().default('ACTIVE'),
     priority: taskPriorityEnum('priority').notNull().default('NONE'),
     dueAt: timestamp('due_at', { withTimezone: true }),

@@ -10,6 +10,7 @@ export function serialiseTaskRecord(task: typeof tasks.$inferSelect) {
     recurrenceRuleId: task.recurrenceRuleId,
     title: task.title,
     description: task.description,
+    location: task.location,
     status: task.status,
     priority: task.priority,
     dueAt: task.dueAt?.toISOString() ?? null,

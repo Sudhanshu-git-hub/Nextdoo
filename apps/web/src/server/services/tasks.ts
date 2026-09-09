@@ -96,6 +96,7 @@ export async function createTask(actor: TaskActor, input: CreateTaskInput, optio
         parentTaskId: input.parentTaskId ?? null,
         title: input.title,
         description: input.description ?? null,
+        location: input.location ?? null,
         priority: input.priority,
         dueAt: input.dueAt ? new Date(input.dueAt) : null,
         timeZone: input.timeZone ?? (await tx.select({ timeZone: workspaces.timeZone }).from(workspaces).where(eq(workspaces.id, actor.workspaceId)))[0]?.timeZone ?? 'UTC',
@@ -194,6 +195,7 @@ export async function updateTask(
     if (input.projectId !== undefined && input.projectId !== current.projectId && input.sectionId === undefined) patch.sectionId = null;
     if (input.title !== undefined) patch.title = input.title;
     if (input.description !== undefined) patch.description = input.description ?? null;
+    if (input.location !== undefined) patch.location = input.location ?? null;
     if (input.projectId !== undefined) patch.projectId = input.projectId ?? null;
     if (input.sectionId !== undefined) patch.sectionId = input.sectionId ?? null;
     if (input.priority !== undefined) patch.priority = input.priority;

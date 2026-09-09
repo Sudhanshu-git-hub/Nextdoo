@@ -47,6 +47,7 @@ export interface Task {
   recurrenceRuleId?: string | null;
   title: string;
   description: string | null;
+  location: string | null;
   status: 'ACTIVE' | 'COMPLETED' | 'ARCHIVED' | 'DELETED';
   priority: 'NONE' | 'LOW' | 'MEDIUM' | 'HIGH';
   dueAt: string | null;

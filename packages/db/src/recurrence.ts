@@ -44,7 +44,7 @@ export async function generateRecurrenceInTransaction(db: Database, ruleId: stri
       if (!capacity) { error = 'ACTIVE_TASK_LIMIT'; break; }
       const id = randomUUID();
       const [task] = await db.insert(tasks).values({ id, workspaceId: workspace.id, title: template.title,
-        description: template.description, priority: template.priority, projectId: template.projectId, sectionId: template.sectionId,
+        description: template.description, location: template.location, priority: template.priority, projectId: template.projectId, sectionId: template.sectionId,
         parentTaskId: template.parentTaskId, estimateMinutes: template.estimateMinutes, dueAt: occurrence.dueAt,
         timeZone: rule.timeZone, recurrenceRuleId: ruleId, position: String(now.getTime()) }).returning();
       if (!task) throw new Error('Occurrence task was not created');
