@@ -128,6 +128,8 @@ label { display: block; font-size: 13px; color: var(--text-dim); margin-bottom: 
   padding: 11px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm);
   background: var(--bg-elev); margin-bottom: 7px;
 }
+/* Virtualized task lists (PRD §6.9): height-only placeholders for rows outside the window. */
+.task-list-placeholder { list-style: none; }
 .task-row:hover { border-color: var(--border-strong); }
 .task-row.done .task-title { text-decoration: line-through; color: var(--text-faint); }
 .task-main { flex: 1; min-width: 0; }

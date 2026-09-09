@@ -34,7 +34,7 @@ workspace, notification and data-integrity acceptance was retained in the full r
 | PRD milestone | Working, tested foundation | Remaining completion work |
 |---|---|---|
 | M1 Foundation | Authentication/recovery/MFA/session and tenant guards; migrations; HTTP conventions; shell; local CI-equivalent gates | Production email delivery; distributed rate limiting; complete tracing/metrics and alert verification; staging/rollback qualification |
-| M2 Core task management | Online capture/editor, tags/priority/due/estimate, projects/lifecycle, sections/board with optimistic movement and rollback, subtasks/dependencies, archive/Trash/recovery, query filters/sorts, atomic bulk commands; owner-managed workspace defaults; free-text task `location` end to end (contracts, services, sync writable field, recurrence inheritance, editor) per [TASK_LOCATION_MILESTONE.md](TASK_LOCATION_MILESTONE.md) | Rich description editor and complete task-field UX; list virtualization above 200; collection scalability; required capture/mutation instrumentation and core performance/a11y acceptance |
+| M2 Core task management | Online capture/editor, tags/priority/due/estimate, projects/lifecycle, sections/board with optimistic movement and rollback, subtasks/dependencies, archive/Trash/recovery, query filters/sorts, atomic bulk commands; owner-managed workspace defaults; free-text task `location` end to end (contracts, services, sync writable field, recurrence inheritance, editor) per [TASK_LOCATION_MILESTONE.md](TASK_LOCATION_MILESTONE.md); windowed list rendering above 200 loaded rows (virtualization, PRD §6.9) per [TASK_VIRTUALIZATION_MILESTONE.md](TASK_VIRTUALIZATION_MILESTONE.md) | Rich description editor and complete task-field UX; collection scalability; required capture/mutation instrumentation and core performance/a11y acceptance |
 | M3 Planning and execution | Workspace-local week task calendar/movement and Today, configured overnight workday guideline, focus/time workflows, durable in-app notifications, reminder status/history/read/snooze/cancel and bounded isolated dispatch retries, complete/reschedule; bounded recurrence generation, future rule edits, occurrence lifecycle and retries | Day/month calendar and full calendar pagination; complete provider-aware capacity planning; offline timers; real browser/background push and enabled reminder email delivery; desktop delivery remains excluded from current work |
 | M4 Tracking and analytics | Ordered append-only events, shared versioned engine, durable outbox consumer/queue with fenced leases and five retries, due/cohort freshness, immutable input/history drilldown, owner single-task re-evaluation, numeric-score visibility and live UTC task/project summaries | Date-range recalculation and full corrections/review workflows; independent tracking/wellbeing controls and retention policy; workspace-local reporting and richer trends; unresolved TR-03/full TR matrix; routed alerts and sustained freshness/load SLO qualification |
 | M5 Cross-platform reliability | Server push/pull/version/tombstone protection; scoped IndexedDB queue primitives and Today cached fallback | UI enqueue/reconcile/recovery and conflict views; full SY-01–SY-10 across devices; 5,000 mutation drain; Windows Tauri/SQLite/WebView2 client, notifications, packaging/signing/update/rollback |
@@ -119,10 +119,15 @@ command. All release gates in §19.4 remain required, not only this checklist.
    end to end — migration 0016, shared contracts, create/update/read services,
    sync writable field, recurrence occurrence inheritance, editor UI, 6
    integration regressions and 4 browser E2E verified; see
-   [TASK_LOCATION_MILESTONE.md](TASK_LOCATION_MILESTONE.md). Remaining: rich
-   description editor and complete task-field UX, large-list virtualization,
-   complete calendar pagination and day/month views. Preserve the delivered
-   board, relationships, recurrence and workspace semantics; qualify
+   [TASK_LOCATION_MILESTONE.md](TASK_LOCATION_MILESTONE.md). Windowed list
+   rendering above 200 loaded rows (PRD §6.9 virtualization) — pure window
+   math with unit tests, measured heights, focus pinning, unchanged
+   ordering/pagination/actions/selection, ≤200 rendering byte-identical, 6
+   browser E2E verified; see
+   [TASK_VIRTUALIZATION_MILESTONE.md](TASK_VIRTUALIZATION_MILESTONE.md).
+   Remaining: rich description editor and complete task-field UX, complete
+   calendar pagination and day/month views. Preserve the delivered board,
+   relationships, recurrence and workspace semantics; qualify
    accessible/performance acceptance rather than checking off a route or
    schema.
 5. **Enabled external online integrations:** browser/background notifications and
