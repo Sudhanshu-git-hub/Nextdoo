@@ -13,17 +13,18 @@ PRD v1.1 §4.1, §19 and §21 are the acceptance authority. The working PRD and 
 The PRD has not been rewritten. Retain Next.js, `/api/v1`, camelCase, current
 pagination, the fixed Arena branch, immutable migrations and all recovered features.
 
-The requested **boards/sections, subtasks, recurrence and personal-workspace
-settings** workflows are now functional and verified within their documented bounds.
-Existing boards/subtasks were preserved; recurrence (`e1c2f24`) and workspace settings
-(`f6dac35`) were separately committed/pushed after full validation. Both remote CI
-runs passed. A final focused board follow-up closes §6.9 optimistic movement/rollback.
-Latest full local gates: **394 unit/integration/tooling tests and 64 browser/API
-scenarios**, all green. Evidence is in [BOARD_OPTIMISTIC_ACCEPTANCE.md](BOARD_OPTIMISTIC_ACCEPTANCE.md),
-[TASK_RECURRENCE_MILESTONE.md](TASK_RECURRENCE_MILESTONE.md) and
-[WORKSPACE_SETTINGS_MILESTONE.md](WORKSPACE_SETTINGS_MILESTONE.md). User-approved
-DST/history and overnight-workday policies were implemented. No AI, billing,
-desktop or full offline work was started. This is not full Phase 1 acceptance.
+The latest authorization expands to **remaining core online workflows and non-AI/
+non-billing MVP gaps**, prioritizing broken/incomplete notifications/durable jobs,
+tracking/analytics, export/deletion, entitlement/authorization and task management.
+AI, billing integration, desktop and full offline mode remain excluded.
+
+The current verified milestone is **reminder lifecycle and durable in-app notifications**:
+[NOTIFICATION_DELIVERY_MILESTONE.md](NOTIFICATION_DELIVERY_MILESTONE.md). Final local
+validation: **405 unit/integration/tooling tests in 44 files and 69 browser/API
+scenarios**, lint, typecheck, coverage and build passed; migration replay passed;
+dependency audit zero. This closes the in-app slice, **not browser/desktop/email
+notification acceptance or Phase 1 as a whole**. Existing boards, subtasks,
+recurrence and workspace settings were retained and revalidated.
 
 ## Milestone status: evidence rather than percentage complete
 
@@ -31,10 +32,10 @@ desktop or full offline work was started. This is not full Phase 1 acceptance.
 |---|---|---|
 | M1 Foundation | Authentication/recovery/MFA/session and tenant guards; migrations; HTTP conventions; shell; local CI-equivalent gates | Production email delivery; distributed rate limiting; complete tracing/metrics and alert verification; staging/rollback qualification |
 | M2 Core task management | Online capture/editor, tags/priority/due/estimate, projects/lifecycle, sections/board with optimistic movement and rollback, subtasks/dependencies, archive/Trash/recovery, query filters/sorts, atomic bulk commands; owner-managed workspace defaults | Rich descriptions/location and complete task-field UX; list virtualization above 200; collection scalability; required capture/mutation instrumentation and core performance/a11y acceptance |
-| M3 Planning and execution | Workspace-local week task calendar/movement and Today, configured overnight workday guideline, focus/time workflows, reminders with durable DB/SMTP foundations, complete/reschedule; bounded recurrence generation, future rule edits, occurrence lifecycle and retries | Day/month calendar and full calendar pagination; complete provider-aware capacity planning; offline timers; real browser/desktop delivery and snooze/status acceptance |
+| M3 Planning and execution | Workspace-local week task calendar/movement and Today, configured overnight workday guideline, focus/time workflows, durable in-app notifications, reminder status/history/read/snooze/cancel and bounded isolated dispatch retries, complete/reschedule; bounded recurrence generation, future rule edits, occurrence lifecycle and retries | Day/month calendar and full calendar pagination; complete provider-aware capacity planning; offline timers; real browser/background push and enabled reminder email delivery; desktop delivery remains excluded from current work |
 | M4 Tracking and analytics | Append-only task events, inline calculation/input snapshots, Unmeasured handling, task/project summaries and project analytics | Source-event drilldown/corrections/backfill; independent score/tracking/wellbeing controls; workspace-local daily/weekly reporting; review UX and full TR matrix; durable jobs/consumer and freshness/telemetry qualification |
 | M5 Cross-platform reliability | Server push/pull/version/tombstone protection; scoped IndexedDB queue primitives and Today cached fallback | UI enqueue/reconcile/recovery and conflict views; full SY-01–SY-10 across devices; 5,000 mutation drain; Windows Tauri/SQLite/WebView2 client, notifications, packaging/signing/update/rollback |
-| M6 Commercial readiness | Server entitlement limits; authenticated JSON export; reauthenticated deletion/grace/purge; audit trail | Real Google Calendar two-way OAuth/sync/revocation; provider billing/webhooks/refunds/reconciliation; attachments/upload/scan/download gating; expiring CSV/JSON exports; support/status/dashboards and operational acceptance |
+| M6 Commercial readiness | Server entitlement limits; authenticated JSON export with legacy notification-reference privacy guards; reauthenticated deletion/grace/purge; audit trail | Real Google Calendar two-way OAuth/sync/revocation; provider billing/webhooks/refunds/reconciliation; attachments/upload/scan/download gating; expiring CSV/JSON exports; support/status/dashboards and operational acceptance |
 
 ### Specific current implementation evidence
 
@@ -55,7 +56,12 @@ desktop or full offline work was started. This is not full Phase 1 acceptance.
   but their required real workflows are not implemented. Configuration names are
   not provider acceptance evidence.
 - Account export is an authenticated synchronous download, not a 24-hour hosted
-  expiring object. Existing account purge tests are not a backup restore drill.
+  expiring object. Notification/read state is exported; malformed legacy cross-tenant
+  notification content is excluded/redacted. Linked notification/reminder purge is
+  tested, but these tests are not a backup restore drill.
+- Reminder dispatch is now per-recipient transactional and bounded, with retry/failure
+  state and a real in-app notification center. WEB / SENT is explicitly a database
+  receipt, not browser push or SMTP acknowledgement. External channels stay disabled.
 
 ## Required §19.2 acceptance checklist
 
@@ -66,7 +72,7 @@ desktop or full offline work was started. This is not full Phase 1 acceptance.
 | 3 | Completion appears on another device | Server delta tested; complete connected-client reconciliation open |
 | 4 | Conflicting titles preserve both versions | Server/queue storage evidence; complete conflict recovery UI open |
 | 5 | Worker retries do not duplicate recurrence | Tested locally: concurrent real-DB generation, due-state recheck, HTTP replay and lost-ack retry; production/load qualification remains open |
-| 6 | Completion cancels reminders | Tested single-task/sync paths and now atomic bulk; real notification delivery remains separately open |
+| 6 | Completion cancels reminders | Tested single-task/sync/bulk paths and reminder creation/dispatch races; pending reminders cannot survive completion. In-app delivery verified; native/provider delivery remains open |
 | 7 | Calendar disconnect deletes OAuth credentials | OPEN: real provider workflow absent |
 | 8 | Client cannot grant billing access | Local entitlement guards tested; actual billing/webhook acceptance open |
 | 9 | Deleted accounts cannot authenticate | Tested status/grace/purge paths; broader operational retention still open |
@@ -82,30 +88,32 @@ command. All release gates in §19.4 remain required, not only this checklist.
 
 ## Execution order from here
 
-1. **The currently requested task-management sequence is verified.** Preserve the
-   completed workflows and their regression coverage. Further rich-task, large-list,
-   calendar, analytics and release work remains below; do not silently expand this
-   increment or claim the entire Phase 1 milestone finished.
+1. **Verified in-app notification/reminder slice:** retain the new delivery identity,
+   retry/rollback, tenant/deletion guards and user-visible history. External channels,
+   automatic connected-client updates and production SLO/alert exercises remain open.
+2. **Next: durable tracking evaluation and freshness.** Replace the missing-consumer
+   gap with real bounded, idempotent work and visible stale/failure state, preserving
+   current score math and event history. Then address source-event drilldown,
+   workspace-local summaries and reviewed controls/corrections. Stop for the tracking
+   policy decisions below rather than silently changing cohorts or score examples.
+3. **Data rights, limits and authorization:** verify/reinforce existing export quotas,
+   account deletion and permission boundaries. Deliver asynchronous, expiring exports
+   only with reviewed storage/expiry design and real integration evidence. Retention,
+   backup deletion and distributed limits still need operational resources.
+4. **Remaining task/planning UX:** rich fields/location, large-list virtualization,
+   complete calendar pagination and day/month views. Preserve the delivered board,
+   relationships, recurrence and workspace semantics; qualify accessible/performance
+   acceptance rather than checking off a route or schema.
+5. **Enabled external online integrations:** browser/background notifications and
+   reminder email, Google Calendar and scanning-gated attachments require provider,
+   deployment and privacy decisions plus real test resources. No fake delivery,
+   storage/scanning result or disconnected OAuth workflow counts as acceptance.
+6. **Operational qualification:** tracing/metrics/alerts, distributed rate limiting,
+   staging, restore/rollback drills and elapsed-time SLO evidence remain required.
 
-The following steps remain the broader Phase 1 backlog, **not authorization to
-start AI, billing, desktop, full offline mode or other deferred integrations now**:
-
-2. **Finish execution and review:** complete calendar views/pagination/capacity and
-   reminder/time workflow acceptance; implement reviewed score controls, source
-   event correction/backfill and local-time reports with explicit TR matrix evidence.
-3. **Complete offline web:** repository-backed UI capture/edit, durable request
-   recovery, pull reconciliation and conflict UI; run all ten sync scenarios,
-   including skew, delete/edit, timer overlap and large-queue drain. Only then build
-   the Windows adapter/client against the same proven protocol.
-4. **Deliver real integrations in isolated slices:** scanning-gated object storage
-   and expiring exports; Google Calendar sandbox OAuth/two-way sync/disconnect;
-   verified billing/webhooks/refunds/reconciliation. Require actual sandbox/provider
-   evidence, not mock-only tests or UI placeholders.
-5. **Qualify operations and release:** staging deploys, full contract/security/a11y
-   and performance gates, distributed rate limits, observability/alert exercises,
-   encrypted backup restore and rollback drills, Windows/WebView2/update tests,
-   provider delivery and retention checks. Collect the PRD's required elapsed-time
-   SLO and beta evidence; it cannot be manufactured by a local test run.
+The expanded authorization permits incremental non-AI/non-billing online work. It
+**does not permit AI, billing integration, desktop or full offline mode**. Those
+remain PRD backlog, not next actions under this request.
 
 Commit and push each independently buildable verified increment on the session
 branch. Re-run full gates before milestone closure. Keep historical reports intact,

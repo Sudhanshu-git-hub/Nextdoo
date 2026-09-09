@@ -52,3 +52,10 @@ it('configured SMTP never logs mail.sent without transport acknowledgement', asy
   expect(JSON.stringify(log.mock.calls)).not.toContain('mail.sent');
   vi.unstubAllEnvs(); vi.restoreAllMocks();
 });
+it('stuck legacy claims with exhausted retries become failed instead of being rearmed forever', async () => {
+ const { u, task } = await fixture(), id = randomUUID();
+ await getDb().insert(reminders).values({ id, workspaceId: u.workspaceId, userId: u.id, taskId: task.id, status: 'PROCESSING', channel: 'WEB', attempts: 3, scheduledAt: new Date(Date.now()-3600000), updatedAt: new Date(Date.now()-3600000) });
+ await JOBS.find((j) => j.name === 'reminders.requeue_stuck')!.run(); await JOBS.find((j) => j.name === 'reminders.dispatch')!.run();
+ expect((await getDb().select().from(reminders).where(eq(reminders.id, id)))[0]).toMatchObject({ status: 'FAILED', attempts: 3, lastError: 'STALE_DELIVERY_CLAIM' });
+ expect(await getDb().select().from(notifications).where(eq(notifications.taskId, task.id))).toHaveLength(0);
+});

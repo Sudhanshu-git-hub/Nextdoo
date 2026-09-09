@@ -263,11 +263,12 @@ export const createReminderSchema = z
   .object({
     taskId: uuid,
     scheduledAt: isoDateTime.optional(),
+    taskVersion: z.number().int().min(1).optional(),
     /** Relative reminders resolve against the task due date at schedule time. */
     minutesBeforeDue: z.number().int().min(0).max(60 * 24 * 30).optional(),
     channel: z.enum(REMINDER_CHANNEL).default('WEB'),
   })
-  .refine((r) => Boolean(r.scheduledAt) !== (r.minutesBeforeDue !== undefined), {
+  .strict().refine((r) => Boolean(r.scheduledAt) !== (r.minutesBeforeDue !== undefined), {
     message: 'Provide exactly one of `scheduledAt` or `minutesBeforeDue`',
   });
 

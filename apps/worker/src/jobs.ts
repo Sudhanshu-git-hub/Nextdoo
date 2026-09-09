@@ -27,7 +27,8 @@ const dispatchReminders: Job = {
   intervalMs: 30_000,
   async run(): Promise<JobResult> {
     const result = await deliverDueReminders(db);
-    return { processed: result.sent + result.expired + result.failed + result.canceled, details: result };
+    if (result.failed || result.retrying) logger.warn('reminders.delivery_attention', { failed: result.failed, retrying: result.retrying });
+    return { processed: result.sent + result.expired + result.failed + result.canceled + result.retrying, details: result };
   },
 };
 
@@ -118,7 +119,7 @@ const requeueStuckReminders: Job = {
     const stuckBefore = new Date(Date.now() - 15 * MINUTE);
     const requeued = await db
       .update(reminders)
-      .set({ status: 'SCHEDULED', updatedAt: new Date() })
+      .set({ status: raw`case when ${reminders.attempts} >= 3 then 'FAILED'::reminder_status else 'SCHEDULED'::reminder_status end`, lastError: 'STALE_DELIVERY_CLAIM', updatedAt: new Date(), nextAttemptAt: new Date(), version: raw`${reminders.version} + 1` })
       .where(and(eq(reminders.status, 'PROCESSING'), lt(reminders.updatedAt, stuckBefore), isNull(reminders.sentAt)))
       .returning({ id: reminders.id });
 

@@ -106,6 +106,7 @@ export async function buildExport(userId: string): Promise<ExportBundle> {
   ]);
 
   const taskIds = taskRows.map((t) => t.id);
+  const ownedTaskIds = new Set(taskIds);
   const taskTagRows = taskIds.length
     ? await db.select().from(taskTags).where(inArray(taskTags.taskId, taskIds))
     : [];
@@ -145,7 +146,7 @@ export async function buildExport(userId: string): Promise<ExportBundle> {
     trackingResults: resultRows,
     auditLogs: auditRows,
     preferences, recurrenceRules: rules, taskOccurrences: occurrences, taskDependencies: dependencies,
-    trackingCorrections: corrections, notifications: notices, subscriptions: plans, sessions: sessionRows, devices,
+    trackingCorrections: corrections, notifications: notices.filter((n) => n.workspaceId === null || workspaceIds.includes(n.workspaceId)).map((n) => n.taskId && !ownedTaskIds.has(n.taskId) ? { ...n, taskId: null, reminderId: null, title: 'Reminder for unavailable task', body: null } : n), subscriptions: plans, sessions: sessionRows, devices,
   };
   }, { isolationLevel: 'repeatable read' });
 }

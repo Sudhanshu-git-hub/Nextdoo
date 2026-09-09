@@ -327,6 +327,8 @@ export const reminders = pgTable(
     userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     scheduledAt: timestamp('scheduled_at', { withTimezone: true }).notNull(),
     minutesBeforeDue: integer('minutes_before_due'),
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
+    supersededById: uuid('superseded_by_id'),
     channel: reminderChannelEnum('channel').notNull().default('WEB'),
     status: reminderStatusEnum('status').notNull().default('SCHEDULED'),
     attempts: integer('attempts').notNull().default(0),
@@ -338,6 +340,7 @@ export const reminders = pgTable(
   (t) => [
     index('reminders_due_idx').on(t.status, t.scheduledAt),
     index('reminders_task_idx').on(t.taskId),
+    index('reminders_history_idx').on(t.userId, t.workspaceId, t.createdAt, t.id),
     /** Guarantees at-most-once delivery per channel (PRD §6.6). */
     uniqueIndex('reminders_dispatch_unique').on(t.id, t.channel),
   ],
@@ -707,13 +710,14 @@ export const notifications = pgTable(
     userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     workspaceId: uuid('workspace_id').references(() => workspaces.id, { onDelete: 'cascade' }),
     type: varchar('type', { length: 60 }).notNull(),
-    title: varchar('title', { length: 300 }).notNull(),
+    title: varchar('title', { length: 500 }).notNull(),
     body: text('body'),
     taskId: uuid('task_id'),
+    reminderId: uuid('reminder_id').references(() => reminders.id, { onDelete: 'set null' }),
     readAt: timestamp('read_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index('notifications_user_idx').on(t.userId, t.readAt)],
+  (t) => [index('notifications_user_idx').on(t.userId, t.readAt), uniqueIndex('notifications_reminder_unique').on(t.reminderId), index('notifications_history_idx').on(t.userId, t.workspaceId, t.createdAt, t.id)],
 );
 
 export const exports = pgTable(

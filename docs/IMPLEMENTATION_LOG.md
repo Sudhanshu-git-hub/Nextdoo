@@ -192,3 +192,21 @@ A lost-after-commit response test proves exactly one version increment. Full gat
 [BOARD_OPTIMISTIC_ACCEPTANCE.md](BOARD_OPTIMISTIC_ACCEPTANCE.md). The separately
 pushed recurrence/workspace commits passed remote CI. All currently requested
 workflows are functional within documented bounds; Phase 1 remains incomplete.
+
+
+## Expanded online-workflow continuation: notifications/reminders — 2026-09-09
+
+The user expanded authorization to remaining non-AI/non-billing online MVP gaps,
+retaining the desktop/full-offline exclusions. The next bounded milestone fixes
+reminder poison-batch failure, retry/identity/lifecycle and tenant/deletion guards,
+and delivers an in-app notification center with real status/read/snooze/cancel and
+paginated history. Legacy notification export references are privacy-filtered;
+linked notification/read/reminder account purge is verified.
+
+[NOTIFICATION_DELIVERY_MILESTONE.md](NOTIFICATION_DELIVERY_MILESTONE.md) records
+regression-first failures, timestamp/refresh fixes and acceptance boundaries. Final
+local gates: **405 tests / 44 files, 69 browser/API scenarios**, lint, types, coverage,
+build, migration 0012/replay and zero dependency findings. Native/background browser
+notifications, enabled reminder SMTP, general outbox consumers and the remainder of
+Phase 1 are explicitly open. Durable tracking/freshness is next; no AI, billing,
+desktop or full offline feature was started.

@@ -287,3 +287,19 @@ The user's request to finish Phase 1 is tracked in `PHASE1_COMPLETION_PLAN.md`.
 It records still-missing features, acceptance evidence, sequencing, product choices
 and real provider/Windows/operational prerequisites. The bulk milestone does not
 complete Phase 1, and mock-only integrations must not be presented as accepted.
+
+
+### Durable in-app reminders
+
+Run the web app **and** `pnpm dev:worker` against the same migrated database. The
+worker checks reminder delivery every 30 seconds; the web process does not dispatch
+on GET. In the app, use a task's **Reminders** link or open **Notifications**.
+Refresh the center to retrieve new deliveries. `WEB` / `SENT` means a durable
+in-app receipt, not a native browser popup or email. External reminder channels
+remain disabled even if authentication email SMTP is configured.
+
+Transient delivery failures have a three-attempt budget (one-/two-minute retry
+delays) and expose a generic error in history. After fixing the cause, an owner may
+explicitly snooze a failed eligible reminder to create a new delivery identity;
+never manually reset a sent source or delete receipt history to force replay.
+See `docs/NOTIFICATION_DELIVERY_MILESTONE.md` for migration, retry and privacy details.
