@@ -324,6 +324,26 @@ export const mutationResultSchema = z.object({
   error: z.object({ code: z.string(), detail: z.string() }).optional(),
 });
 
+/** One unresolved conflict snapshot (PRD §10.6 side-by-side conflict UI). */
+export const conflictSnapshotSchema = z.object({
+  id: uuid,
+  entityType: z.string(),
+  entityId: uuid,
+  deviceId: z.string().nullable(),
+  localPayload: z.record(z.unknown()),
+  serverPayload: z.record(z.unknown()),
+  createdAt: isoDateTime,
+  expiresAt: isoDateTime,
+});
+
+/** Body of `POST /v1/sync/conflicts/:id/resolve` — per-snapshot adjudication. */
+export const syncConflictResolveSchema = z.object({
+  resolution: z.enum(['local', 'server']),
+}).strict();
+
+export type ConflictSnapshot = z.infer<typeof conflictSnapshotSchema>;
+export type SyncConflictResolveInput = z.infer<typeof syncConflictResolveSchema>;
+
 // ---------------------------------------------------------------- natural language
 
 export const parseTextSchema = z.object({

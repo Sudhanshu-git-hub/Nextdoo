@@ -124,6 +124,19 @@ export async function markFailed(workspaceId: string, mutationId: string, error:
       retryAt: Date.now() + Math.floor(delay * (0.8 + Math.random() * 0.2)) };
   });
 }
+
+/**
+ * User-directed re-attempt of a quarantined mutation (PRD §10.8 "needs
+ * attention" surface). The raw payload is untouched — only the failure
+ * counters reset, so the next flush re-queues it and a fresh backoff cycle
+ * applies if it fails again. Nothing is ever deleted here.
+ */
+export async function requeueMutation(workspaceId: string, mutationId: string): Promise<void> {
+  await change(workspaceId, mutationId, (current) => {
+    if (!current) return null;
+    return { ...current, attempts: 0, retries: 0, quarantined: false, retryAt: Date.now(), lastError: undefined };
+  });
+}
 export async function refreshCount(workspaceId: string): Promise<void> {
   pending.set(workspaceId, (await listQueued(workspaceId, true)).length);
 }

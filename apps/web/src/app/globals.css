@@ -24,7 +24,9 @@
     --bg: #f7f8fa; --bg-elev: #ffffff; --bg-elev-2: #f0f2f6;
     --border: #dde1e8; --border-strong: #c3cad6;
     --text: #131720; --text-dim: #4d5666; --text-faint: #6b7484;
-    --accent: #1f6feb; --accent-strong: #1a5fd0;
+    /* Link/accent TEXT needs 4.5:1 here: #1f6feb was 4.35:1 on --bg (sub-AA);
+       #1a5fd0 is 5.5:1. (PRD §8.8) */
+    --accent: #1a5fd0; --accent-strong: #1348a8;
     --ok: #1a7f4b; --warn: #9a6700; --danger: #c62f36;
     --shadow: 0 4px 16px rgba(16,24,40,.08);
   }
@@ -203,11 +205,22 @@ label { display: block; font-size: 13px; color: var(--text-dim); margin-bottom: 
 }
 @keyframes shimmer { to { background-position: -200% 0; } }
 
+/* pointer-events: none keeps the fixed chip from covering page controls on
+   short screens (it can never intercept a click); only the review link is
+   interactive. */
 .offline-badge {
   position: fixed; bottom: 16px; left: 16px; z-index: 50;
   background: var(--warn); color: #101216; padding: 7px 13px;
   border-radius: 999px; font-size: 12.5px; font-weight: 600; box-shadow: var(--shadow);
+  pointer-events: none;
 }
+.offline-badge a { color: inherit; font-weight: 700; pointer-events: auto; }
+
+.conflict-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.conflict-table td, .conflict-table th { font-size: 13.5px; }
+.conflicts-view details { margin-top: 8px; }
+.conflicts-view summary { cursor: pointer; }
+.conflicts-view pre { background: var(--bg-elev-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px; overflow: auto; font-size: 12.5px; }
 
 .kbd {
   font: 11.5px ui-monospace, monospace; padding: 1.5px 5px;

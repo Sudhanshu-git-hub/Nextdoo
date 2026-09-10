@@ -500,3 +500,47 @@ failing `workspaces.spec.ts` date-boundary scenario in both branches. Lint 0;
 typecheck clean; coverage **88.62%**; production build green. See
 [M3_CAPACITY_PLANNING_MILESTONE.md](M3_CAPACITY_PLANNING_MILESTONE.md)
 "Defect correction" and [M5_SYNC_RELIABILITY_MILESTONE.md](M5_SYNC_RELIABILITY_MILESTONE.md).
+## M5 increment 2 — conflict resolution view + SY-06–SY-09 multi-device scenarios — 2026-09-10
+
+Second bounded M5 increment: the conflict-resolution surface and the
+remaining multi-device scenarios from the PRD §19.3 matrix. No schema or
+migration changes; all M5 increment 1 behavior preserved.
+
+Delivered:
+- `GET /v1/sync/conflicts` + `POST /v1/sync/conflicts/:id/resolve`
+  (idempotency-ledgered; foreign ids 404; deleted targets 409). The
+  `local` choice re-applies the preserved payload through the existing
+  task command path (same invariants, version bump and sync-change
+  emission as an online edit); `server` marks the snapshot resolved
+  without touching the canonical row.
+- New axe-clean `/conflicts` view: side-by-side per-field cards (caption +
+  scoped table headers) with "Keep my version" / "Keep server version"
+  choose actions, quarantined-mutation section showing the full raw saved
+  payload and a retry action, live-region status, stable per-(conflict,
+  choice) client idempotency keys, event-driven refresh. Sidebar entry;
+  the offline badge's "N changes need attention" links here.
+- `offline-queue.ts`: `requeueMutation` for user-directed re-attempts
+  (resets counters, never deletes the payload — no discard path).
+- `globals.css` fixes found while testing: light `--accent` 4.35:1 →
+  `#1a5fd0` 5.5:1 on the page background; fixed offline badge is now
+  `pointer-events: none` (link stays interactive) so it can never block
+  page controls it overlaps.
+
+Scenarios verified (real Postgres, 15 integration tests in
+`sync-scenarios.integration.test.ts`): SY-06 two-device completion +
+reschedule (scalar LWW keeps completion and `completedAt`), SY-07
+overlapping timer sessions (newer canonical, older recorded `OVERLAPPED`
+with accumulated seconds preserved, no session ever deleted), SY-08
+10-minute clock skew (server processing order wins; mutation timestamps
+server-time), SY-09 batch with one invalid mutation (rejection
+idempotent, content preserved in a recoverable snapshot, batch-mates
+apply), plus conflict-resolution semantics and cross-tenant isolation.
+
+Verification (local PG 18): **57 files / 574 unit+integration tests**
+(569 + 5) and **125/125 E2E** (121 + 4 two-device browser tests) in
+~3.4 min. Lint 0 warnings; typecheck 5/5 packages; coverage **88.56%**
+statements overall (core 97.91% vs 85% threshold); production build
+green. CI verified on the pushed commit. See
+[M5_CONFLICT_RESOLUTION_MILESTONE.md](M5_CONFLICT_RESOLUTION_MILESTONE.md).
+Deferred (explicit): SY-10 5,000-mutation drain + SLO qualification,
+offline task-editor edits/deletes and offline timers, Windows client.

@@ -327,6 +327,17 @@ export async function listConflicts(workspaceId: string) {
     .limit(50);
 }
 
+/** Loads one snapshot only if it belongs to the workspace (null otherwise). */
+export async function loadConflictSnapshot(workspaceId: string, conflictId: string) {
+  const db = getDb();
+  const [snapshot] = await db
+    .select()
+    .from(conflictSnapshots)
+    .where(and(eq(conflictSnapshots.id, conflictId), eq(conflictSnapshots.workspaceId, workspaceId)))
+    .limit(1);
+  return snapshot ?? null;
+}
+
 export async function resolveConflict(
   actor: TaskActor,
   conflictId: string,

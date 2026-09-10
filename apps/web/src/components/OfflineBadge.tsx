@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { getDeviceId } from '@/lib/offline-queue';
 import { useSyncReconcile } from '@/lib/use-sync-reconcile';
@@ -34,7 +35,12 @@ export function OfflineBadge({ workspaceId }: { workspaceId: string }) {
   return (
     <div className="offline-badge" role="status" aria-live="polite">
       {online ? `Syncing ${queued} ${word(queued)}…` : `Offline — ${queued} ${word(queued)} queued`}
-      {attention > 0 && ` · ${attention} ${word(attention)} need attention`}
+      {attention > 0 && (
+        <>
+          {' · '}
+          <Link href="/conflicts">{attention} {word(attention)} need attention — review</Link>
+        </>
+      )}
     </div>
   );
 }

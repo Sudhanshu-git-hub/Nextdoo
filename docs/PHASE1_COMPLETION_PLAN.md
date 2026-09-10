@@ -18,16 +18,20 @@ non-billing MVP gaps**, prioritizing broken/incomplete notifications/durable job
 tracking/analytics, export/deletion, entitlement/authorization and task management.
 AI, billing integration, desktop and full offline mode remain excluded.
 
-The current locally verified milestone is **M5 cross-platform reliability,
-first bounded increment** (sync protocol v1 scenario matrix, offline
-capture, reconnect reconciliation, Today cached fallback/recovery):
-[M5_SYNC_RELIABILITY_MILESTONE.md](M5_SYNC_RELIABILITY_MILESTONE.md). Final
-local validation: **57 test files / 568 unit+integration tests and 121
-browser/API scenarios** (real-browser offline mode), lint, typecheck,
-coverage (88.63% statements) and build passed; no new migrations (existing
-tables reused). Remote CI is checked on the pushed commit and reported at
-milestone closure. This closes the bounded sync-reliability slice,
-**not all M5 or Phase 1**. The prior
+The current locally verified milestone is **M5 cross-platform
+reliability, second bounded increment** (conflict-resolution view and
+SY-06–SY-09 multi-device scenarios, on top of the first increment: sync
+protocol v1 scenario matrix, offline capture, reconnect reconciliation,
+Today cached fallback/recovery):
+[M5_CONFLICT_RESOLUTION_MILESTONE.md](M5_CONFLICT_RESOLUTION_MILESTONE.md),
+built on [M5_SYNC_RELIABILITY_MILESTONE.md](M5_SYNC_RELIABILITY_MILESTONE.md).
+Final local validation: **57 test files / 574 unit+integration tests and
+125 browser/API scenarios** (real-browser offline mode, two-device E2E),
+lint, typecheck, coverage (88.56% statements; core 97.91% vs the 85%
+threshold) and build passed; no new migrations (existing tables reused).
+Remote CI is checked on the pushed commit and reported at milestone
+closure. This closes two bounded sync-reliability slices, **not all M5 or
+Phase 1**. The prior
 [M4 reporting milestone](M4_REPORTING_MILESTONE.md),
 [M4 score-corrections milestone](M4_SCORE_CORRECTIONS_MILESTONE.md),
 [tracking-durability milestone](TRACKING_DURABILITY_MILESTONE.md) and
@@ -43,7 +47,7 @@ notification and data-integrity acceptance was retained in the full run.
 | M2 Core task management | Online capture/editor, tags/priority/due/estimate, projects/lifecycle, sections/board with optimistic movement and rollback, subtasks/dependencies, archive/Trash/recovery, query filters/sorts, atomic bulk commands; owner-managed workspace defaults; free-text task `location` end to end (contracts, services, sync writable field, recurrence inheritance, editor) per [TASK_LOCATION_MILESTONE.md](TASK_LOCATION_MILESTONE.md); windowed list rendering above 200 loaded rows (virtualization, PRD §6.9) per [TASK_VIRTUALIZATION_MILESTONE.md](TASK_VIRTUALIZATION_MILESTONE.md); rich task description — Markdown source storage with a single safe core renderer, editor edit/preview, 20k limit UX, conflict rendering and search/sync compatibility per [RICH_DESCRIPTION_MILESTONE.md](RICH_DESCRIPTION_MILESTONE.md); capture/mutation instrumentation (creation success, mutation error rate, active-task gauge, sync-channel tag, content-free client capture latency) and 1,000-task collection-scale + measured latency baseline per [M2_INSTRUMENTATION_MILESTONE.md](M2_INSTRUMENTATION_MILESTONE.md) | PRD §19.4 staging load test execution (operational) |
 | M3 Planning and execution | Workspace-local week task calendar/movement and Today, configured overnight workday guideline, focus/time workflows, durable in-app notifications, reminder status/history/read/snooze/cancel and bounded isolated dispatch retries, complete/reschedule; bounded recurrence generation, future rule edits, occurrence lifecycle and retries; day/week/month workspace-local calendar with full cursor pagination over the visible period per [CALENDAR_MILESTONE.md](CALENDAR_MILESTONE.md); complete provider-aware capacity planning — server full-collection workload vs configured overnight-aware workday, sync-delay `CAPACITY_UNKNOWN` rule (no feasibility claim while a connected calendar is out of sync), plan-gated calendar connections with suspend/reactivate on plan change and tenant-scoped list/disconnect endpoints per [M3_CAPACITY_PLANNING_MILESTONE.md](M3_CAPACITY_PLANNING_MILESTONE.md) | Offline timers; real browser/background push and enabled reminder email delivery; desktop delivery remains excluded from current work |
 | M4 Tracking and analytics | Ordered append-only events, shared versioned engine, durable outbox consumer/queue with fenced leases and five retries, due/cohort freshness, immutable input/history drilldown, owner single-task re-evaluation, numeric-score visibility and live workspace-local task/project summaries; **score corrections** (`DUE_DATE_CORRECTED`, `EXTERNALLY_BLOCKED`, `UNTRACKED_COMPLETION`, `EXCLUDED_FROM_ANALYTICS`) with actor/reason/audit, supersede-never-mutate history and correction-aware Unmeasured scoring, plus **bounded date-range recalculation** (90-day default, ≤366-day, day-chunked observable backfill, 10/hour/user limit) per [M4_SCORE_CORRECTIONS_MILESTONE.md](M4_SCORE_CORRECTIONS_MILESTONE.md); **workspace-local reporting and richer trends** — workspace-time-zone day/week windows with the configured week start, per-day trend points, recurrence adherence, most-rescheduled tasks, overloaded planning days, underestimated categories, focus-time trend, plain tag-attributed explanations and optional per-day review notes (PRD §7.8/§8.5) per [M4_REPORTING_MILESTONE.md](M4_REPORTING_MILESTONE.md) | Independent tracking/wellbeing controls and retention policy; unresolved TR-03/full TR matrix; routed alerts and sustained freshness/load SLO qualification |
-| M5 Cross-platform reliability | Sync protocol v1 hardened and scenario-verified — SY-01–SY-05 explicitly green (offline create + pull visibility, replay/duplicate, different-field merge, same-field conflict with preserved contents and resolution, delete-wins with tombstone propagation and restore), same-entity batch ordering, pull sequencing/cursor monotonicity, delete-of-deleted duplicate, completion preservation, tenant isolation across push/pull/cache; replay-safe online creates via the reserved `clientMutationId`; scoped IndexedDB primitives extended with per-workspace sync cursor, pull-side change/tombstone application, pending/needs-attention summaries and `reconcileOnce`; app-global reconcile loop (mount recovery, reconnect, new-work-while-online, stored 1 s–5 min jittered backoff, quarantine never auto-retries, needs-attention surfaced in the shell); offline quick capture (deterministic local parse, client-UUID durable enqueue, optimistic cached row, 4xx never enqueued, recurrence refused offline without losing text); Today cached fallback + recovery with tombstone-cleared cache per [M5_SYNC_RELIABILITY_MILESTONE.md](M5_SYNC_RELIABILITY_MILESTONE.md) | Conflict resolution view (browse/resolve `conflict_snapshots` in UI); SY-06–SY-10 and multi-device matrix scenarios; 5,000-mutation drain and SLO qualification under load; offline edits/deletes via the task editor and offline timers (only quick capture enqueues today); Windows Tauri/SQLite/WebView2 client, notifications, packaging/signing/update/rollback |
+| M5 Cross-platform reliability | Sync protocol v1 hardened and scenario-verified — SY-01–SY-05 explicitly green (offline create + pull visibility, replay/duplicate, different-field merge, same-field conflict with preserved contents and resolution, delete-wins with tombstone propagation and restore), same-entity batch ordering, pull sequencing/cursor monotonicity, delete-of-deleted duplicate, completion preservation, tenant isolation across push/pull/cache; replay-safe online creates via the reserved `clientMutationId`; scoped IndexedDB primitives extended with per-workspace sync cursor, pull-side change/tombstone application, pending/needs-attention summaries and `reconcileOnce`; app-global reconcile loop (mount recovery, reconnect, new-work-while-online, stored 1 s–5 min jittered backoff, quarantine never auto-retries, needs-attention surfaced in the shell); offline quick capture (deterministic local parse, client-UUID durable enqueue, optimistic cached row, 4xx never enqueued, recurrence refused offline without losing text); Today cached fallback + recovery with tombstone-cleared cache per [M5_SYNC_RELIABILITY_MILESTONE.md](M5_SYNC_RELIABILITY_MILESTONE.md); conflict-resolution view (side-by-side per-field browse, choose `local`/`server` via the idempotent resolve endpoint, quarantined-mutation review with raw payload and retry, badge-linked, axe-clean) and SY-06–SY-09 multi-device scenarios (two-device completion, overlapping timers, 10-minute clock skew, batch-with-invalid mutation) plus two-device browser E2E (conflict browse/keyboard-resolve, offline capture cross-device + tombstone propagation, lost-ack idempotent retry + quarantine UI) per [M5_CONFLICT_RESOLUTION_MILESTONE.md](M5_CONFLICT_RESOLUTION_MILESTONE.md) | SY-10: 5,000-mutation drain and SLO qualification under load; offline edits/deletes via the task editor and offline timers (only quick capture enqueues today); Windows Tauri/SQLite/WebView2 client, notifications, packaging/signing/update/rollback; per-field mixed adjudication of multi-field snapshots and conflict dashboards |
 | M6 Commercial readiness | Server entitlement limits; authenticated JSON export with legacy notification-reference privacy guards; reauthenticated deletion/grace/purge; audit trail; asynchronous expiring JSON/CSV exports (bounded worker generation, signed 24-hour downloads, plan quota plus durable hourly limit, purge-aware artifact deletion) per [DATA_EXPORT_MILESTONE.md](DATA_EXPORT_MILESTONE.md) | Real Google Calendar two-way OAuth/sync/revocation; provider billing/webhooks/refunds/reconciliation; attachments/upload/scan/download gating; support/status/dashboards and operational acceptance |
 
 ### Specific current implementation evidence
@@ -59,6 +63,20 @@ notification and data-integrity acceptance was retained in the full run.
   edits/deletes in the task editor and offline timers are not claimed.
   Generic sync still rejects recurrence commands; offline recurrence is
   refused in the capture without losing the user's text.
+- Conflict resolution is now browsable and actionable in the UI:
+  unresolved same-field snapshots render side-by-side per field with
+  "Keep my version" / "Keep server version" choose actions driven by the
+  idempotent `POST /v1/sync/conflicts/:id/resolve` (the `local` choice
+  re-applies through the existing task command path, so invariants and
+  sync-change emission are identical to an online edit; `server` is a
+  no-op mark), and quarantined mutations are reviewable with their full
+  raw payload and a retry action. Two-device browser E2E verifies browse,
+  keyboard resolution, offline capture propagation, tombstone propagation
+  into the local cache, lost-ack idempotent retry, and quarantine/retry,
+  and the screen passes axe. SY-06–SY-09 (two-device completion,
+  overlapping timers preserved with `OVERLAPPED` close, 10-minute clock
+  skew, batch-with-invalid mutation) are green; SY-10 load
+  qualification remains explicitly deferred.
 - Recurring creation is atomic; the shared DB generator, scheduled worker,
   lifecycle APIs, confirmation UI and paginated series management now have real-DB
   and browser evidence. Snapshot-less legacy scaffold rows remain unscheduled.
@@ -204,10 +222,23 @@ command. All release gates in §19.4 remain required, not only this checklist.
    fallback/recovery with tombstone-cleared cache — 10 integration +
    8 unit + 3 real-browser-offline E2E verified; see
    [M5_SYNC_RELIABILITY_MILESTONE.md](M5_SYNC_RELIABILITY_MILESTONE.md).
-   Remaining M5: conflict resolution view, SY-06–SY-10 and multi-device
-   scenarios, 5,000-mutation drain and SLO qualification, offline
-   edits/deletes in the task editor and offline timers, and the Windows
-   client.
+   **Second bounded increment:** the conflict-resolution view
+   (side-by-side per-field browse with choose `local`/`server` through
+   the idempotent resolve endpoint — `local` re-applies through the
+   existing task command path; quarantined-mutation review with the full
+   raw payload and a retry action; badge-linked; axe-clean), SY-06
+   (two-device completion + reschedule), SY-07 (overlapping timer
+   sessions preserved with `OVERLAPPED` close, never deleted), SY-08
+   (10-minute clock skew cannot reorder the pull stream; mutation
+   timestamps use server time) and SY-09 (batch with one invalid
+   mutation: rejection is idempotent, content preserved, batch-mates
+   apply) — 15 integration scenarios + 5 unit additions + 4 two-device
+   browser E2E verified; see
+   [M5_CONFLICT_RESOLUTION_MILESTONE.md](M5_CONFLICT_RESOLUTION_MILESTONE.md).
+   Remaining M5: SY-10 (5,000-mutation drain and SLO qualification),
+   offline edits/deletes in the task editor and offline timers,
+   per-field mixed adjudication of multi-field snapshots, conflict
+   dashboards, and the Windows client.
 6. **Enabled external online integrations:** browser/background notifications and
    reminder email, Google Calendar and scanning-gated attachments require provider,
    deployment and privacy decisions plus real test resources. No fake delivery,
