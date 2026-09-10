@@ -58,5 +58,5 @@ test('Today uses the workspace date across a UTC date boundary and the configure
  await page.clock.setFixedTime(now); await page.goto('/today');
  await expect(page.getByRole('region', { name: 'Due today', exact: true }).getByRole('button', { name: 'Edit "Local today"', exact: true })).toBeVisible();
  await expect(page.getByRole('region', { name: 'Overdue (1)', exact: true }).getByRole('button', { name: 'Edit "Earlier day"', exact: true })).toBeVisible();
- await expect(page.getByRole('button', { name: 'Edit "Local tomorrow"', exact: true })).toHaveCount(0); await expect(page.getByText(/That exceeds your configured workday/)).toBeVisible();
+ await expect(page.getByRole('button', { name: 'Edit "Local tomorrow"', exact: true })).toHaveCount(0); await expect(page.getByText(/Your configured workday is 1h — 1h over.*planning guideline/s)).toBeVisible();
 });

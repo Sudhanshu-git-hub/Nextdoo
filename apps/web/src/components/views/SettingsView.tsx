@@ -12,7 +12,7 @@ import { DataExport } from '@/components/DataExport';
 interface EntitlementSnapshot {
   plan: Plan;
   limits: EntitlementLimits;
-  usage: { activeTasks: number; projects: number };
+  usage: { activeTasks: number; projects: number; calendarConnections: number };
 }
 
 interface DeletionStatus {
@@ -190,7 +190,7 @@ export function SettingsView({
           <h2 id="usage-heading">Usage</h2>
           <Usage label="Active tasks" used={entitlements.usage.activeTasks} max={entitlements.limits.activeTasks} />
           <Usage label="Projects" used={entitlements.usage.projects} max={entitlements.limits.projects} />
-          <Usage label="Calendar connections" used={0} max={entitlements.limits.calendarConnections} />
+          <Usage label="Calendar connections" used={entitlements.usage.calendarConnections} max={entitlements.limits.calendarConnections} />
           <p className="muted" style={{ marginTop: 10 }}>
             Limits are enforced on the server, so they hold even if a client is modified.
           </p>

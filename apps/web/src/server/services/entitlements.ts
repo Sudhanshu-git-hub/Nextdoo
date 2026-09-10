@@ -1,6 +1,6 @@
 import { and, count, eq, isNull } from 'drizzle-orm';
 import { AppError, limitsFor } from '@nextdoo/contracts';
-import { projects, tasks } from '@nextdoo/db';
+import { calendarConnections, projects, tasks } from '@nextdoo/db';
 import { getDb } from '../db';
 import { getPlan } from './accounts';
 
@@ -57,10 +57,14 @@ export async function getEntitlementSnapshot(userId: string, workspaceId: string
     .select({ n: count() })
     .from(projects)
     .where(and(eq(projects.workspaceId, workspaceId), eq(projects.status, 'ACTIVE'), isNull(projects.deletedAt)));
+  const [connectionRow] = await db
+    .select({ n: count() })
+    .from(calendarConnections)
+    .where(and(eq(calendarConnections.userId, userId), eq(calendarConnections.status, 'ACTIVE')));
 
   return {
     plan,
     limits,
-    usage: { activeTasks: taskRow?.n ?? 0, projects: projectRow?.n ?? 0 },
+    usage: { activeTasks: taskRow?.n ?? 0, projects: projectRow?.n ?? 0, calendarConnections: connectionRow?.n ?? 0 },
   };
 }

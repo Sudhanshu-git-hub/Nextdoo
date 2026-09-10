@@ -1,9 +1,20 @@
 'use client';
-import { localDayBounds, workdayMinutes } from '@nextdoo/core/calendar';
+import { localDayBounds, localDateKey } from '@nextdoo/core/calendar';
 import { useWorkspace } from '@/components/WorkspaceContext';
 
-import { useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTaskPages } from '@/lib/use-task-pages';
+import { api } from '@/lib/api';
+
+/** PRD §8.3 — server-computed day capacity (full-collection workload). */
+interface DayCapacityData {
+  workdayMinutes: number;
+  workloadMinutes: number;
+  capacityMinutes: number | null;
+  overByMinutes: number | null;
+  status: 'OK' | 'OVERLOADED' | 'CAPACITY_UNKNOWN';
+  providerConnected: boolean;
+}
 import { TaskPagination } from '@/components/TaskPagination';
 import { flushQueue, getDeviceId } from '@/lib/offline-queue';
 import { QuickCapture } from '@/components/QuickCapture';
@@ -16,13 +27,33 @@ import { TaskList } from '@/components/TaskList';
  * is how a planner starts lying to its user.
  */
 export function TodayView({ workspaceId }: { workspaceId: string }) {
-  const { timeZone, workdayStartMinute, workdayEndMinute } = useWorkspace();
+  const { timeZone } = useWorkspace();
   const filters = useMemo(() => {
     const { end } = localDayBounds(new Date(), timeZone);
     return `status=ACTIVE&dueBefore=${encodeURIComponent(end.toISOString())}`;
   }, [timeZone]);
   const page = useTaskPages(workspaceId, filters, true);
   const { tasks, loading, stale, reload: load } = page;
+  const [capacity, setCapacity] = useState<DayCapacityData | null>(null);
+
+  const loadCapacity = useCallback(async () => {
+    try {
+      const date = localDateKey(new Date(), timeZone);
+      setCapacity(await api<DayCapacityData>(`/calendar/capacity?workspaceId=${workspaceId}&date=${date}`));
+    } catch {
+      // Best-effort planning aid: a failed capacity fetch never blocks the list.
+      setCapacity(null);
+    }
+  }, [workspaceId, timeZone]);
+
+  useEffect(() => {
+    void loadCapacity();
+  }, [loadCapacity]);
+
+  const reload = useCallback(() => {
+    void load();
+    void loadCapacity();
+  }, [load, loadCapacity]);
   // Drain the offline queue whenever connectivity returns.
   useEffect(() => {
     const onOnline = async () => {
@@ -36,7 +67,6 @@ export function TodayView({ workspaceId }: { workspaceId: string }) {
   const now = new Date();
   const overdue = tasks.filter((t) => t.dueAt && new Date(t.dueAt) < localDayBounds(now, timeZone).start);
   const today = tasks.filter((t) => !t.dueAt || new Date(t.dueAt) >= localDayBounds(now, timeZone).start);
-  const plannedMinutes = tasks.reduce((sum, t) => sum + (t.estimateMinutes ?? 0), 0);
 
   return (
     <>
@@ -45,7 +75,7 @@ export function TodayView({ workspaceId }: { workspaceId: string }) {
           <h1>Today</h1>
           <p className="subtitle">
             {now.toLocaleDateString(undefined, { timeZone, weekday: 'long', month: 'long', day: 'numeric' })}
-            {plannedMinutes > 0 && ` · ${formatMinutes(plannedMinutes)} planned in loaded tasks`}
+            {capacity && capacity.workloadMinutes > 0 && ` · ${formatMinutes(capacity.workloadMinutes)} planned today`}
           </p>
         </div>
       </div>
@@ -56,12 +86,19 @@ export function TodayView({ workspaceId }: { workspaceId: string }) {
         </div>
       )}
 
-      <QuickCapture workspaceId={workspaceId} onCreated={load} />
+      <QuickCapture workspaceId={workspaceId} onCreated={reload} />
 
-      {plannedMinutes > workdayMinutes(workdayStartMinute, workdayEndMinute) && (
+      {capacity?.status === 'OVERLOADED' && (
         <div className="banner banner-warn" role="status">
-          You have planned {formatMinutes(plannedMinutes)} of work in the loaded tasks. That exceeds your configured workday ({formatMinutes(workdayMinutes(workdayStartMinute, workdayEndMinute))}).
-          This is a planning guideline, not a guarantee of available time; consider moving something.
+          You have planned {formatMinutes(capacity.workloadMinutes)} of work in tasks due today. Your configured workday is {formatMinutes(capacity.workdayMinutes)}
+          {capacity.overByMinutes ? ` — ${formatMinutes(capacity.overByMinutes)} over` : ''}. This is a planning guideline, not a guarantee of available time; consider moving something.
+        </div>
+      )}
+
+      {capacity?.status === 'CAPACITY_UNKNOWN' && (
+        <div className="banner banner-warn" role="status">
+          A calendar is connected but its sync data hasn&#39;t caught up (calendar sync delayed), so available work capacity can&#39;t be confirmed yet.
+          You have planned {formatMinutes(capacity.workloadMinutes)} in tasks due today.
         </div>
       )}
 
@@ -76,7 +113,7 @@ export function TodayView({ workspaceId }: { workspaceId: string }) {
             error={page.tasks.length ? null : page.error}
             emptyTitle=""
             emptyBody=""
-            onChanged={load}
+            onChanged={reload}
           />
         </section>
       )}
@@ -89,7 +126,7 @@ export function TodayView({ workspaceId }: { workspaceId: string }) {
           error={page.tasks.length ? null : page.error}
           emptyTitle="Nothing scheduled for today"
           emptyBody="Add a task above, or check the Inbox for unscheduled work waiting for a date."
-          onChanged={load}
+          onChanged={reload}
         />
       </section>
       <TaskPagination {...page} error={page.tasks.length ? page.error : null} count={tasks.length} onMore={page.loadMore} onRetry={tasks.length ? page.loadMore : load} />

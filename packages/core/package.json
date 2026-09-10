@@ -8,6 +8,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./calendar": "./src/calendar.ts",
+    "./capacity": "./src/capacity.ts",
     "./description": "./src/description.ts"
   },
   "scripts": {

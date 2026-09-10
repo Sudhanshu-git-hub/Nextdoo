@@ -272,3 +272,31 @@ The only remaining M2 completion work is the PRD §19.4 staging load test
 execution (staging environment + load generator), plus deployment-side
 collector/alerting wiring for the new events. No M3, provider, billing,
 desktop or full-offline work was started.
+
+Implemented the next M3 increment without changing the PRD, the existing
+APIs or any verified milestone.
+[M3_CAPACITY_PLANNING_MILESTONE.md](M3_CAPACITY_PLANNING_MILESTONE.md) records
+the PRD requirements, design decisions, test evidence and the remaining
+deferred work.
+
+Highlights: a pure, timezone-free core capacity engine (`planDayCapacity`)
+enforcing the PRD §5.2 rule — no feasibility/overload claim is possible
+while a connected calendar has not synced through the day
+(`CAPACITY_UNKNOWN`, §8.6 "calendar sync delayed"); the Today screen now
+shows the server-computed full-collection workload against the configured
+overnight-aware workday with a warning banner (50 loaded tasks, banner
+reports all 60 — never moves tasks automatically); plan-gated calendar
+connections (FREE: 1, `ENTITLEMENT_LIMIT_REACHED` at the limit) with
+suspend/reactivate on plan change (never delete) and real "1 of 1" usage in
+Settings; tenant-scoped `GET /v1/calendar/connections`,
+`DELETE /v1/calendar/connections/:id` and the new
+`GET /v1/calendar/capacity` seam (401/403/404 isolation, no token leakage);
+workday configuration changes recompute capacity per request (E2E-verified
+480→120-minute flip to `OVERLOADED`). Provider OAuth/sync, offline timers
+and real push/email delivery remain deferred.
+
+Final local gates: **54 test files / 524 unit+integration tests** and
+**110/110 browser/API scenarios** (baseline 51/498 and 105), lint (0
+warnings), types, coverage (87.85% statements, baseline 87.41%), build and
+migration replay passed. Remote CI is verified against the pushed milestone
+commit, separately from local evidence.
