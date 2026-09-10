@@ -406,3 +406,66 @@ Remaining M4 work: the unresolved TR-03/full TR matrix and independent
 tracking/wellbeing controls (require the outstanding policy decisions).
 No provider, offline, billing, AI, or desktop work was started or
 invented.
+
+## M5 cross-platform reliability — first bounded increment (sync protocol v1, offline capture, reconciliation) — 2026-09-10
+
+Commit: `6ae9cf9` (branched from green `ba24998`). PRD §10 / roadmap item
+7, first bounded increment: server push/pull correctness, version/
+tombstone protection, scoped IndexedDB queue primitives, Today cached
+fallback/recovery, and the safe enqueue/reconcile semantics.
+
+Server:
+- Online task create now honors the reserved `clientMutationId` as the
+  entity id — a create whose response is lost re-pushed through sync
+  dedupes to `duplicate`, never a twin task (SY-01).
+- New `sync-scenarios.integration.test.ts`: explicit SY-01..SY-05
+  (offline create visible to the other device via pull; replay is a
+  duplicate with no second entity; different fields both retained;
+  same-field conflict preserved + `resolveConflict('local')` applies it;
+  delete wins, tombstone propagates via pull, restore resurrects and
+  removes the tombstone), plus same-entity batch ordering (ack per
+  position, version = base+N), pull sequencing/cursor monotonicity with
+  pagination, delete-of-deleted duplicate, 30-day snapshot retention on
+  post-delete edits, tenant isolation (cross-workspace write, workspace
+  relabel rejection, per-workspace pull stream) and completion
+  preservation (stale status edit refused, retained, completion kept).
+
+Client:
+- `offline-queue.ts`: DB v3 `meta` store with per-workspace sync cursor;
+  `cacheTask` (provenance-checked); `applyPullPage` (update/create
+  apply, delete removes — idempotent, cursor advances only after
+  durable apply); `pullSync` (bounded pagination); `pendingSummary`
+  (waiting vs needs-attention); `earliestRetryAt`; `reconcileOnce`
+  (flush then pull); queue-changed event; SSR-safe `getDeviceId`.
+- New `use-sync-reconcile.ts`: app-global loop — mount recovery,
+  reconnect, new work arriving online, tab visibility, stored
+  1 s–5 min jittered backoff; quarantined items never auto-retry;
+  fires `nextdoo-synced` after a pass that applied or pulled.
+- `OfflineBadge` (app shell) owns the loop and surfaces the queued count
+  plus the PRD §10.8 needs-attention count (replaces the 1.5 s poll).
+- `QuickCapture` offline capture: deterministic local parse (same
+  grammar, no model), client-UUID create, durable enqueue + optimistic
+  cache row, "Saved offline" acknowledgement; enqueue only on
+  network/5xx, never on 4xx; recurrence refused offline without losing
+  the user's text.
+- `TodayView` refreshes on `nextdoo-synced`; cached fallback (stale
+  banner) retained and now tombstone-cleared by pull.
+- `@nextdoo/core` gains a client-safe `./nl-parse` subpath export (the
+  root barrel pulls server-only `node:crypto` via totp).
+
+Verification (local PG 18): **57 test files / 568 unit+integration tests**
+(baseline 56/550: +18 — 10 sync scenarios + 8 queue-primitive unit tests)
+and **121/121 browser/API scenarios** (baseline 118: +3 in new
+`sync-offline.spec.ts` using real browser offline mode — offline capture
+→ reconnect → reconciliation with canonical-id match, cached Today
+fallback + recovery, cross-account isolation of queue/cache/server;
+`online.spec.ts` lost-ack test updated to the durable-enqueue behavior
+with strengthened assertions). Lint 0; typecheck clean; coverage
+**88.63%** statements (baseline 88.41%); `next build` green. No new
+migrations (existing tables reused; client `meta` store is IndexedDB).
+
+Remaining M5: conflict resolution view (browse/resolve
+`conflict_snapshots` in the UI), SY-06–SY-10 and multi-device scenarios,
+5,000-mutation drain and SLO qualification, offline edits/deletes via the
+task editor and offline timers, and the Windows Tauri client. No desktop,
+provider, AI, or billing work was started.
