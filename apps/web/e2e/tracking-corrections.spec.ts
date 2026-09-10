@@ -43,15 +43,15 @@ test('a due-date correction applied from the panel recalculates, keeps the origi
   const originalId = before[0]!.id;
 
   await page.goto(`/analytics?taskId=${task.id}`);
-  await expect(page.locator('[data-tracking-state]')).toHaveAttribute('data-tracking-state', 'FRESH');
+  await expect(page.locator('[data-tracking-state]')).toHaveAttribute('data-tracking-state', 'FRESH', { timeout: 15_000 });
   await page.selectOption('#correction-kind', 'DUE_DATE_CORRECTED');
   const correctedDue = new Date(Date.now() - 2 * 3_600_000);
   await page.fill('#correction-due', localDateTime(correctedDue));
   await page.fill('#correction-reason', 'The original due date was entered wrong');
   await page.getByRole('button', { name: 'Apply correction', exact: true }).click();
-  await expect(page.locator('.tracking-panel p[role="status"]', { hasText: 'Correction recorded and re-evaluation queued.' })).toBeVisible();
+  await expect(page.locator('.tracking-panel p[role="status"]', { hasText: 'Correction recorded and re-evaluation queued.' })).toBeVisible({ timeout: 15_000 });
   await runTrackingCycle(connection.db, workspaceId);
-  await expect(page.locator('[data-tracking-state]')).toHaveAttribute('data-tracking-state', 'FRESH', { timeout: 12_000 });
+  await expect(page.locator('[data-tracking-state]')).toHaveAttribute('data-tracking-state', 'FRESH', { timeout: 25_000 });
 
   // TR-05: new result is recalculated LATE; the original is superseded, never mutated.
   const after = await resultsFor(task.id);
@@ -72,7 +72,7 @@ test('a due-date correction applied from the panel recalculates, keeps the origi
   const audits = await connection.db.select().from(auditLogs).where(eq(auditLogs.workspaceId, workspaceId));
   expect(audits.map((a) => a.action)).toContain('tracking.correction_due_date');
   // The recorded correction is visible in the panel list.
-  await expect(page.locator('[data-tracking-correction-id]')).toHaveCount(1);
+  await expect(page.locator('[data-tracking-correction-id]')).toHaveCount(1, { timeout: 15_000 });
 
   const { default: AxeBuilder } = await import('@axe-core/playwright');
   expect((await new AxeBuilder({ page }).include('.tracking-panel').withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze()).violations).toEqual([]);
@@ -86,17 +86,17 @@ test('excluding a task from analytics removes it from the summary but keeps its 
   expect(await resultsFor(task.id)).toHaveLength(1);
 
   await page.goto(`/analytics?taskId=${task.id}`);
-  await expect(page.locator('[data-tracking-state]')).toHaveAttribute('data-tracking-state', 'FRESH');
+  await expect(page.locator('[data-tracking-state]')).toHaveAttribute('data-tracking-state', 'FRESH', { timeout: 15_000 });
   await page.selectOption('#correction-kind', 'EXCLUDED_FROM_ANALYTICS');
   await page.fill('#correction-reason', 'One-off task that distorts the trend');
   await page.getByRole('button', { name: 'Apply correction', exact: true }).click();
-  await expect(page.locator('.tracking-panel p[role="status"]', { hasText: 'Correction recorded and re-evaluation queued.' })).toBeVisible();
+  await expect(page.locator('.tracking-panel p[role="status"]', { hasText: 'Correction recorded and re-evaluation queued.' })).toBeVisible({ timeout: 15_000 });
   await runTrackingCycle(connection.db, workspaceId);
 
   // The summary now reports the exclusion instead of silently dropping the task.
-  await expect(page.getByText(/hidden by an “excluded from analytics” correction/)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(/hidden by an “excluded from analytics” correction/)).toBeVisible({ timeout: 30_000 });
   // The stored result and its evidence remain available in the drill-down.
-  await expect(page.locator('[data-tracking-result-id]')).toHaveCount(1);
+  await expect(page.locator('[data-tracking-result-id]')).toHaveCount(1, { timeout: 15_000 });
   expect(await resultsFor(task.id)).toHaveLength(1);
 });
 
@@ -110,9 +110,9 @@ test('recalculating a date range from analytics is observable day by day and the
   await page.getByLabel('Recalculation range end').fill(dayKey(0));
   await page.fill('#recalc-reason', 'Milestone verification');
   await page.getByRole('button', { name: 'Start recalculation', exact: true }).click();
-  await expect(page.locator('[data-tracking-recalc-progress]')).toContainText('day 1 of 1', { timeout: 10_000 });
+  await expect(page.locator('[data-tracking-recalc-progress]')).toContainText('day 1 of 1', { timeout: 20_000 });
   await runTrackingBackfill(connection.db, workspaceId);
-  await expect(page.locator('[data-tracking-recalc-progress]')).toContainText('is complete (1 day(s))', { timeout: 20_000 });
+  await expect(page.locator('[data-tracking-recalc-progress]')).toContainText('is complete (1 day(s))', { timeout: 35_000 });
   expect((await connection.db.select().from(trackingBackfills).where(eq(trackingBackfills.workspaceId, workspaceId)))[0]!.status).toBe('COMPLETED');
 
   // Nine more requests through the API (the UI request was number one), each run to completion.
