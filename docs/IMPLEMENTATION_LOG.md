@@ -356,3 +356,53 @@ Remaining M4 work: workspace-local reporting and richer trends (PRD
 matrix and independent tracking/wellbeing controls. No reporting
 enhancements, provider integrations, offline work, AI or billing was
 started.
+## M4 workspace-local reporting and richer trends — 2026-09-10
+
+Commit: `61dd487` (branched from green `b80d8a3`). PRD §7.8/§8.5:
+workspace-local day/week reporting windows and the full weekly trend set
+with plain, non-judgemental tag-attributed explanations, plus the §8.5
+review flow including optional per-day notes. Score math, weights,
+normalization, calculation version 2, correction behavior, event semantics
+and historical results are untouched.
+
+Summary windows now use the workspace IANA time zone and configured week
+start (core `localDayBounds`/`workspaceWeek`/`localDateKey`): a requested
+date resolves to local noon in that zone (impossible calendar dates are
+rejected, not silently shifted), and “This week” runs from the configured
+`weekStart` through the end of the reference day — matching the delivered
+calendar week grid. The recalculation backfill’s UTC day chunking is an
+internal partitioning detail and is unchanged. New per-day trend points
+carry planned/completed/focus/score/load-vs-workday (next-day workdays
+included); weekly metrics: execution score trend (current stored results
+only — superseded rows never pollute a day), completion consistency,
+recurrence adherence (mean of measured recurrence components only),
+most-rescheduled tasks (top 5, hidden tasks excluded), overloaded planning
+days, underestimated categories (tag-level variance, ≥2 measured tasks,
+≥+10% signal, top 3), and the focus-time trend (bucketed by local start
+day; excluded tasks hidden from focus too). Insights stay descriptive and
+never judgemental, with tag attribution. Review notes: `review_notes`
+(migration 0018, PK `(workspace_id, day)`, ≤500 chars), GET/PUT/DELETE
+`/api/v1/tracking/review-notes` (owner-scoped, idempotent mutations), and an
+accessible editor on the analytics page that also renders in the empty
+state. Project reports reuse the same workspace-local windows and expose
+the workspace zone; scores-off strips `averageScore` and every per-day
+`score` (absent, not zero).
+
+Verification (local PG 18): **56 test files / 550 unit+integration tests**
+(baseline 55/536: +14 reporting scenarios — TZ day/week boundaries,
+weekStart switches, next-day workday overload, current-result-only day
+scores with a correction re-scoring the day, measured-only recurrence
+adherence, tag-variance threshold, top-5 rescheduled with hidden excluded,
+excluded focus hiding, local-day focus bucketing, mean lateness,
+cross-workspace non-leakage, note upsert/clear/boundary, zone date
+validation) and **118/118 browser/API scenarios** (baseline 114: +4 in
+`analytics-reporting.spec.ts` incl. Axe; `project-analytics` specs updated
+to workspace-local window expectations — assertions kept, values
+corrected, none weakened). Lint 0; typecheck 5/5; coverage **88.41%**
+statements (baseline 88.03%); build OK; migration replay ×2 on a fresh DB
+(19 migrations) idempotent.
+
+Remaining M4 work: the unresolved TR-03/full TR matrix and independent
+tracking/wellbeing controls (require the outstanding policy decisions).
+No provider, offline, billing, AI, or desktop work was started or
+invented.
