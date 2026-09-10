@@ -469,3 +469,34 @@ Remaining M5: conflict resolution view (browse/resolve
 5,000-mutation drain and SLO qualification, offline edits/deletes via the
 task editor and offline timers, and the Windows Tauri client. No desktop,
 provider, AI, or billing work was started.
+
+## M3 capacity defect correction (positive-offset timezone day window) — 2026-09-10, M5 closeout
+
+During M5 closeout CI verification, the `workspaces.spec.ts` date-boundary
+scenario failed on its `Pacific/Kiritimati` (UTC+14) branch — the first CI run
+that took that branch (all earlier runs executed before UTC noon and used the
+negative-offset branch). Local reproduction at 12:46 UTC confirmed a
+**deterministic server defect**, not a flake: `getDayCapacity`'s day window
+(`services/capacity.ts`) ended the day by adding one **UTC** calendar day to
+the local-midnight start instant and re-interpreting the result as a local
+date. In positive-offset zones local midnight is on the *previous* UTC date,
+so the window collapsed to zero length: capacity reported
+`workloadMinutes: 0` for busy days and the §8.3 overload banner never
+rendered (verified via the live endpoint: a 120-minute task due at local noon
+on 2026-09-11 Kiritimati returned `workloadMinutes: 0`, `status: OK`).
+Negative-offset and UTC zones keep a correct 24-hour window, which is why the
+M3 milestone verification was green.
+
+Fix: advance the **local** calendar date (month/year rollover via
+`Date.UTC(year, month-1, day+1)`) for `endExclusive`. Added a regression
+integration test (Kiritimati workspace; noon task counted for the correct
+local day, previous/next local days distinct). This is a genuine code defect
+surfaced by CI, corrected per the closeout rule — no behavior change for UTC
+or negative-offset zones.
+
+Verification (local PG 18, +14 branch): **57 files / 569 unit+integration
+tests** (568 + 1 regression) and **121/121 E2E** including the previously
+failing `workspaces.spec.ts` date-boundary scenario in both branches. Lint 0;
+typecheck clean; coverage **88.62%**; production build green. See
+[M3_CAPACITY_PLANNING_MILESTONE.md](M3_CAPACITY_PLANNING_MILESTONE.md)
+"Defect correction" and [M5_SYNC_RELIABILITY_MILESTONE.md](M5_SYNC_RELIABILITY_MILESTONE.md).

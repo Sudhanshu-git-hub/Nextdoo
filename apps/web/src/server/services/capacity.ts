@@ -56,9 +56,14 @@ export async function getDayCapacity(userId: string, workspaceId: string, dateKe
   const workspace = await loadWorkspaceSettings(workspaceId, workspaceId);
 
   const start = dayStartUtc(year, month, day, workspace.timeZone);
-  const next = new Date(start.getTime());
-  next.setUTCDate(next.getUTCDate() + 1);
-  const endExclusive = dayStartUtc(next.getUTCFullYear(), next.getUTCMonth() + 1, next.getUTCDate(), workspace.timeZone);
+  // The day ends at the NEXT LOCAL midnight. Advancing the local calendar
+  // date (not the UTC date of the start instant) keeps the window 24 local
+  // hours long in every zone — adding a UTC day and re-interpreting it as a
+  // local date collapsed the window to zero for positive-offset zones
+  // (e.g. Pacific/Kiritimati, UTC+14), reporting workload 0 for days that
+  // were not empty.
+  const nextDay = new Date(Date.UTC(year, month - 1, day + 1)); // rolls month/year
+  const endExclusive = dayStartUtc(nextDay.getUTCFullYear(), nextDay.getUTCMonth() + 1, nextDay.getUTCDate(), workspace.timeZone);
   const dayEndInclusive = new Date(endExclusive.getTime() - 1);
 
   // Full-collection workload: ACTIVE, not-deleted tasks due on this day.

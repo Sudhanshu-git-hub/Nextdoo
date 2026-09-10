@@ -122,6 +122,31 @@ describe('daily capacity (integration)', () => {
     expect(r.workloadMinutes).toBe(30);
   });
 
+  // Regression: the day window must be a full LOCAL day. In positive-offset
+  // zones (UTC+14) local midnight lands on the PREVIOUS UTC date, so
+  // "next local midnight" is NOT "start + 1 UTC day". The old UTC-day math
+  // collapsed the window to zero and reported workload 0 for a busy day.
+  maybe()('keeps the workload window a full local day in a positive-offset zone (UTC+14 date rollover)', async () => {
+    const user = await freshUser('kiritimati');
+    const { getDayCapacity } = await import('./capacity');
+    const { updateWorkspaceSettings } = await import('./workspaces');
+    await updateWorkspaceSettings(
+      { userId: user.id, workspaceId: user.workspaceId, requestId: 'test' },
+      user.workspaceId,
+      { version: 1, timeZone: 'Pacific/Kiritimati' },
+    );
+    // Local 2026-09-11 in Kiritimati spans UTC [2026-09-10 10:00, 2026-09-11 10:00).
+    await seedTask(user.workspaceId, 120, new Date(Date.UTC(2026, 8, 10, 22, 0))); // local 09-11 12:00 → in
+    await seedTask(user.workspaceId, 999, new Date(Date.UTC(2026, 8, 9, 11, 0)));  // local 09-10 01:00 → prev day
+    await seedTask(user.workspaceId, 999, new Date(Date.UTC(2026, 8, 11, 10, 0))); // local 09-12 00:00 → next day
+    const r = await getDayCapacity(user.id, user.workspaceId, '2026-09-11');
+    expect(r.workloadMinutes).toBe(120);
+    expect(r.status).toBe('OK');
+    // The previous local day is a distinct, non-empty window.
+    const prev = await getDayCapacity(user.id, user.workspaceId, '2026-09-10');
+    expect(prev.workloadMinutes).toBe(999);
+  });
+
   maybe()('flags overload against the workday with the exact overshoot', async () => {
     const user = await freshUser('overload');
     const { getDayCapacity } = await import('./capacity');

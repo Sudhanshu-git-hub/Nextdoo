@@ -95,7 +95,7 @@ delivery, desktop.
   overlap-safe busy math, overload boundary (exactly-full = OK), and the
   `CAPACITY_UNKNOWN` null-contract.
 - **Integration (real Postgres):** `services/capacity.integration.test.ts`
-  (9) + `services/calendar-connections.integration.test.ts` (8) — 17/17:
+  (10) + `services/calendar-connections.integration.test.ts` (8) — 18/18:
   full-collection workload (page-size independence), sync-delay blocking,
   disconnect restore, tenant isolation (cross-tenant reads 403/404, no token
   leakage in list payloads), plan-limit enforcement and
@@ -116,6 +116,29 @@ delivery, desktop.
   production build (Next.js 15.5.25), migration replay (`db:migrate` ×2,
   idempotent), **110/110 browser/API E2E scenarios** (baseline 105 + the 5
   new ones).
+
+### Defect correction (2026-09-10, M5 closeout)
+
+CI (GitHub Actions, `workspaces.spec.ts` date-boundary scenario) exposed a
+genuine capacity defect in a **positive-offset** timezone: the day-window end
+in `services/capacity.ts` was computed by advancing the **UTC** calendar date
+of the local-midnight start instant and re-interpreting it as a local date.
+For zones where local midnight lands on the *previous* UTC date
+(e.g. `Pacific/Kiritimati`, UTC+14 — and equivalently every positive offset),
+the window collapsed to zero length and the endpoint reported
+`workloadMinutes: 0` for days that were not empty, so the §8.3 overload
+banner never rendered. Negative-offset and UTC zones (all prior local and CI
+runs) happened to keep a 24-hour window, which is why the milestone's original
+verification was green. Corrected to advance the **local** calendar date
+(month/year rollover via `Date.UTC`), keeping the window exactly one local
+day in every zone. Regression test added to
+`services/capacity.integration.test.ts`: a Kiritimati workspace where the
+2026-09-11 local window is UTC [2026-09-10 10:00, 2026-09-11 10:00) — the
+noon task is counted (120 min, `OK`), the previous and next local days are
+distinct non-leaking windows. Re-verified after the fix: 569/569
+unit+integration, 121/121 E2E (including the previously failing
+`workspaces.spec.ts` date-boundary scenario in the +14 branch), lint 0,
+typecheck clean, coverage 88.62%, production build green.
 
 ## Remaining (M3 and beyond, explicitly not started)
 
