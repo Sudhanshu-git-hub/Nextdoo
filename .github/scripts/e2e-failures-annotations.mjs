@@ -33,7 +33,8 @@ if (!failed.length) {
   process.exit(0);
 }
 console.log(`::error::${failed.length} E2E test(s) failed:`);
+const ansi = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g');
 for (const f of failed) {
-  const err = (f.errors[0] ?? '').replaceAll(/\u001b\[[0-9;]*m/g, '').replaceAll('\n', ' ').slice(0, 300);
+  const err = (f.errors[0] ?? '').replaceAll(ansi, '').replaceAll('\n', ' ').slice(0, 300);
   console.log(`::error file=${f.file},${f.line}:: ${f.title} :: ${err}`);
 }
