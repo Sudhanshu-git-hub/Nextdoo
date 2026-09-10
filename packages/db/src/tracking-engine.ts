@@ -1,31 +1,59 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { and, asc, eq, gt, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
 import { calculateScore, type ScoringInput } from '@nextdoo/core';
-import { tasks, taskOccurrences, trackingEvents, trackingResults, trackingJobs, recurrenceRules, outbox } from './schema';
+import { tasks, taskOccurrences, trackingEvents, trackingResults, trackingJobs, recurrenceRules, outbox, trackingCorrections } from './schema';
 import type { Database } from './client';
 
 /** Called inside the workspace transaction by both web fast path and standalone worker. */
 export const CALCULATION_VERSION = 2; // Event-stream fingerprint and tenant-safe input assembly; score weights unchanged.
 
 function hashInputs(input: ScoringInput, eventHash: string): string {
-  return createHash('sha256')
-    .update(
-      JSON.stringify({
-        eventHash,
-        c: input.completed,
-        d: input.dueAt?.toISOString() ?? null,
-        ca: input.completedAt?.toISOString() ?? null,
-        e: input.estimateMinutes,
-        a: input.actualMinutes,
-        eo: input.expectedOccurrences,
-        co: input.completedOccurrences,
-        r: input.rescheduleCount,
-        s: input.skipped,
-        overdue: input.dueAt !== null && input.dueAt < (input.evaluatedAt ?? new Date()),
-      }),
+  // Key order is a frozen fingerprint: uncorrected tasks must hash byte-
+  // identically to before corrections existed. The correction marker is only
+  // appended when set, so identical inputs stay no-ops (PRD §7.6 idempotency).
+  const payload: Record<string, unknown> = {
+    eventHash,
+    c: input.completed,
+    d: input.dueAt?.toISOString() ?? null,
+    ca: input.completedAt?.toISOString() ?? null,
+    e: input.estimateMinutes,
+    a: input.actualMinutes,
+    eo: input.expectedOccurrences,
+    co: input.completedOccurrences,
+    r: input.rescheduleCount,
+    s: input.skipped,
+    overdue: input.dueAt !== null && input.dueAt < (input.evaluatedAt ?? new Date()),
+  };
+  if (input.externallyBlocked) payload.k = 'EXTERNALLY_BLOCKED';
+  return createHash('sha256').update(JSON.stringify(payload)).digest('hex').slice(0, 64);
+}
+
+/** Owner corrections (PRD §7.7) folded into scoring inputs. The latest row per
+ * kind wins; rows are never mutated. UNTRACKED_COMPLETION maps to absent
+ * completion data; EXTERNALLY_BLOCKED marks timing Unmeasured (PRD §7.3). */
+export async function readCorrectionStates(
+  db: Database,
+  workspaceId: string,
+  taskId: string,
+): Promise<Record<string, string | undefined>> {
+  const rows = await db
+    .select({ kind: trackingCorrections.kind, payload: trackingCorrections.payload })
+    .from(trackingCorrections)
+    .where(
+      and(
+        eq(trackingCorrections.workspaceId, workspaceId),
+        eq(trackingCorrections.taskId, taskId),
+        inArray(trackingCorrections.kind, ['EXTERNALLY_BLOCKED', 'UNTRACKED_COMPLETION']),
+      ),
     )
-    .digest('hex')
-    .slice(0, 64);
+    .orderBy(desc(trackingCorrections.createdAt), desc(trackingCorrections.id));
+  const states: Record<string, string | undefined> = {};
+  for (const row of rows) {
+    if (row.kind in states) continue; // first (latest) row per kind
+    const state = (row.payload as { state?: unknown } | null)?.state;
+    states[row.kind] = typeof state === 'string' ? state : undefined;
+  }
+  return states;
 }
 
 /** Assembles scoring inputs from the durable record. */
@@ -63,10 +91,15 @@ export async function buildScoringInput(db: Database, workspaceId: string, taskI
     .where(and(eq(trackingEvents.taskId, taskId), eq(trackingEvents.type, 'TASK_SKIPPED'), eq(trackingEvents.workspaceId, workspaceId)))
     .limit(1);
 
+  // Corrections change the *inputs*, never the events or prior results.
+  const states = await readCorrectionStates(db, workspaceId, taskId);
+  const completionUntracked = states.UNTRACKED_COMPLETION === 'SET';
+  const externallyBlocked = states.EXTERNALLY_BLOCKED === 'SET';
+
   return {
-    completed: task.status === 'COMPLETED',
+    completed: completionUntracked ? false : task.status === 'COMPLETED',
     dueAt: task.dueAt,
-    completedAt: task.completedAt,
+    completedAt: completionUntracked ? null : task.completedAt,
     estimateMinutes: task.estimateMinutes,
     actualMinutes: task.actualMinutes * 60 + task.actualSecondsRemainder > 0 ? task.actualMinutes + task.actualSecondsRemainder / 60 : null,
     expectedOccurrences: expected,
@@ -74,6 +107,7 @@ export async function buildScoringInput(db: Database, workspaceId: string, taskI
     rescheduleCount: task.rescheduleCount,
     skipped: occurrenceSkipped ?? skipped.length > 0,
     evaluatedAt: now,
+    externallyBlocked: externallyBlocked || undefined,
   };
 }
 

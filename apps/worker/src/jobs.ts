@@ -1,6 +1,6 @@
 import { deliverMail } from './mail-delivery';
 import { and, eq, isNotNull, isNull, lt, lte, sql as raw } from 'drizzle-orm';
-import { authTokens, idempotencyKeys, reminders, users, purgeAccount, deliverDueReminders, runRecurrenceGeneration, relayTrackingOutbox, reconcileTracking, runTrackingEvaluation, createDurableFileExportStore, expireExports, runExportGeneration } from '@nextdoo/db';
+import { authTokens, idempotencyKeys, reminders, users, purgeAccount, deliverDueReminders, runRecurrenceGeneration, relayTrackingOutbox, reconcileTracking, runTrackingEvaluation, runTrackingBackfill, createDurableFileExportStore, expireExports, runExportGeneration } from '@nextdoo/db';
 import { db, logger, type Job, type JobResult } from './runtime';
 
 /**
@@ -70,7 +70,18 @@ const evaluateTrackingJob: Job = {
       ...failure, reference: `tracking-${failure.taskId}-${failure.revision}`,
     });
     if (result.deferred) logger.warn('tracking.evaluation_deferred', { count: result.deferred });
+    // M4 "unmeasured result rate", worker path (PRD §21.3).
+    if (result.processed) logger.info('tracking.result_evaluated', { evaluated: result.processed, unmeasured: result.unmeasured });
     return { processed: result.processed, details: result };
+  },
+};
+/** PRD §7.6 bounded backfill: at most one (workspace, day) chunk per range per run. */
+const backfillTrackingJob: Job = {
+  name: 'tracking.backfill', intervalMs: 10000,
+  async run() {
+    const result = await runTrackingBackfill(db);
+    if (result.bumps) logger.info('tracking.backfill.progress', result);
+    return { processed: result.days, details: result };
   },
 };
 
@@ -209,6 +220,7 @@ export const JOBS: Job[] = [
   relayOutbox,
   reconcileTrackingJob,
   evaluateTrackingJob,
+  backfillTrackingJob,
   generateExports,
   expireExportArtifacts,
   purgeAccounts,

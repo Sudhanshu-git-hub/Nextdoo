@@ -18,10 +18,24 @@ export interface ExecutionSummary {
   storedResultCount: number;
   scoredCount: number;
   missingResultCount: number;
-  actualMeasuredCount: number;
-  estimateMeasuredCount: number;
-  /** Plain-language findings shown in the review UI. */
-  insights: string[];
+    actualMeasuredCount: number;
+    estimateMeasuredCount: number;
+    /** Plain-language findings shown in the review UI. */
+    insights: string[];
+    /** Tasks removed from this view by an EXCLUDED_FROM_ANALYTICS correction. */
+    excludedCount?: number;
+}
+
+/** Immutable owner correction record (PRD §7.7). Latest row per (task, kind) wins. */
+export interface TrackingCorrection {
+  id: string;
+  kind: string;
+  /** Toggle kinds carry SET/CLEAR; null for due-date corrections. */
+  state: 'SET' | 'CLEAR' | null;
+  reason: string | null;
+  /** New due instant for DUE_DATE_CORRECTED rows. */
+  dueTo: string | null;
+  createdAt: string;
 }
 
 /** Project reports preserve the existing current-task / UTC due-date cohort. */

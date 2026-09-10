@@ -195,18 +195,30 @@ async function createTaskCore(actor: TaskActor, input: CreateTaskInput, options:
   });
 }
 
+export interface UpdateTaskOptions {
+  /**
+   * Skip the best-effort fast-path evaluation. Used by score corrections
+   * (PRD §7.7): the durable worker path must produce the new result so it is
+   * marked `recalculated`; the durable invalidation (PG trigger + outbox)
+   * still re-evaluates the task either way.
+   */
+  fastTracking?: boolean;
+}
+
 export async function updateTask(
   actor: TaskActor,
   taskId: string,
   input: UpdateTaskInput,
+  options: UpdateTaskOptions = {},
 ): Promise<SerialisedTask> {
-  return withTaskMetric(actor.workspaceId, actor.via ?? 'http', 'update', () => updateTaskCore(actor, taskId, input));
+  return withTaskMetric(actor.workspaceId, actor.via ?? 'http', 'update', () => updateTaskCore(actor, taskId, input, options));
 }
 
 async function updateTaskCore(
   actor: TaskActor,
   taskId: string,
   input: UpdateTaskInput,
+  options: UpdateTaskOptions = {},
 ): Promise<SerialisedTask> {
 
   return withWorkspaceTransaction(actor.workspaceId, async (tx) => {
@@ -290,7 +302,10 @@ async function updateTaskCore(
       payload: { fields: [...Object.keys(patch).filter((k) => k !== 'updatedAt'), ...(input.tagIds !== undefined ? ['tagIds'] : [])] },
     });
 
-    await scheduleTrackingEvaluation(actor.workspaceId, taskId);
+    // Fast path is best-effort only; durable invalidation (PG trigger + outbox)
+    // re-evaluates regardless. Corrections suppress it so the worker path
+    // writes the single new result marked `recalculated` (PRD §7.7).
+    if (options.fastTracking !== false) await scheduleTrackingEvaluation(actor.workspaceId, taskId);
     return serialise(updated);
   });
 }

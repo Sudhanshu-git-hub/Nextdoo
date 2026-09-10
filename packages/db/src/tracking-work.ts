@@ -130,8 +130,10 @@ export async function finishTrackingClaim(db:Database,claimed:Pick<typeof tracki
     if(!job)return;
     try{
      const [time]=await tx.execute<{now:string}>(sql`select to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as now`);
-     await tx.transaction(savepoint=>evaluateTrackingInTransaction(savepoint as unknown as Database,job.workspaceId,job.taskId,{acknowledge:true,recalculated:true,now:new Date(time!.now)}));
-     return {kind:'processed' as const};
+     const result=await tx.transaction(savepoint=>evaluateTrackingInTransaction(savepoint as unknown as Database,job.workspaceId,job.taskId,{acknowledge:true,recalculated:true,now:new Date(time!.now)}));
+     // M4 "unmeasured result rate" input: a result with no score or an
+     // excluded component was not fully measurable (PRD §7.3).
+     return {kind:'processed' as const, unmeasured: result === null ? false : result.score === null || result.measuredWeight < 1};
     }catch{
      await tx.update(trackingJobs).set({claimToken:null,leaseExpiresAt:null,lastError:'CALCULATION_FAILED',lastErrorAt:clock,
       nextAttemptAt:sql`${clock}+(${Math.min(900,60*2**(job.attempts-1))} * interval '1 second')`,
@@ -152,7 +154,7 @@ export async function runTrackingEvaluation(db: Database, workspaceId?: string) 
   where ${scope(workspaceId)} and j.queued_revision>j.acknowledged_revision and j.attempts<6 and j.next_attempt_at<=${clock} and j.claim_token is null
    and t.deleted_at is null and t.status<>'DELETED' and w.deleted_at is null and u.status='ACTIVE' and u.deleted_at is null and u.deletion_requested_at is null
   ) candidates order by turn,next_attempt_at,queued_at,task_id limit ${BATCH}`);
- const result = { processed:0,failed:recovered.failures.filter(f=>f.attempts===6).length,retrying:recovered.failures.filter(f=>f.attempts<6).length,deferred:recovered.deferred,failures:recovered.failures };
+ const result = { processed:0,unmeasured:0,failed:recovered.failures.filter(f=>f.attempts===6).length,retrying:recovered.failures.filter(f=>f.attempts<6).length,deferred:recovered.deferred,failures:recovered.failures };
  const started=performance.now();
  for(const candidate of candidates){
   if(performance.now()-started>20000)break;
@@ -170,7 +172,7 @@ export async function runTrackingEvaluation(db: Database, workspaceId?: string) 
    });
    if(!claimed)continue;
    const outcome=await finishTrackingClaim(db,claimed);
-   if(outcome?.kind==='processed')result.processed++;
+   if(outcome?.kind==='processed'){result.processed++;if(outcome.unmeasured)result.unmeasured++;}
    if(outcome?.kind==='failed'){if(outcome.failure.attempts===6)result.failed++;else result.retrying++;result.failures.push(outcome.failure);}
   }catch{result.deferred++;}
  }

@@ -102,3 +102,25 @@ export async function withTaskMetric<T>(
     throw error;
   }
 }
+
+/**
+ * M4 instrumentation (PRD §21.3 Milestone 4: "score correction rate ·
+ * unmeasured result rate"). Same content-free, sink-isolated pattern as M2.
+ */
+
+/** Score correction rate: `tracking.correction` vs `tracking.correction_failed`. */
+export function recordTrackingCorrection(workspaceId: string, kind: string, action: 'SET' | 'CLEAR'): void {
+  emit('tracking.correction', { workspaceId, kind, action });
+}
+
+export function recordTrackingCorrectionFailed(workspaceId: string, kind: string, code: string): void {
+  emit('tracking.correction_failed', { workspaceId, kind, code });
+}
+
+/**
+ * Unmeasured result rate: one event per evaluated task, `unmeasured` is 0/1.
+ * Emitted where a result is actually committed (web fast path or worker).
+ */
+export function recordUnmeasuredResult(workspaceId: string, unmeasured: boolean): void {
+  emit('tracking.result_evaluated', { workspaceId, unmeasured: unmeasured ? 1 : 0 });
+}

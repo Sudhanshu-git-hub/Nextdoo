@@ -1,8 +1,9 @@
-import { and, asc, desc, eq, gte, gt, inArray, isNull, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, gt, inArray, isNull, lte, not, sql } from 'drizzle-orm';
 import { tasks, trackingEvents, trackingResults, buildScoringInput as buildInput, evaluateTrackingInTransaction, type StoredResult } from '@nextdoo/db';
 import { getDb, withTransaction } from '../db';
 import { readTrackingFreshness } from './tracking-freshness';
 import { logger } from '../observability';
+import { recordUnmeasuredResult } from '../metrics';
 import { withWorkspaceTransaction } from './transactions';
 export { CALCULATION_VERSION, type StoredResult } from '@nextdoo/db';
 export function buildScoringInput(workspaceId: string, taskId: string) { return buildInput(getDb(), workspaceId, taskId); }
@@ -18,8 +19,10 @@ export async function scheduleTrackingEvaluation(workspaceId: string, taskId: st
     const [settings] = await tx.execute<{ timeout: string; now: string }>(sql`select current_setting('statement_timeout') as timeout,
       to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as now`);
     await tx.execute(sql`select set_config('statement_timeout','500ms',true)`);
-    await evaluateTrackingInTransaction(tx as unknown as typeof db, workspaceId, taskId, { now: new Date(settings!.now), streamBudgetMs: 500 });
+    const result = await evaluateTrackingInTransaction(tx as unknown as typeof db, workspaceId, taskId, { now: new Date(settings!.now), streamBudgetMs: 500 });
     await tx.execute(sql`select set_config('statement_timeout',${settings!.timeout},true)`);
+    // M4 "unmeasured result rate": counted once, where the result committed.
+    if (result) recordUnmeasuredResult(workspaceId, result.score === null || result.measuredWeight < 1);
   }); }
   catch { logger.warn('tracking.fast_path_deferred', { workspaceId, taskId }); }
  });
@@ -75,6 +78,14 @@ async function readSummary(
   const to = new Date(reference);
   to.setUTCHours(23, 59, 59, 999);
 
+  // PRD §7.7: a task's latest EXCLUDED_FROM_ANALYTICS correction removes it
+  // from analytics (this summary), never from the task itself or its results.
+  const excludedFromAnalytics = sql`exists (
+    select 1 from tracking_corrections tc
+    where tc.task_id=${tasks.id} and tc.workspace_id=${workspaceId} and tc.kind='EXCLUDED_FROM_ANALYTICS' and tc.payload->>'state'='SET'
+      and not exists (select 1 from tracking_corrections tc2
+        where tc2.task_id=tc.task_id and tc2.workspace_id=tc.workspace_id and tc2.kind=tc.kind
+          and (tc2.created_at,tc2.id)>(tc.created_at,tc.id)))`;
   const planned = await db
     .select()
     .from(tasks)
@@ -86,6 +97,21 @@ async function readSummary(
         sql`${tasks.status}<>'DELETED'`,
         gte(tasks.dueAt, from),
         lte(tasks.dueAt, to),
+        not(excludedFromAnalytics),
+      ),
+    );
+  const [excludedRow] = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(tasks)
+    .where(
+      and(
+        eq(tasks.workspaceId, workspaceId),
+        ...(projectId ? [eq(tasks.projectId, projectId)] : []),
+        isNull(tasks.deletedAt),
+        sql`${tasks.status}<>'DELETED'`,
+        gte(tasks.dueAt, from),
+        lte(tasks.dueAt, to),
+        excludedFromAnalytics,
       ),
     );
 
@@ -187,6 +213,7 @@ async function readSummary(
     actualMeasuredCount: planned.filter((t) => actual(t) > 0).length,
     estimateMeasuredCount: withBoth.length,
     insights,
+    excludedCount: excludedRow ? Number(excludedRow.n) : 0,
   };
 }
 

@@ -5,6 +5,7 @@ import { withTransaction } from '../db';
 import { loadTask, type TaskActor } from './tasks';
 import { getResultForTask, listTrackingEvents } from './tracking';
 import { readTrackingFreshness, scoresEnabled } from './tracking-freshness';
+import { listTaskCorrections } from './tracking-corrections';
 function encode(scope:string,key:unknown) { return Buffer.from(JSON.stringify({ scope,key })).toString('base64url'); }
 function decode(scope:string,cursor?:string):unknown {
  if (!cursor) return undefined;
@@ -33,7 +34,7 @@ export function getTrackingDetail(actor:TaskActor,taskId:string,eventCursor?:str
   const freshness=(await readTrackingFreshness(actor.workspaceId,[taskId])).get(taskId)!;
   const enabled=await scoresEnabled(actor.userId);
   const empty={ has_more:false,next_cursor:null };
-  if (!enabled) return { task:{ id:task.id,title:task.title },freshness,scoresEnabled:false,result:null,events:[],history:[],eventPagination:empty,historyPagination:empty };
+  if (!enabled) return { task:{ id:task.id,title:task.title },freshness,scoresEnabled:false,result:null,events:[],history:[],corrections:[],eventPagination:empty,historyPagination:empty };
   const eventScope=`tracking-events:${actor.workspaceId}:${taskId}`,eventKey=decode(eventScope,eventCursor);
   if (eventKey!==undefined && (typeof eventKey!=='number' || !Number.isSafeInteger(eventKey) || eventKey<0)) throw new AppError('VALIDATION_FAILED','Invalid event cursor.');
   const events=await listTrackingEvents(actor.workspaceId,taskId,eventKey as number|undefined,51);
@@ -46,6 +47,7 @@ export function getTrackingDetail(actor:TaskActor,taskId:string,eventCursor?:str
   const history=await db.select({ row:trackingResults,key:sql<string>`to_char(${trackingResults.createdAt} AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')` }).from(trackingResults)
    .where(and(eq(trackingResults.workspaceId,actor.workspaceId),eq(trackingResults.taskId,taskId),after)).orderBy(desc(trackingResults.createdAt),desc(trackingResults.id)).limit(26);
   return { task:{ id:task.id,title:task.title },freshness,scoresEnabled:true,result:await getResultForTask(actor.workspaceId,taskId),
+   corrections:await listTaskCorrections(actor.workspaceId,taskId),
    events:events.slice(0,50),eventPagination:{ has_more:events.length>50,next_cursor:events.length>50?encode(eventScope,events[49]!.sequence):null },
    history:history.slice(0,25).map(({row})=>row),historyPagination:{ has_more:history.length>25,next_cursor:history.length>25?encode(historyScope,[history[24]!.key,history[24]!.row.id]):null } };
  },{ isolationLevel:'repeatable read',accessMode:'read only' });

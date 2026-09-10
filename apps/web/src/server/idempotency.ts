@@ -43,6 +43,12 @@ export async function idempotentMutation<T>(request: Request, userId: string, sc
     if (legacy && legacy.expiresAt > new Date()) throw new AppError('IDEMPOTENCY_CONFLICT', 'This legacy request key cannot be safely replayed. Check the resource before retrying.');
     if (prior) await db.delete(idempotencyKeys).where(eq(idempotencyKeys.key, ledgerKey));
     const result = await perform();
+    // Handlers must return plain data (or throw). A Response serializes to {}
+    // in the replay ledger and would corrupt the client response (e.g. a 429
+    // turning into a 200 with an empty body). Fail loud instead.
+    if (result instanceof Response) {
+      throw new AppError('INTERNAL_ERROR', 'Something went wrong. Please try again.');
+    }
     const status = result == null ? 204 : 200;
     const body: unknown = result == null ? null : JSON.parse(JSON.stringify(result));
     await db.insert(idempotencyKeys).values({

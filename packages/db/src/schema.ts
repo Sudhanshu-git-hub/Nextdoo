@@ -3,6 +3,7 @@ import {
   bigserial,
   boolean,
   check,
+  date,
   foreignKey,
   index,
   integer,
@@ -446,6 +447,32 @@ export const trackingCorrections = pgTable(
   },
   (t) => [index('tracking_corrections_task_idx').on(t.taskId)],
 );
+
+/**
+ * Bounded date-range recalculation (PRD §7.6). The worker advances
+ * `cursorDate` one day per run; history is durable progress, never a cache.
+ */
+export const trackingBackfills = pgTable(
+  'tracking_backfills',
+  {
+    id: uuid('id').primaryKey(),
+    workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+    fromDate: date('from_date').notNull(),
+    toDate: date('to_date').notNull(),
+    /** Next day chunk to process; >= fromDate by constraint. */
+    cursorDate: date('cursor_date').notNull(),
+    totalDays: integer('total_days').notNull(),
+    status: varchar('status', { length: 12 }).notNull().default('PENDING'),
+    requestedBy: uuid('requested_by').notNull(),
+    reason: varchar('reason', { length: 500 }).notNull(),
+    ...timestamps,
+  },
+  (t) => [
+    index('tracking_backfills_workspace_idx').on(t.workspaceId, t.createdAt),
+    index('tracking_backfills_pending_idx').on(t.createdAt, t.id).where(sql`${t.status} = 'PENDING'`),
+  ],
+);
+
 
 // ----------------------------------------------------------------- sync
 

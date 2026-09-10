@@ -341,6 +341,41 @@ export const summaryQuerySchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
+// ---------------------------------------------------------------- tracking corrections (PRD §7.7)
+
+/** Toggle corrections: the latest row per (task, kind) wins. Rows are immutable. */
+export const trackingCorrectionKindSchema = z.enum(['EXTERNALLY_BLOCKED', 'UNTRACKED_COMPLETION', 'EXCLUDED_FROM_ANALYTICS']);
+export type TrackingCorrectionKind = z.infer<typeof trackingCorrectionKindSchema>;
+
+export const applyTrackingCorrectionSchema = z
+  .object({
+    kind: z.union([trackingCorrectionKindSchema, z.literal('DUE_DATE_CORRECTED')]),
+    /** Toggle kinds only: SET applies, CLEAR undoes. Due-date corrections are always SET. */
+    action: z.enum(['SET', 'CLEAR']).default('SET'),
+    reason: z.string().trim().min(1).max(500),
+    /** ISO instant, required only for DUE_DATE_CORRECTED. */
+    dueAt: isoDateTime.optional(),
+  })
+  .strict()
+  .refine((v) => (v.kind === 'DUE_DATE_CORRECTED') === (v.dueAt !== undefined), {
+    message: 'dueAt is required only for a due-date correction',
+  })
+  .refine((v) => v.kind !== 'DUE_DATE_CORRECTED' || v.action === 'SET', {
+    message: 'Due-date corrections cannot be cleared',
+  });
+/** Service-side input: `action` is optional (routes apply the schema default; due-date corrections ignore it). */
+export type ApplyTrackingCorrectionInput = z.input<typeof applyTrackingCorrectionSchema>;
+
+/** PRD §7.6 bounded backfill; from/to are UTC date keys (default: last 90 days). */
+export const recalculateRangeSchema = z
+  .object({
+    from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    reason: z.string().trim().min(1).max(500),
+  })
+  .strict();
+export type RecalculateRangeInput = z.infer<typeof recalculateRangeSchema>;
+
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;
 export type UpdateTaskInput = z.infer<typeof updateTaskSchema>;
 export type TaskQueryInput = z.infer<typeof taskQuerySchema>;
