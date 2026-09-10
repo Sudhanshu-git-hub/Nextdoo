@@ -18,16 +18,18 @@ non-billing MVP gaps**, prioritizing broken/incomplete notifications/durable job
 tracking/analytics, export/deletion, entitlement/authorization and task management.
 AI, billing integration, desktop and full offline mode remain excluded.
 
-The current locally verified milestone is **durable tracking and freshness**:
-[TRACKING_DURABILITY_MILESTONE.md](TRACKING_DURABILITY_MILESTONE.md). Final local
-validation: **422 tests in 46 files and 75 browser/API scenarios**, lint, typecheck,
-coverage and build passed; migrations 0013/0014 and replay passed; dependency audit
-zero. Remote CI is checked on the pushed commit and reported at milestone closure.
-This closes the bounded durable-evaluation/freshness slice, **not all M4 or Phase 1**.
-
-The prior [in-app notification milestone](NOTIFICATION_DELIVERY_MILESTONE.md)
-remains verified within its documented scope. Existing task/bulk, board, recurrence,
-workspace, notification and data-integrity acceptance was retained in the full run.
+The current locally verified milestone is **M4 score corrections and
+date-range recalculation**:
+[M4_SCORE_CORRECTIONS_MILESTONE.md](M4_SCORE_CORRECTIONS_MILESTONE.md). Final local
+validation: **55 test files / 536 unit+integration tests and 114 browser/API
+scenarios**, lint, typecheck, coverage (88.03% statements) and build passed;
+migration 0017 and fresh-database replay (×2) passed. Remote CI is checked on the
+pushed commit and reported at milestone closure. This closes the bounded
+corrections/recalculation slice, **not all M4 or Phase 1**. The prior
+[tracking-durability milestone](TRACKING_DURABILITY_MILESTONE.md) and
+[notification milestone](NOTIFICATION_DELIVERY_MILESTONE.md) remain verified
+within their documented scope; existing task/bulk, board, recurrence, workspace,
+notification and data-integrity acceptance was retained in the full run.
 
 ## Milestone status: evidence rather than percentage complete
 
@@ -36,7 +38,7 @@ workspace, notification and data-integrity acceptance was retained in the full r
 | M1 Foundation | Authentication/recovery/MFA/session and tenant guards; migrations; HTTP conventions; shell; local CI-equivalent gates | Production email delivery; distributed rate limiting; complete tracing/metrics and alert verification; staging/rollback qualification |
 | M2 Core task management | Online capture/editor, tags/priority/due/estimate, projects/lifecycle, sections/board with optimistic movement and rollback, subtasks/dependencies, archive/Trash/recovery, query filters/sorts, atomic bulk commands; owner-managed workspace defaults; free-text task `location` end to end (contracts, services, sync writable field, recurrence inheritance, editor) per [TASK_LOCATION_MILESTONE.md](TASK_LOCATION_MILESTONE.md); windowed list rendering above 200 loaded rows (virtualization, PRD §6.9) per [TASK_VIRTUALIZATION_MILESTONE.md](TASK_VIRTUALIZATION_MILESTONE.md); rich task description — Markdown source storage with a single safe core renderer, editor edit/preview, 20k limit UX, conflict rendering and search/sync compatibility per [RICH_DESCRIPTION_MILESTONE.md](RICH_DESCRIPTION_MILESTONE.md); capture/mutation instrumentation (creation success, mutation error rate, active-task gauge, sync-channel tag, content-free client capture latency) and 1,000-task collection-scale + measured latency baseline per [M2_INSTRUMENTATION_MILESTONE.md](M2_INSTRUMENTATION_MILESTONE.md) | PRD §19.4 staging load test execution (operational) |
 | M3 Planning and execution | Workspace-local week task calendar/movement and Today, configured overnight workday guideline, focus/time workflows, durable in-app notifications, reminder status/history/read/snooze/cancel and bounded isolated dispatch retries, complete/reschedule; bounded recurrence generation, future rule edits, occurrence lifecycle and retries; day/week/month workspace-local calendar with full cursor pagination over the visible period per [CALENDAR_MILESTONE.md](CALENDAR_MILESTONE.md); complete provider-aware capacity planning — server full-collection workload vs configured overnight-aware workday, sync-delay `CAPACITY_UNKNOWN` rule (no feasibility claim while a connected calendar is out of sync), plan-gated calendar connections with suspend/reactivate on plan change and tenant-scoped list/disconnect endpoints per [M3_CAPACITY_PLANNING_MILESTONE.md](M3_CAPACITY_PLANNING_MILESTONE.md) | Offline timers; real browser/background push and enabled reminder email delivery; desktop delivery remains excluded from current work |
-| M4 Tracking and analytics | Ordered append-only events, shared versioned engine, durable outbox consumer/queue with fenced leases and five retries, due/cohort freshness, immutable input/history drilldown, owner single-task re-evaluation, numeric-score visibility and live UTC task/project summaries | Date-range recalculation and full corrections/review workflows; independent tracking/wellbeing controls and retention policy; workspace-local reporting and richer trends; unresolved TR-03/full TR matrix; routed alerts and sustained freshness/load SLO qualification |
+| M4 Tracking and analytics | Ordered append-only events, shared versioned engine, durable outbox consumer/queue with fenced leases and five retries, due/cohort freshness, immutable input/history drilldown, owner single-task re-evaluation, numeric-score visibility and live UTC task/project summaries; **score corrections** (`DUE_DATE_CORRECTED`, `EXTERNALLY_BLOCKED`, `UNTRACKED_COMPLETION`, `EXCLUDED_FROM_ANALYTICS`) with actor/reason/audit, supersede-never-mutate history and correction-aware Unmeasured scoring, plus **bounded date-range recalculation** (90-day default, ≤366-day, day-chunked observable backfill, 10/hour/user limit) per [M4_SCORE_CORRECTIONS_MILESTONE.md](M4_SCORE_CORRECTIONS_MILESTONE.md) | Independent tracking/wellbeing controls and retention policy; workspace-local reporting and richer trends (second M4 candidate, §7.8/§8.5); unresolved TR-03/full TR matrix; routed alerts and sustained freshness/load SLO qualification |
 | M5 Cross-platform reliability | Server push/pull/version/tombstone protection; scoped IndexedDB queue primitives and Today cached fallback | UI enqueue/reconcile/recovery and conflict views; full SY-01–SY-10 across devices; 5,000 mutation drain; Windows Tauri/SQLite/WebView2 client, notifications, packaging/signing/update/rollback |
 | M6 Commercial readiness | Server entitlement limits; authenticated JSON export with legacy notification-reference privacy guards; reauthenticated deletion/grace/purge; audit trail; asynchronous expiring JSON/CSV exports (bounded worker generation, signed 24-hour downloads, plan quota plus durable hourly limit, purge-aware artifact deletion) per [DATA_EXPORT_MILESTONE.md](DATA_EXPORT_MILESTONE.md) | Real Google Calendar two-way OAuth/sync/revocation; provider billing/webhooks/refunds/reconciliation; attachments/upload/scan/download gating; support/status/dashboards and operational acceptance |
 
@@ -69,7 +71,10 @@ workspace, notification and data-integrity acceptance was retained in the full r
 - Workspace/project summaries retain their current UTC/current-task cohorts and
   expose matching-cohort freshness. Task evidence is paginated; failed recovery
   preserves reasons, idempotency identity and prior history. Per-task re-evaluation
-  does not substitute for the still-open date-range corrections workflow.
+  remains the single-task recovery path; the **date-range corrections workflow is
+  now delivered** — typed corrections with immutable audit rows, correction-aware
+  Unmeasured scoring (never fabricated), superseded-never-mutated history and a
+  bounded day-chunked recalculation backfill with a 10/hour/user limit.
 - The repository has `apps/web` and `apps/worker`, not an implemented Windows app.
 - Calendar/billing/attachment database tables and optional environment names exist,
   but their required real workflows are not implemented. Configuration names are
@@ -95,9 +100,9 @@ workspace, notification and data-integrity acceptance was retained in the full r
 | 7 | Calendar disconnect deletes OAuth credentials | OPEN: real provider workflow absent |
 | 8 | Client cannot grant billing access | Local entitlement guards tested; actual billing/webhook acceptance open |
 | 9 | Deleted accounts cannot authenticate | Tested status/grace/purge paths; broader operational retention still open |
-| 10 | Export objects expire and become inaccessible | OPEN: current direct download does not satisfy hosted export expiry |
+| 10 | Export objects expire and become inaccessible | Asynchronous export path verified: 24-hour signed tokens, `exports.expire` sweep deletes artifacts and flips rows to `EXPIRED` (see [DATA_EXPORT_MILESTONE.md](DATA_EXPORT_MILESTONE.md)); the legacy synchronous direct download remains a non-expiring convenience endpoint |
 | 11 | Malware blocks unsafe attachment downloads | OPEN: scanner/storage flow absent |
-| 12 | Missing analytics inputs show Unmeasured | Bounded calculation/pipeline tests pass; full controls/correction matrix open |
+| 12 | Missing analytics inputs show Unmeasured | Core + integration + E2E pass: `EXTERNALLY_BLOCKED`, `UNTRACKED_COMPLETION` and exclusion all fold to Unmeasured/weight-normalised without fabricating values; full TR matrix still open |
 | 13 | All critical flows keyboard accessible | Selected keyboard/axe flows pass; full manual/screen-reader/platform gate open |
 | 14 | Successful database restore | NOT VERIFIED: migration tests do not satisfy this |
 
@@ -112,10 +117,16 @@ command. All release gates in §19.4 remain required, not only this checklist.
    automatic connected-client updates and production SLO/alert exercises remain open.
 2. **Verified durable tracking/freshness slice:** retain ordered ingestion, real
    bounded workers, durable retry/claim recovery, visible freshness and paginated
-   source/result evidence. Remaining M4 work includes date-range recalculation,
-   workspace-local summaries, richer review and approved controls/corrections.
-   **Resolve the tracking policy decisions below before changing those semantics**;
-   current score math and cohorts have deliberately not been changed.
+   source/result evidence. **Delivered:** score corrections and bounded
+   date-range recalculation — typed correction kinds with actor/reason/audit,
+   supersede-never-mutate results, correction-aware Unmeasured scoring and a
+   day-chunked observable backfill with a 10/hour/user limit; see
+   [M4_SCORE_CORRECTIONS_MILESTONE.md](M4_SCORE_CORRECTIONS_MILESTONE.md)
+   (9 integration + 4 browser E2E verified). Remaining M4 work is workspace-local
+   reporting and richer trends (§7.8/§8.5), the unresolved TR-03/full TR matrix and
+   independent tracking/wellbeing controls. **Resolve the tracking policy decisions
+   below before changing those semantics**; current score math and cohorts have
+   deliberately not been changed.
 3. **Data rights, limits and authorization:** verify/reinforce existing export quotas,
    account deletion and permission boundaries. **Delivered:** asynchronous, expiring
    JSON/CSV exports with reviewed storage/expiry design and real integration evidence —

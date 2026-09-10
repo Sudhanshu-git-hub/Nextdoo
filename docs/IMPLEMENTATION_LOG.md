@@ -300,3 +300,52 @@ Final local gates: **54 test files / 524 unit+integration tests** and
 warnings), types, coverage (87.85% statements, baseline 87.41%), build and
 migration replay passed. Remote CI is verified against the pushed milestone
 commit, separately from local evidence.
+## M4 score corrections and date-range recalculation — 2026-09-10
+
+Implemented the next M4 slice without changing the PRD, the existing score
+math/weights, append-only event semantics, historical results or any verified
+milestone (including TR-03 semantics, which remain explicitly unresolved).
+[M4_SCORE_CORRECTIONS_MILESTONE.md](M4_SCORE_CORRECTIONS_MILESTONE.md) records
+the PRD requirements, design decisions, test evidence and the remaining work.
+
+Highlights: four typed, immutable correction kinds
+(`DUE_DATE_CORRECTED`, `EXTERNALLY_BLOCKED`, `UNTRACKED_COMPLETION`,
+`EXCLUDED_FROM_ANALYTICS`) with actor + reason + audit row on every correction,
+latest-row effective state, undo-as-new-CLEAR-row and no-op re-apply;
+correction-aware scoring that folds to Unmeasured/weight-normalised without
+fabricating values (`EXTERNALLY_BLOCKED` in core timing, weight .25 excluded;
+`UNTRACKED_COMPLETION` scores completion absent); due-date corrections applied
+through the normal update path with the in-transaction fast path suppressed so
+the durable worker path writes the single new result marked `recalculated`
+(TR-05: ON_TIME → LATE with the original superseded, never mutated, events
+intact); `EXCLUDED_FROM_ANALYTICS` removed from day/week summary cohorts only
+(numeric `excludedCount` reported, drill-down preserved, note visible even when
+every task in the window is excluded); bounded date-range recalculation
+(default 90 days, ≤366, `to` ≤ today, UTC day keys, migration 0017) run
+day-by-day by the worker with a durable cursor, observable progress endpoint
+(204 when none) and the PRD §14.8 10/hour/user limit (429, distinct
+rate-limit bucket, idempotency key unconsumed); analytics RecalculateRange
+card + tracking-panel CorrectionControls with idempotent retry on lost
+acknowledgement; two new metric events (`tracking.correction`,
+`tracking.correction_failed`) plus unmeasured-result counting on both
+evaluation paths.
+
+Verified defects fixed along the way: the fast-path `recalculated: false`
+race on due-date corrections; the idempotency ledger corrupting `Response`
+returns into 200 with an empty body (now fails loud, key unconsumed); the
+panel poll/refresh merge dropping `corrections`; the shared per-minute /
+10-hour rate-limit bucket; a postgres-js count string leaking into
+`excludedCount`.
+
+Final local gates: **55 test files / 536 unit+integration tests** (baseline
+524/54: +9 correction integration scenarios, +3 core scoring tests) and
+**114/114 browser/API scenarios** (baseline 110: +4 E2E), lint (0 warnings),
+types 5/5, coverage (88.03% statements, baseline 87.85%), build and fresh
+migration replay ×2 (18 migrations) passed. Remote CI is verified against the
+pushed milestone commit, separately from local evidence.
+
+Remaining M4 work: workspace-local reporting and richer trends (PRD
+§7.8/§8.5, the next recommended candidate), the unresolved TR-03/full TR
+matrix and independent tracking/wellbeing controls. No reporting
+enhancements, provider integrations, offline work, AI or billing was
+started.
