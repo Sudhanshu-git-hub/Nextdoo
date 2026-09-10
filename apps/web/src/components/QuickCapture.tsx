@@ -2,8 +2,9 @@
 import { useWorkspace } from './WorkspaceContext';
 
 import { useEffect, useRef, useState } from 'react';
-import type { ParseResult } from '@nextdoo/core';
+import { parseTaskText, type ParseResult } from '@nextdoo/core/nl-parse';
 import { api, ApiError } from '@/lib/api';
+import { cacheTask, enqueue } from '@/lib/offline-queue';
 
 /**
  * Quick capture (PRD §8.2).
@@ -51,6 +52,12 @@ export function QuickCapture({ workspaceId, onCreated }: { workspaceId: string; 
 
   const { timeZone } = useWorkspace();
 
+  /** True when the request died without a server answer (network failure). */
+  function isNetworkFailure(caught: unknown): boolean {
+    if (!(caught instanceof ApiError)) return true;
+    return caught.problem.status >= 500 || !navigator.onLine;
+  }
+
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     const value = text.trim();
@@ -58,32 +65,103 @@ export function QuickCapture({ workspaceId, onCreated }: { workspaceId: string; 
 
     setBusy(true);
     setError(null);
+    let result: ParseResult;
     try {
-      const result = await api<ParseResult>('/natural-language/parse', {
+      result = await api<ParseResult>('/natural-language/parse', {
         method: 'POST',
         body: JSON.stringify({ text: value, timeZone }),
       });
+    } catch (caught) {
+      if (isNetworkFailure(caught)) {
+        // The deterministic parser (PRD §6.10) is the same grammar the server
+        // route wraps, so capture keeps working with no connection — no model.
+        result = parseTaskText(value, timeZone);
+      } else {
+        setError(caught instanceof ApiError ? caught.problem.detail : 'Could not save the task.');
+        reportCapture(false, false);
+        setBusy(false);
+        return;
+      }
+    }
 
+    try {
       if (result.recurrence || result.requiresConfirmation || result.tags?.value.length || result.project) {
         setParsed(result);
         setAnnouncement('Please confirm the interpreted details before saving.');
         return;
       }
       await create(result, false);
-    } catch (caught) {
-      setError(caught instanceof ApiError ? caught.problem.detail : 'Could not save the task.');
-      reportCapture(false, false);
     } finally {
       setBusy(false);
+    }
+  }
+
+  /**
+   * Offline capture (PRD §10.3, M5 "offline capture"): enqueue the create with
+   * a client-generated entity ID and cache the row locally. The same ID goes
+   * into the online request as `clientMutationId`, so a create whose response
+   * was lost dedupes to `duplicate` on the later push — never a twin task.
+   */
+  async function tryEnqueueOffline(taskId: string, result: ParseResult): Promise<boolean> {
+    const now = new Date().toISOString();
+    const payload: Record<string, unknown> = {
+      title: result.title,
+      dueAt: result.dueAt?.value ?? null,
+      estimateMinutes: result.estimateMinutes?.value ?? null,
+      priority: result.priority?.value ?? 'NONE',
+      timeZone,
+      tagIds: [],
+      tagNames: result.tags?.value ?? [],
+      projectName: result.project?.value,
+    };
+    try {
+      await enqueue({
+        workspaceId,
+        mutationId: crypto.randomUUID(),
+        entityType: 'task',
+        entityId: taskId,
+        operation: 'create',
+        baseVersion: null,
+        payload,
+      });
+      await cacheTask(workspaceId, {
+        id: taskId,
+        workspaceId,
+        projectId: null,
+        sectionId: null,
+        parentTaskId: null,
+        recurrenceRuleId: null,
+        title: result.title,
+        description: null,
+        location: null,
+        status: 'ACTIVE',
+        priority: result.priority?.value ?? 'NONE',
+        dueAt: result.dueAt?.value ?? null,
+        timeZone,
+        estimateMinutes: result.estimateMinutes?.value ?? null,
+        actualMinutes: 0,
+        actualSeconds: 0,
+        rescheduleCount: 0,
+        version: 1,
+        completedAt: null,
+        deletedAt: null,
+        restoreUntil: null,
+        createdAt: now,
+      });
+      return true;
+    } catch {
+      return false;
     }
   }
 
   async function create(result: ParseResult, confirmed: boolean) {
     setBusy(true);
     setError(null);
+    const taskId = crypto.randomUUID();
     try {
       const body = JSON.stringify({
           workspaceId,
+          clientMutationId: taskId,
           title: result.title,
           dueAt: result.dueAt?.value ?? null,
           estimateMinutes: result.estimateMinutes?.value ?? null,
@@ -103,11 +181,26 @@ export function QuickCapture({ workspaceId, onCreated }: { workspaceId: string; 
       onCreated();
       reportCapture(true, confirmed);
     } catch (caught) {
-      setError(
-        caught instanceof ApiError
-          ? caught.problem.detail
-          : 'Could not save the task. It has been kept in the box.',
-      );
+      if (isNetworkFailure(caught) && !result.recurrence) {
+        const queued = await tryEnqueueOffline(taskId, result);
+        if (queued) {
+          setText('');
+          setParsed(null);
+          setAnnouncement(`Saved offline: "${result.title}" will sync when you're back online.`);
+          onCreated();
+          reportCapture(true, confirmed);
+          setBusy(false);
+          return;
+        }
+        setError('Could not save the task, and offline storage is unavailable. Check your connection and try again.');
+      } else if (isNetworkFailure(caught)) {
+        // Recurrence commands can only be applied online; keep the user's
+        // text in the box rather than enqueuing something that can never apply.
+        setError('Recurring tasks need a connection. Your text is still in the box — nothing was lost.');
+      } else {
+        // 4xx: a server answer; enqueuing would only resurface the same error.
+        setError(caught instanceof ApiError ? caught.problem.detail : 'Could not save the task.');
+      }
       reportCapture(false, confirmed);
     } finally {
       setBusy(false);

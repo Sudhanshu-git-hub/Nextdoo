@@ -67,7 +67,7 @@ test('inbox can reach more than one page without duplicates', async ({ page }) =
   await expect(page.getByRole('button', { name: /^Start a focus timer for Paged/ })).toHaveCount(52);
 });
 
-test('lost capture acknowledgement retries the same mutation without duplicate tasks or tags', async ({ page }) => {
+test('lost capture acknowledgement is enqueued and reconciled without duplicate tasks or tags', async ({ page }) => {
   const { workspaceId } = await account(page);
   await page.goto('/inbox');
   await page.locator('#capture').fill('Retried capture #once'); await page.locator('#capture').press('Enter');
@@ -79,13 +79,24 @@ test('lost capture acknowledgement retries the same mutation without duplicate t
     await route.abort('failed');
   });
   await page.getByRole('button', { name: 'Save as shown' }).click();
-  await expect(page.getByText('Could not save the task. It has been kept in the box.', { exact: true })).toBeVisible();
-  await expect(page.locator('#capture')).toHaveValue('Retried capture #once');
-  await page.getByRole('button', { name: 'Save as shown' }).click();
+  // The server accepted the create but the acknowledgement was lost: the
+  // capture is durably enqueued under its client-generated entity id.
+  // (The parser splits "#once" off the title into a tag.)
+  await expect(page.getByText('Saved offline: "Retried capture" will sync when you\'re back online.', { exact: true })).toBeVisible();
   await expect(page.locator('#capture')).toHaveValue('');
-  const result = await (await page.request.get(`/api/v1/tasks?workspaceId=${workspaceId}`)).json();
-  expect(result.data).toHaveLength(1);
+  // Reconcile re-pushes the same create; the server dedupes it to `duplicate`.
+  const result = await page.waitForFunction(async (ws) => {
+    const r = await fetch(`/api/v1/tasks?workspaceId=${ws}`);
+    const body = await r.json();
+    return body.data.length === 1;
+  }, workspaceId, { timeout: 20000 });
+  await result;
+  const tasks = await (await page.request.get(`/api/v1/tasks?workspaceId=${workspaceId}`)).json();
+  expect(tasks.data).toHaveLength(1);
+  expect(tasks.data[0].title).toBe('Retried capture');
   expect((await (await page.request.get('/api/v1/tags')).json()).data).toHaveLength(1);
+  // The queue drained: nothing left waiting to sync.
+  await expect(page.getByRole('status').filter({ hasText: /change/ })).toHaveCount(0, { timeout: 10000 });
 });
 
 test('task editor supports keyboard dismissal, draft confirmation and automated accessibility checks', async ({ page }) => {

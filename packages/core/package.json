@@ -9,7 +9,8 @@
     ".": "./src/index.ts",
     "./calendar": "./src/calendar.ts",
     "./capacity": "./src/capacity.ts",
-    "./description": "./src/description.ts"
+    "./description": "./src/description.ts",
+    "./nl-parse": "./src/nl-parse.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

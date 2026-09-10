@@ -16,7 +16,6 @@ interface DayCapacityData {
   providerConnected: boolean;
 }
 import { TaskPagination } from '@/components/TaskPagination';
-import { flushQueue, getDeviceId } from '@/lib/offline-queue';
 import { QuickCapture } from '@/components/QuickCapture';
 import { TaskList } from '@/components/TaskList';
 
@@ -54,15 +53,14 @@ export function TodayView({ workspaceId }: { workspaceId: string }) {
     void load();
     void loadCapacity();
   }, [load, loadCapacity]);
-  // Drain the offline queue whenever connectivity returns.
+  // The app-global reconcile loop (OfflineBadge in the shell) drains the
+  // queue; refresh this view whenever it has applied mutations or pulled
+  // changes, so the list reflects the server instead of a stale cache.
   useEffect(() => {
-    const onOnline = async () => {
-      await flushQueue(workspaceId, getDeviceId());
-      void load();
-    };
-    window.addEventListener('online', onOnline);
-    return () => window.removeEventListener('online', onOnline);
-  }, [workspaceId, load]);
+    const onSynced = () => { void reload(); };
+    window.addEventListener('nextdoo-synced', onSynced);
+    return () => window.removeEventListener('nextdoo-synced', onSynced);
+  }, [reload]);
 
   const now = new Date();
   const overdue = tasks.filter((t) => t.dueAt && new Date(t.dueAt) < localDayBounds(now, timeZone).start);

@@ -18,9 +18,13 @@ export const POST = authedRoute(
   async (request, ctx) => {
     const input = await parseBody(request, createTaskSchema);
     await assertWorkspaceAccess(ctx.auth.userId, input.workspaceId);
+    // A client-generated entity ID makes creates replay-safe end to end
+    // (PRD §10.2/§10.3, scenario SY-01): if the response is lost, an offline
+    // re-push of the same create dedupes to `duplicate` instead of a twin task.
     return createTask(
       { userId: ctx.auth.userId, workspaceId: input.workspaceId, requestId: ctx.requestId },
       input,
+      { id: input.clientMutationId },
     );
   },
 );
