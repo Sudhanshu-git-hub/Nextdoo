@@ -895,3 +895,14 @@ export const trackingOutboxReceipts = pgTable('tracking_outbox_receipts', {
  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
  receivedAt: timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+/** Optional review-flow note per local day (PRD §8.5); `day` is the workspace-local date key. */
+export const reviewNotes = pgTable('review_notes', {
+ workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+ day: date('day', { mode: 'string' }).notNull(),
+ body: varchar('body', { length: 500 }).notNull(),
+ updatedBy: uuid('updated_by').notNull().references(() => users.id),
+ createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+ updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.workspaceId, t.day] }),
+ index('review_notes_workspace_idx').on(t.workspaceId, t.day)]);

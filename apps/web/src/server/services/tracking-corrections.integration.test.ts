@@ -151,11 +151,11 @@ it('EXCLUDED_FROM_ANALYTICS removes the task from the day summary, not from its 
   const noon = new Date(`${today}T12:00:00Z`);
   await db.update(tasks).set({ dueAt: noon }).where(eq(tasks.id, task.id));
   await runTrackingCycle(db, actor.workspaceId);
-  const baseline = await getSummary(actor.workspaceId, 'day', noon);
+  const baseline = await getSummary(actor.workspaceId, 'day', today);
   expect(baseline.plannedCount).toBe(1);
 
   await applyTrackingCorrection(actor, task.id, { kind: 'EXCLUDED_FROM_ANALYTICS', action: 'SET', reason: 'One-off task that distorts the trend' });
-  const excluded = await getSummary(actor.workspaceId, 'day', noon);
+  const excluded = await getSummary(actor.workspaceId, 'day', today);
   expect(excluded.plannedCount).toBe(0);
   expect(excluded.excludedCount).toBe(1);
   // The stored result and its drill-down remain available.
@@ -163,7 +163,7 @@ it('EXCLUDED_FROM_ANALYTICS removes the task from the day summary, not from its 
   expect((await listTaskCorrections(actor.workspaceId, task.id)).map((c) => c.state)).toEqual(['SET']);
 
   await applyTrackingCorrection(actor, task.id, { kind: 'EXCLUDED_FROM_ANALYTICS', action: 'CLEAR', reason: 'Include it again' });
-  const restored = await getSummary(actor.workspaceId, 'day', noon);
+  const restored = await getSummary(actor.workspaceId, 'day', today);
   expect(restored.plannedCount).toBe(1);
   expect(restored.excludedCount).toBe(0);
 });

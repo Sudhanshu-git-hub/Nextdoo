@@ -23,7 +23,7 @@ async function open(page: Page) {
  const trigger = page.getByRole('button', { name: 'Project analytics', exact: true }); await trigger.focus(); await trigger.press('Enter');
  return page.getByRole('region', { name: 'Project execution analytics', exact: true });
 }
-test('project reports display real scoped metrics, explicit UTC periods and accessible empty states', async ({ page }) => {
+test('project reports display real scoped metrics, workspace-zone periods and accessible empty states', async ({ page }) => {
  await fixture(page); const report = await open(page);
  await report.getByLabel('Report date', { exact: true }).fill(day);
  await report.getByLabel('Reporting period', { exact: true }).selectOption('day');
@@ -33,13 +33,14 @@ test('project reports display real scoped metrics, explicit UTC periods and acce
  await expect(report.getByTestId('onTimeRate')).toHaveText('100%');
  await expect(report.getByTestId('averageScore')).toHaveText('100');
  await expect(report.getByTestId('estimateVariancePct')).toHaveText('Unmeasured');
- await expect(report).toContainText('UTC');
+ await expect(report).toContainText('Asia/Kolkata');
  await expect(report).toContainText('current project');
  const { default: AxeBuilder } = await import('@axe-core/playwright');
  expect((await new AxeBuilder({ page }).include('.project-analytics').withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze()).violations).toEqual([]);
  await report.getByLabel('Reporting period', { exact: true }).selectOption('week');
  await report.getByRole('button', { name: 'Update report', exact: true }).click();
- await expect(report.getByTestId('plannedCount')).toHaveText('3');
+ // Week of 2026-09-08 (Tue) starts Monday in the Asia/Kolkata workspace.
+ await expect(report.getByTestId('plannedCount')).toHaveText('2');
  await report.getByLabel('Report date', { exact: true }).fill('2025-01-01');
  await report.getByRole('button', { name: 'Update report', exact: true }).click();
  await expect(report).toContainText('No tasks due in this window');
@@ -54,7 +55,7 @@ test('project analytics validates dates and IDs and enforces HTTP tenant boundar
  const url = `/api/v1/projects/${project.id}/analytics`;
  const response = await page.request.get(`${url}?period=day&date=${day}`);
  expect(response.status()).toBe(200); expect(response.headers()['x-request-id']).toBeTruthy(); expect(response.headers()['cache-control']).toContain('no-store');
- expect(await response.json()).toMatchObject({ plannedCount: 2, completedCount: 1, projectId: project.id, timeZone: 'UTC' });
+ expect(await response.json()).toMatchObject({ plannedCount: 2, completedCount: 1, projectId: project.id, timeZone: 'Asia/Kolkata' });
  for (const query of ['date=2026-02-30', 'date=0000-01-01', 'period=week&date=0001-01-01', 'date=not-a-date', 'period=month', `workspaceId=${randomUUID()}`]) expect((await page.request.get(`${url}?${query}`)).status()).toBe(400);
  expect((await page.request.get('/api/v1/projects/bad-id/analytics')).status()).toBe(400);
  const other = await playwright.request.newContext({ baseURL: 'http://localhost:3100' });
@@ -74,7 +75,8 @@ test('failed report requests do not display old metrics and an explicit retry re
  await fixture(page); const report = await open(page);
  await report.getByLabel('Report date', { exact: true }).fill(day);
  await report.getByRole('button', { name: 'Update report', exact: true }).click();
- await expect(report.getByTestId('plannedCount')).toHaveText('3');
+ // Week of 2026-09-08 (Tue) starts Monday in the Asia/Kolkata workspace.
+ await expect(report.getByTestId('plannedCount')).toHaveText('2');
  let failed = false;
  await page.route('**/api/v1/projects/*/analytics?**', (route) => {
   if (!failed) { failed = true; return route.abort('failed'); } return route.continue();
@@ -109,10 +111,12 @@ test('a delayed older report cannot replace a newer period selection', async ({ 
    const canceled = page.waitForEvent('requestfailed', { predicate: (request) => request.url().includes('/analytics?') && new URL(request.url()).searchParams.get('period') === 'day' });
    await report.getByLabel('Reporting period', { exact: true }).selectOption('week');
    await report.getByRole('button', { name: 'Update report', exact: true }).click();
-   await expect(report.getByTestId('plannedCount')).toHaveText('3');
+   // Week of 2026-09-08 (Tue) starts Monday in the Asia/Kolkata workspace.
+   await expect(report.getByTestId('plannedCount')).toHaveText('2');
    await canceled;
    release();
-   await expect(report.getByTestId('plannedCount')).toHaveText('3');
-   await expect(report.getByRole('status')).toContainText('2026-09-02 through 2026-09-08');
+   // The stale day response cannot replace the week report.
+   await expect(report.getByTestId('plannedCount')).toHaveText('2');
+   await expect(report.getByRole('status')).toContainText('2026-09-07 through 2026-09-08');
  } finally { release(); }
 });

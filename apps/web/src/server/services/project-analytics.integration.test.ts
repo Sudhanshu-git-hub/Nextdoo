@@ -30,14 +30,18 @@ it('scopes every metric and stored score to the same project due-date cohort', a
  await task(actor, project.id, { dueAt: null });
  await task(actor, project.id, { dueAt: '2026-09-09T00:00:00Z' });
  const summary = await analytics.getProjectAnalytics(actor, project.id, { period: 'day', date: day });
- expect(summary).toMatchObject({ projectId: project.id, timeZone: 'UTC', plannedCount: 2, completedCount: 1, onTimeCount: 1, completionRate: 0.5, onTimeRate: 1, plannedMinutes: 20, averageScore: 100, scoredCount: 1, missingResultCount: 1 });
+ expect(summary).toMatchObject({ projectId: project.id, timeZone: 'Asia/Kolkata', plannedCount: 2, completedCount: 1, onTimeCount: 1, completionRate: 0.5, onTimeRate: 1, plannedMinutes: 20, averageScore: 100, scoredCount: 1, missingResultCount: 1 });
  expect(JSON.stringify(summary)).not.toContain('Private task');
 });
-it('day and rolling-seven-day windows include exact UTC boundaries and reject impossible dates', async () => {
+it('day and workspace-week windows use exact workspace-zone boundaries and reject impossible dates', async () => {
  const { actor, project } = await fixture();
  for (const dueAt of ['2026-09-01T23:59:59.999Z', '2026-09-02T00:00:00Z', '2026-09-08T00:00:00Z', '2026-09-08T23:59:59.999Z', '2026-09-09T00:00:00Z']) await task(actor, project.id, { dueAt });
- expect(await analytics.getProjectAnalytics(actor, project.id, { period: 'week', date: day })).toMatchObject({ plannedCount: 3, from: '2026-09-02T00:00:00.000Z', to: '2026-09-08T23:59:59.999Z' });
- expect((await analytics.getProjectAnalytics(actor, project.id, { period: 'day', date: day })).plannedCount).toBe(2);
+ // The workspace inherits the registered user's zone (Asia/Kolkata, UTC+5:30,
+ // no DST) and the week starts Monday. The reference date 2026-09-08 is a
+ // Tuesday, so the window runs Monday 09-07 through the reference day, both
+ // in local time: [09-06T18:30Z, 09-08T18:29:59.999Z].
+ expect(await analytics.getProjectAnalytics(actor, project.id, { period: 'week', date: day })).toMatchObject({ plannedCount: 1, from: '2026-09-06T18:30:00.000Z', to: '2026-09-08T18:29:59.999Z' });
+ expect((await analytics.getProjectAnalytics(actor, project.id, { period: 'day', date: day })).plannedCount).toBe(1);
  await expect(analytics.getProjectAnalytics(actor, project.id, { period: 'day', date: '2026-02-30' })).rejects.toThrow();
 });
 it('empty and unmeasured cohorts do not fabricate percentages, variance or scores', async () => {
@@ -50,7 +54,7 @@ it('preserves second-level tracked time and paired estimate measurement in share
  const { actor, project } = await fixture();
  const t = await task(actor, project.id, { estimateMinutes: 1 });
  await getDb().update(tasks).set({ actualSecondsRemainder: 30 }).where(eq(tasks.id, t.id));
- const summary = await getSummary(actor.workspaceId, 'day', new Date(`${day}T12:00:00Z`));
+ const summary = await getSummary(actor.workspaceId, 'day', day);
  expect(summary.actualMinutes).toBe(0.5);
  expect(summary.estimateVariancePct).toBe(-50);
 });

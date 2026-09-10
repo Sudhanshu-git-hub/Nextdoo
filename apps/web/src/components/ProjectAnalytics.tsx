@@ -35,7 +35,7 @@ export function ProjectAnalytics({ projectId }: { projectId: string }) {
     <form className="row" onSubmit={(event) => { event.preventDefault(); setQuery({ period, date }); }}>
       <div><label htmlFor="project-report-period">Reporting period</label>
         <select id="project-report-period" value={period} onChange={(e) => setPeriod(e.target.value as Query['period'])}>
-          <option value="day">Selected day (UTC)</option><option value="week">Seven days ending on date (UTC)</option>
+          <option value="day">Selected day</option><option value="week">Week containing the date</option>
         </select></div>
       <div><label htmlFor="project-report-date">Report date</label><input id="project-report-date" type="date" required min="0001-01-01" max="9999-12-31" value={date} onChange={(e) => setDate(e.target.value)} /></div>
       <button type="submit" className="btn-primary">Update report</button>
@@ -44,8 +44,10 @@ export function ProjectAnalytics({ projectId }: { projectId: string }) {
     {loading && <p role="status">Loading project report…</p>}
     {error && <div className="banner banner-error" role="alert">{error} <button onClick={() => void load()}>Retry report</button></div>}
     {!loading && report && <>
-      <TrackingFreshnessNotice freshness={report.freshness} />
-      <p role="status">Report window: {report.from.slice(0, 10)} through {report.to.slice(0, 10)}, inclusive (UTC).</p>
+      <TrackingFreshnessNotice freshness={report.freshness} windowInfo={{ timeZone: report.timeZone, weekStart: report.weekStart }} />
+      <p role="status">
+        Report window: {new Intl.DateTimeFormat('en-CA', { timeZone: report.timeZone }).format(new Date(report.from))} through {new Intl.DateTimeFormat('en-CA', { timeZone: report.timeZone }).format(new Date(report.to))}, inclusive ({report.timeZone}).
+      </p>
       {report.plannedCount === 0 ? <div className="empty"><h3>No tasks due in this window</h3><p>Choose another date or add a due date to a project task. No score or rate can be measured for an empty window.</p></div> : <>
         <dl className="grid grid-3">
           <Metric id="plannedCount" label="Tasks due" value={String(report.plannedCount)} note="Current non-deleted tasks due in the selected window" />

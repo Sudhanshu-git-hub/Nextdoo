@@ -341,6 +341,17 @@ export const summaryQuerySchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
+/** Review-flow note (PRD §8.5): one optional note per local day per workspace. */
+export const reviewNoteQuerySchema = z.object({
+  workspaceId: uuid,
+  /** Local day key `YYYY-MM-DD` in the workspace time zone. */
+  day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+});
+
+export const reviewNoteBodySchema = z.object({
+  body: z.string().trim().min(1).max(500),
+});
+
 // ---------------------------------------------------------------- tracking corrections (PRD §7.7)
 
 /** Toggle corrections: the latest row per (task, kind) wins. Rows are immutable. */

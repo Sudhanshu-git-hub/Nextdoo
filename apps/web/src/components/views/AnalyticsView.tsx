@@ -7,7 +7,18 @@ import { api, ApiError } from '@/lib/api';
 import type { ExecutionSummary } from '@nextdoo/contracts';
 import { TrackingPanel } from '@/components/TrackingPanel';
 import { TrackingFreshnessNotice } from '@/components/TrackingFreshnessNotice';
+import { ReviewNote } from '@/components/ReviewNote';
 type Summary = Omit<ExecutionSummary, 'averageScore'> & { averageScore?: number | null; scoresEnabled: boolean };
+
+/** An instant whose wall time in `timeZone` is noon on the local date key. */
+function localNoon(key: string, timeZone: string): Date {
+  let instant = new Date(`${key}T12:00:00Z`);
+  const check = new Intl.DateTimeFormat('en-CA', { timeZone }).format(instant);
+  if (check !== key) instant = new Date(instant.getTime() + (check < key ? 1 : -1) * 12 * 3600_000);
+  return instant;
+}
+const dayName = (key: string, timeZone: string) =>
+  new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone }).format(localNoon(key, timeZone));
 
 /**
  * Analytics / weekly review (PRD §7.8).
@@ -68,7 +79,15 @@ export function AnalyticsView({ workspaceId, taskId }: { workspaceId: string; ta
         </div>
       </div>
 
-      {summary && <TrackingFreshnessNotice freshness={summary.freshness} />}
+      {summary && (
+        <p className="muted" style={{ margin: '10px 0 0', fontSize: 13 }} data-summary-window>
+          {(() => {
+            const fmtDay = (iso: string) => new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: summary.timeZone }).format(new Date(iso));
+            return `${summary.period === 'week' ? 'Week' : 'Day'} ${fmtDay(summary.from)} – ${fmtDay(summary.to)} · times in ${summary.timeZone}`;
+          })()}
+        </p>
+      )}
+      {summary && <TrackingFreshnessNotice freshness={summary.freshness} windowInfo={{ timeZone: summary.timeZone, weekStart: summary.weekStart }} />}
 
       {error && (
         <div className="banner banner-error" role="alert">
@@ -100,7 +119,11 @@ export function AnalyticsView({ workspaceId, taskId }: { workspaceId: string; ta
             <Stat
               label="On time"
               value={summary.onTimeRate == null ? '—' : `${Math.round(summary.onTimeRate * 100)}%`}
-              sub={`${summary.lateCount} finished late`}
+              sub={
+                summary.lateCount > 0 && summary.lateAverageMinutes != null
+                  ? `${summary.lateCount} finished late, average ${formatTrackedDuration(summary.lateAverageMinutes)} over`
+                  : `${summary.lateCount} finished late`
+              }
             />
             <Stat
               label="Estimate accuracy"
@@ -144,7 +167,7 @@ export function AnalyticsView({ workspaceId, taskId }: { workspaceId: string; ta
               {summary.insights.length === 0 ? (
                 <p className="muted">Not enough signal yet to say anything useful.</p>
               ) : (
-                <ul style={{ margin: 0, paddingLeft: 18 }}>
+                <ul data-insights style={{ margin: 0, paddingLeft: 18 }}>
                   {summary.insights.map((insight) => (
                     <li key={insight} style={{ marginBottom: 7, fontSize: 14 }}>{insight}</li>
                   ))}
@@ -157,7 +180,17 @@ export function AnalyticsView({ workspaceId, taskId }: { workspaceId: string; ta
               )}
             </div>
           </div>
+
+          <DayTable summary={summary} />
+          {summary.period === 'week' && <WeeklyTrends summary={summary} />}
         </>
+      )}
+      {summary && (
+        <ReviewNote
+          workspaceId={workspaceId}
+          dayKey={new Intl.DateTimeFormat('en-CA', { timeZone: summary.timeZone }).format(new Date())}
+          dayLabel={new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'long', timeZone: summary.timeZone }).format(new Date())}
+        />
       )}
       {/* Renders even when every task in the window is excluded (plannedCount 0). */}
       {summary?.excludedCount ? (
@@ -190,6 +223,125 @@ function Bar({ label, minutes, max }: { label: string; minutes: number; max: num
       </div>
       <div className="bar">
         <i style={{ width: `${Math.min(100, (minutes / max) * 100)}%` }} />
+      </div>
+    </div>
+  );
+}
+
+/** Per-day trend points (PRD §7.8): one row per local day in the window. */
+function DayTable({ summary }: { summary: Summary }) {
+  const workday = summary.days.find((d) => d.workdayMinutes != null)?.workdayMinutes ?? null;
+  const th = { textAlign: 'left' as const, padding: '4px 10px 4px 0' };
+  const td = { padding: '6px 10px 6px 0', borderBottom: '1px solid var(--border, rgba(128,128,128,0.18))' };
+  return (
+    <div className="card" style={{ marginTop: 18 }} data-day-table>
+      <h2>{summary.period === 'week' ? 'Each day of this window' : 'Today in detail'}</h2>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+          <thead>
+            <tr>
+              <th scope="col" style={th}>Day</th>
+              <th scope="col" style={th}>Planned</th>
+              <th scope="col" style={th}>Completed</th>
+              <th scope="col" style={th}>Focus time</th>
+              {summary.scoresEnabled && <th scope="col" style={th}>Score</th>}
+              <th scope="col" style={th}>Planned load</th>
+            </tr>
+          </thead>
+          <tbody>
+            {summary.days.map((d) => (
+              <tr key={d.day}>
+                <td style={td}>{dayName(d.day, summary.timeZone)}</td>
+                <td style={td} data-day-planned>{d.plannedCount || '—'}</td>
+                <td style={td} data-day-completed>{d.plannedCount ? `${d.completedCount} of ${d.plannedCount}` : '—'}</td>
+                <td style={td} data-day-focus>{d.focusMinutes > 0 ? formatTrackedDuration(d.focusMinutes) : '—'}</td>
+                {summary.scoresEnabled && <td style={td} data-day-score>{d.score == null ? '—' : Math.round(d.score)}</td>}
+                <td style={td} data-day-load>
+                  {d.plannedCount ? (
+                    <>
+                      {formatTrackedDuration(d.plannedMinutes)}
+                      {d.overloaded && workday != null && (
+                        <span role="note" data-day-overloaded style={{ marginLeft: 8, color: 'var(--warn, #b45309)' }}>
+                          over the {formatTrackedDuration(workday)} workday
+                        </span>
+                      )}
+                    </>
+                  ) : '—'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="muted" style={{ marginTop: 10 }}>
+        A day shows “—” where nothing measurable exists.
+        {workday != null && ` Planned load is compared against your ${formatTrackedDuration(workday)} workday.`}
+      </p>
+    </div>
+  );
+}
+
+/** The remaining §7.8 weekly trends: recurrence adherence, focus, reschedules,
+ * and underestimated categories. Each says so plainly when unmeasured. */
+function WeeklyTrends({ summary }: { summary: Summary }) {
+  const totalFocus = summary.days.reduce((s, d) => s + d.focusMinutes, 0);
+  const bestFocusDay = summary.days.filter((d) => d.focusMinutes > 0).sort((a, b) => b.focusMinutes - a.focusMinutes)[0];
+  const { recurrence } = summary;
+  const adherenceValue =
+    recurrence.recurringCount === 0
+      ? 'None planned'
+      : recurrence.adherencePct == null
+        ? 'Not measurable'
+        : `${Math.round(recurrence.adherencePct)}%`;
+  return (
+    <div className="grid grid-2" style={{ marginTop: 18 }}>
+      <div className="card" data-week-recurring>
+        <h2>Recurring tasks</h2>
+        <div className="stat-label">Adherence to the schedule</div>
+        <div className="stat-value" data-recurrence-adherence>{adherenceValue}</div>
+        <div className="stat-sub">
+          {recurrence.recurringCount
+            ? `${recurrence.measuredCount} of ${recurrence.recurringCount} recurring task(s) had measurable occurrences this window`
+            : 'No recurring tasks were due in this window'}
+        </div>
+      </div>
+      <div className="card" data-week-focus>
+        <h2>Focus time</h2>
+        <div className="stat-label">Tracked in this window</div>
+        <div className="stat-value" data-week-focus-total>{formatTrackedDuration(totalFocus)}</div>
+        <div className="stat-sub">
+          {bestFocusDay
+            ? `Most on ${dayName(bestFocusDay.day, summary.timeZone)} (${formatTrackedDuration(bestFocusDay.focusMinutes)})`
+            : 'No focus sessions started in this window'}
+        </div>
+      </div>
+      <div className="card" data-week-rescheduled>
+        <h2>Most rescheduled</h2>
+        {summary.mostRescheduled.length ? (
+          <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
+            {summary.mostRescheduled.map((t) => (
+              <li key={t.taskId} data-rescheduled-task style={{ marginBottom: 6 }}>
+                {t.title} — moved {t.count} {t.count === 1 ? 'time' : 'times'}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="muted" style={{ marginTop: 8 }}>No tasks changed date in this window.</p>
+        )}
+      </div>
+      <div className="card" data-week-tags>
+        <h2>Underestimated categories</h2>
+        {summary.tagVariances.length ? (
+          <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
+            {summary.tagVariances.map((t) => (
+              <li key={t.tagId} data-tag-variance style={{ marginBottom: 6 }}>
+                {t.name} — about +{t.variancePct}% over estimate ({t.taskCount} task{t.taskCount === 1 ? '' : 's'})
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="muted" style={{ marginTop: 8 }}>No tagged category clearly came in above its estimates.</p>
+        )}
       </div>
     </div>
   );
