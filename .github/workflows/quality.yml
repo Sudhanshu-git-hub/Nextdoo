@@ -47,6 +47,9 @@ jobs:
       - run: pnpm test:coverage
       - run: pnpm build
       - run: pnpm test:e2e
+      - name: Surface failed E2E tests as annotations
+        if: failure()
+        run: node .github/scripts/e2e-failures-annotations.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
