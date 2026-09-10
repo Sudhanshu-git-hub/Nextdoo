@@ -116,8 +116,17 @@ Local gates at `81610cc` (all re-run after the final code state):
 - **Lint 0 warnings; typecheck 5/5; coverage 88.03% statements** (≥ 87.85%
   baseline); production build OK; migration replay **×2 on a fresh database**
   (all 18 migrations apply, second run no-op).
-- Remote CI runs against the pushed commit; result recorded at milestone
-  closure.
+- **Remote CI: green on `be23d72`** (push + pull_request runs; PG 16, standard
+  Playwright Chromium) — install, audit, migration replay ×2, lint, typecheck,
+  coverage, build and all 114 E2E scenarios passed. The first two pushes
+  (`81610cc`, `8a702c7`) failed `test:e2e` after a full-suite-duration run with
+  no other step failing; the raw CI logs/artifacts were not retrievable from the
+  development sandbox (egress to the GitHub artifact store is blocked there), so
+  the E2E polling-dependent waits in the new spec were widened for slow runners
+  (no assertion changed) and CI now also surfaces each failed E2E test as a
+  check-run annotation (`.github/scripts/e2e-failures-annotations.mjs`, Playwright
+  JSON reporter) — making future E2E failures diagnosable through the API alone.
+  The subsequent run is fully green.
 
 Defects found and fixed while verifying this milestone (all covered by the new
 tests): the fast-path `recalculated: false` race on due-date corrections; the

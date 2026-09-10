@@ -341,8 +341,15 @@ Final local gates: **55 test files / 536 unit+integration tests** (baseline
 524/54: +9 correction integration scenarios, +3 core scoring tests) and
 **114/114 browser/API scenarios** (baseline 110: +4 E2E), lint (0 warnings),
 types 5/5, coverage (88.03% statements, baseline 87.85%), build and fresh
-migration replay ×2 (18 migrations) passed. Remote CI is verified against the
-pushed milestone commit, separately from local evidence.
+migration replay ×2 (18 migrations) passed. Remote CI is **green on `be23d72`**
+(PG 16, standard Chromium: audit, migration replay ×2, lint, typecheck,
+coverage, build and all 114 E2E scenarios). The first two pushes failed
+`test:e2e` after a full-suite run with no other step failing; CI logs were not
+retrievable from the sandbox (artifact-store egress blocked), so the new spec's
+polling waits were widened for slow runners (no assertion weakened) and the
+workflow now emits each failed E2E test as a check-run annotation
+(`.github/scripts/e2e-failures-annotations.mjs` + Playwright JSON reporter) for
+API-only diagnosis. The follow-up run is fully green.
 
 Remaining M4 work: workspace-local reporting and richer trends (PRD
 §7.8/§8.5, the next recommended candidate), the unresolved TR-03/full TR
