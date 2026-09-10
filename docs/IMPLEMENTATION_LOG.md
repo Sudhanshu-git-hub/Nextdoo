@@ -638,5 +638,9 @@ before; core 97.91% vs 85% gate); `services/entitlements.ts` 100% lines,
 `services/data-rights.ts` 96.0% lines. One local full-suite E2E run showed 2
 transient `exports.spec.ts` failures that passed on isolated (4/4) and
 full-suite (129/129) re-run — load-induced flake, no code-path mechanism from
-this slice to export generation; watching in CI. CI verified on the pushed
-commit. See [M6_ENTITLEMENTS_EXPORT_MILESTONE.md](M6_ENTITLEMENTS_EXPORT_MILESTONE.md).
+this slice to export generation; watching in CI. CI: the `push` run for the
+milestone commit is green; the concurrent `pull_request` run failed one
+pre-existing M4 E2E (`task-virtualization.spec.ts` top-row id after seeding
+250 tasks) that passed on the push run of the identical commit — transient
+E2E flake, no code changed to compensate. See
+[M6_ENTITLEMENTS_EXPORT_MILESTONE.md](M6_ENTITLEMENTS_EXPORT_MILESTONE.md).
