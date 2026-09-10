@@ -116,16 +116,23 @@ connection cap, one-per-provider, token sealing, suspend/reactivate
   **96.0%** lines.
 - No migrations; no changes to any M1–M5 verified behavior; no test weakened or
   deleted.
-- CI: the `push` run for the milestone commit is **green** (full verify:
-  lint/typecheck/tests/coverage/build/E2E). The concurrent `pull_request` run
-  for the same commit showed a single failure in
-  `task-virtualization.spec.ts` ("virtualized list keeps focus pinned and
-  passes axe", an M4 spec asserting the first rendered row id after seeding
-  250 tasks) — a UUID mismatch in a heavy browser spec. This slice changes no
-  code path that task-list ordering or virtualization depends on, and the
-  identical commit passed the identical suite on the push run; classified as
-  a transient E2E flake (matching the session's prior flake category), no code
-  changed to compensate.
+- CI: both commits triggered a `push` and a `pull_request` run of the same
+  workflow (base `feat/mvp-implementation` is exactly at the branch point, so
+  the merge ref is byte-identical to the branch tip). Across the four runs
+  exactly one failed per commit — first the `pull_request` run, then the
+  `push` run — always on the same pre-existing M4 E2E:
+  `task-virtualization.spec.ts` "virtualized list keeps focus pinned and
+  passes axe" (asserts the first rendered row id after seeding 250 tasks;
+  failure is a UUID mismatch with a fresh random id per run). The failure is
+  independent of run type (push and PR both failed once and both passed
+  once), and the suite passed in two full local runs. The task list order is
+  deterministic (`createdAt desc, id desc` with strictly distinct seed
+  timestamps) and this slice changes no code path that ordering, list
+  rendering, virtualization, focus or axe depend on; classified as a
+  non-deterministic E2E instability in a locked-milestone spec. No code was
+  changed to compensate and no test was weakened; the failure run's
+  test-results artifacts were unreachable during analysis (GitHub
+  results-receiver EOF on every log/artifact download attempt).
 
 ## Remaining M6 work (unchanged by this increment)
 
