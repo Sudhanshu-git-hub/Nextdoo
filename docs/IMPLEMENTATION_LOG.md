@@ -544,3 +544,45 @@ green. CI verified on the pushed commit. See
 [M5_CONFLICT_RESOLUTION_MILESTONE.md](M5_CONFLICT_RESOLUTION_MILESTONE.md).
 Deferred (explicit): SY-10 5,000-mutation drain + SLO qualification,
 offline task-editor edits/deletes and offline timers, Windows client.
+## M5 increment 3 — SY-10 5,000-mutation drain and §10.9 SLO qualification — 2026-09-10
+
+Third bounded M5 increment, measurement and reliability qualification
+only (no product features). A repeatable harness
+(`sync-slo-harness.ts` + `sync-slo.integration.test.ts`) drains 5,000
+queued offline mutations from 4 devices against the real server +
+Postgres using the exact client semantics (200-mutation batches,
+per-entity head-of-line, backoff, auto-quarantine after 5 server
+failures, simulated connection-level 500s), then verifies every
+§10.9 property against a reference model built by the workload
+generator.
+
+Results (qualification run, local PG 18): **100%** of 200 connected
+mutations acknowledged under 5 s (p50 10 ms, p95 12 ms, p99 13 ms,
+max 31 ms; SLO 99%); **100.0%** data integrity over 3,685 entities
+(SLO 99.9%); zero duplicate entities; zero lost mutations; zero
+per-entity ordering/version violations across 4,970 sync-change ops;
+155 tombstones held with 75 updates-of-deleted rejected-and-preserved;
+125/125 conflict snapshots with byte-equal preserved payloads; zero
+tenant-isolation violations; 825 simulated failures → 995 retries →
+5/5 auto-quarantines → user requeue applied exactly once; every
+device's pull-reconstructed cache equals the server's live state
+(3,530 == 3,530, no stale resurrection). Full drain 56.0 s at
+89.3 mutations/s; 200-mutation batch ack p95 3,012 ms.
+
+Two findings, both **server-correct, harness-wrong** (no production
+code changed): (1) the FREE plan's 200-active-task cap (PRD §18.1)
+gates large drains — now an explicitly asserted test (over-limit
+creates rejected with a clear code, payload preserved, re-send after
+upgrade applies exactly once); the pure-sync qualification runs on an
+unlimited plan because the SLO is plan-independent. (2) Replays with
+altered `createdAt` under the same mutation id are rejected
+`IDEMPOTENCY_CONFLICT` — the generator now replays byte-identical
+records, as a real client does.
+
+Verification (local PG 18): **58 files / 576 unit+integration tests**
+(574 + 2, full qualification runs in CI) and **125/125 E2E** (3.3 min).
+Lint 0; typecheck 5/5; coverage **89.24%** statements overall (core
+97.91% vs 85% gate); production build green. CI verified on the pushed
+commit. See [M5_SYNC_SLO_MILESTONE.md](M5_SYNC_SLO_MILESTONE.md).
+Deferred (explicit): offline task-editor edits/deletes and offline
+timers, Windows client, multi-node/replica drain measurement.
