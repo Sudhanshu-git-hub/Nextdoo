@@ -4,6 +4,7 @@ import { summaryQuerySchema, type DayPoint } from '@nextdoo/contracts';
 type ScoreOptionalDay = Omit<DayPoint, 'score'> & { score?: number | null };
 import { assertWorkspaceAccess } from '@/server/auth';
 import { authedRoute, parseQuery } from '@/server/http';
+import { assertHistoryWindow } from '@/server/services/entitlements';
 import { getSummary } from '@/server/services/tracking';
 import { scoresEnabled } from '@/server/services/tracking-freshness';
 
@@ -13,6 +14,8 @@ export const dynamic = 'force-dynamic';
 export const GET = authedRoute({ routeName: 'tracking.summary', rateLimitPerMinute: 300 }, async (request, ctx) => {
   const query = parseQuery(request, summaryQuerySchema);
   await assertWorkspaceAccess(ctx.auth.userId, query.workspaceId);
+  // PRD §18.1: Free historical analytics are bounded to 30 days.
+  await assertHistoryWindow(ctx.auth.userId, query.workspaceId, query.date ?? null);
   // `date` is a local calendar date in the workspace zone (or today).
   const summary = await getSummary(query.workspaceId, query.period, query.date ?? null);
   const enabled = await scoresEnabled(ctx.auth.userId);

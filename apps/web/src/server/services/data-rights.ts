@@ -1,5 +1,5 @@
 import { logger } from '../observability';
-import { and, desc, eq, inArray, isNotNull, isNull, like, lte, or } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNotNull, isNull, like, lte, or } from 'drizzle-orm';
 import { AppError } from '@nextdoo/contracts';
 import {
   purgeAccount,
@@ -267,6 +267,12 @@ export async function purgeDueAccounts(now = new Date()): Promise<string[]> {
  *
  * Scoped to the caller's own actions and workspace; metadata is returned as
  * stored, which by construction never contains task content or secrets.
+ *
+ * `retentionDays` (PRD §18.1 "Audit log retention") bounds the visible
+ * history: 0 means the plan retains nothing, so the list is empty; a finite
+ * number hides rows older than that many days. `undefined` applies no plan
+ * filter (internal callers). Note the filter bounds what is *shown*; rows are
+ * not destroyed here — destruction is the account-history purge's job.
  */
 export async function listAuditLogs(
   userId: string,
@@ -274,8 +280,10 @@ export async function listAuditLogs(
   limit = 50,
   /** Optional action-namespace filter, e.g. `account.` for security events only. */
   prefix?: string,
+  retentionDays?: number | null,
 ) {
   const db = getDb();
+  if (retentionDays === 0) return [];
   return db
     .select({
       id: auditLogs.id,
@@ -298,6 +306,11 @@ export async function listAuditLogs(
         // `prefix` is never user-supplied free text; it is validated against an
         // allow-list at the route boundary before reaching this query.
         prefix ? like(auditLogs.action, `${prefix}%`) : undefined,
+        // Plan retention window (PRD §18.1): older rows stay in the database
+        // as internal security evidence but are not shown on the plan.
+        retentionDays !== undefined && retentionDays !== null
+          ? gte(auditLogs.createdAt, new Date(Date.now() - retentionDays * 86_400_000))
+          : undefined,
       ),
     )
     .orderBy(desc(auditLogs.createdAt))

@@ -586,3 +586,57 @@ Lint 0; typecheck 5/5; coverage **89.24%** statements overall (core
 commit. See [M5_SYNC_SLO_MILESTONE.md](M5_SYNC_SLO_MILESTONE.md).
 Deferred (explicit): offline task-editor edits/deletes and offline
 timers, Windows client, multi-node/replica drain measurement.
+
+## M6 commercial readiness — increment 1: server-side entitlement enforcement + authenticated export path — 2026-09-10
+
+Bounded M6 slice per PRD §18.1/§18.3: enforce the §18.1 limits that apply to
+features that exist today, expose the entitlement endpoint, and add regression +
+browser evidence for the authenticated JSON export path. No billing, Google
+Calendar OAuth/sync, attachments, Windows/desktop, or AI work started; no
+migrations; no existing test weakened or deleted.
+
+- `GET /api/v1/account/entitlements` (new): auth-gated entitlement endpoint
+  returning `{ plan, limits, usage }` — the §18.1 "entitlement endpoint" that
+  was previously missing (the settings screen already rendered the same
+  snapshot via RSC; clients now have the API surface, and the server remains
+  the source of truth on every mutation).
+- `assertHistoryWindow` (services/entitlements.ts) + wiring in
+  `/api/v1/tracking/summary`: the FREE 30-day historical-analytics window is
+  now enforced server-side. The boundary is computed in the workspace's local
+  calendar (the tracking date convention); the 30th day is included, the 31st
+  is rejected 402 `ENTITLEMENT_LIMIT_REACHED`; paid plans (`null`) are
+  unbounded.
+- Plan-based audit-history retention (services/data-rights.ts
+  `listAuditLogs` + `/api/v1/audit-logs`): `retentionDays` from the caller's
+  plan — Free (0) sees no history, Pro 30 days, Team 1 year, Enterprise
+  7 years. The filter bounds what is shown; rows remain as internal security
+  evidence, and destructive retention/anonymization/legal-hold remains the
+  open F15 operations-policy item (not invented).
+- New DB-backed suite
+  `apps/web/src/server/services/entitlements.export.integration.test.ts`
+  (11 tests): snapshot limits/usage + plan-change re-evaluation; 200/201 task
+  boundary with slot release; plan-change re-evaluation both directions with
+  row preservation; 3/4 project boundary with downgrade preservation;
+  workspace-local 30-day window (incl. UTC+14) and paid full history;
+  retention windows (0/30/365/2555) with the actor boundary at 7 years;
+  export quota failure leaves no row; account export completeness + tenant
+  isolation; foreign-notification scrubbing.
+- New browser spec `apps/web/e2e/entitlements-exports.spec.ts` (4 tests):
+  entitlement endpoint 401/200 with configured FREE limits; authenticated JSON
+  export 401 (problem document only, no content leak) / 200 attachment
+  `no-store` with owner data and no credentials; FREE second-export 402 with
+  the list staying at 1; settings screen shows server-configured plan/usage.
+
+Limits for unbuilt features (custom scoring rules, seats, attachment storage
+and max file, AI requests) are configured and surfaced through the endpoint
+but unenforceable until those features exist — documented, not faked.
+
+Verification (local PG 18): **59 files / 587 unit+integration tests** and
+**129/129 E2E** (3.4 min). Lint 0; typecheck 5/5; production build green.
+Coverage **93.45% lines / 89.56% statements** overall (89.24% statements
+before; core 97.91% vs 85% gate); `services/entitlements.ts` 100% lines,
+`services/data-rights.ts` 96.0% lines. One local full-suite E2E run showed 2
+transient `exports.spec.ts` failures that passed on isolated (4/4) and
+full-suite (129/129) re-run — load-induced flake, no code-path mechanism from
+this slice to export generation; watching in CI. CI verified on the pushed
+commit. See [M6_ENTITLEMENTS_EXPORT_MILESTONE.md](M6_ENTITLEMENTS_EXPORT_MILESTONE.md).

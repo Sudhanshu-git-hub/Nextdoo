@@ -18,21 +18,25 @@ non-billing MVP gaps**, prioritizing broken/incomplete notifications/durable job
 tracking/analytics, export/deletion, entitlement/authorization and task management.
 AI, billing integration, desktop and full offline mode remain excluded.
 
-The current locally verified milestone is **M5 cross-platform
-reliability, third bounded increment** (SY-10 5,000-mutation drain and
-§10.9 SLO qualification, on top of the conflict-resolution view +
-SY-06–SY-09 and the first increment: sync protocol v1 scenario matrix,
-offline capture, reconnect reconciliation, Today cached fallback/recovery):
-[M5_SYNC_SLO_MILESTONE.md](M5_SYNC_SLO_MILESTONE.md), built on
-[M5_CONFLICT_RESOLUTION_MILESTONE.md](M5_CONFLICT_RESOLUTION_MILESTONE.md)
-and [M5_SYNC_RELIABILITY_MILESTONE.md](M5_SYNC_RELIABILITY_MILESTONE.md).
-Final local validation: **58 test files / 576 unit+integration tests and
-125 browser/API scenarios** (real-browser offline mode, two-device E2E,
-5,000-mutation qualification in CI), lint, typecheck, coverage (89.24%
+The current locally verified milestone is **M6 commercial readiness,
+first bounded increment** (server-side enforcement of the PRD §18.1 limits
+that apply to features that exist today — FREE 30-day historical-analytics
+window and plan-based audit-history retention — the
+`GET /api/v1/account/entitlements` endpoint required by §18.1, and a new
+DB-backed + browser regression suite for the authenticated JSON export path
+and plan boundaries):
+[M6_ENTITLEMENTS_EXPORT_MILESTONE.md](M6_ENTITLEMENTS_EXPORT_MILESTONE.md),
+built on the verified M5 line ([M5_SYNC_SLO_MILESTONE.md](M5_SYNC_SLO_MILESTONE.md),
+[M5_CONFLICT_RESOLUTION_MILESTONE.md](M5_CONFLICT_RESOLUTION_MILESTONE.md),
+[M5_SYNC_RELIABILITY_MILESTONE.md](M5_SYNC_RELIABILITY_MILESTONE.md)).
+Final local validation: **59 test files / 587 unit+integration tests and
+129 browser/API scenarios** (real-browser offline mode, two-device E2E,
+5,000-mutation qualification in CI), lint, typecheck, coverage (89.56%
 statements; core 97.91% vs the 85% threshold) and build passed; no new
 migrations (existing tables reused). Remote CI is checked on the pushed
-commit and reported at milestone closure. This closes three bounded
-sync-reliability slices, **not all M5 or Phase 1**. The prior
+commit and reported at milestone closure. This closes one bounded
+commercial-readiness slice, **not all M6 or Phase 1** (no billing, Calendar
+sync, attachments, desktop or AI work started). The prior
 [M4 reporting milestone](M4_REPORTING_MILESTONE.md),
 [M4 score-corrections milestone](M4_SCORE_CORRECTIONS_MILESTONE.md),
 [tracking-durability milestone](TRACKING_DURABILITY_MILESTONE.md) and
@@ -49,7 +53,7 @@ notification and data-integrity acceptance was retained in the full run.
 | M3 Planning and execution | Workspace-local week task calendar/movement and Today, configured overnight workday guideline, focus/time workflows, durable in-app notifications, reminder status/history/read/snooze/cancel and bounded isolated dispatch retries, complete/reschedule; bounded recurrence generation, future rule edits, occurrence lifecycle and retries; day/week/month workspace-local calendar with full cursor pagination over the visible period per [CALENDAR_MILESTONE.md](CALENDAR_MILESTONE.md); complete provider-aware capacity planning — server full-collection workload vs configured overnight-aware workday, sync-delay `CAPACITY_UNKNOWN` rule (no feasibility claim while a connected calendar is out of sync), plan-gated calendar connections with suspend/reactivate on plan change and tenant-scoped list/disconnect endpoints per [M3_CAPACITY_PLANNING_MILESTONE.md](M3_CAPACITY_PLANNING_MILESTONE.md) | Offline timers; real browser/background push and enabled reminder email delivery; desktop delivery remains excluded from current work |
 | M4 Tracking and analytics | Ordered append-only events, shared versioned engine, durable outbox consumer/queue with fenced leases and five retries, due/cohort freshness, immutable input/history drilldown, owner single-task re-evaluation, numeric-score visibility and live workspace-local task/project summaries; **score corrections** (`DUE_DATE_CORRECTED`, `EXTERNALLY_BLOCKED`, `UNTRACKED_COMPLETION`, `EXCLUDED_FROM_ANALYTICS`) with actor/reason/audit, supersede-never-mutate history and correction-aware Unmeasured scoring, plus **bounded date-range recalculation** (90-day default, ≤366-day, day-chunked observable backfill, 10/hour/user limit) per [M4_SCORE_CORRECTIONS_MILESTONE.md](M4_SCORE_CORRECTIONS_MILESTONE.md); **workspace-local reporting and richer trends** — workspace-time-zone day/week windows with the configured week start, per-day trend points, recurrence adherence, most-rescheduled tasks, overloaded planning days, underestimated categories, focus-time trend, plain tag-attributed explanations and optional per-day review notes (PRD §7.8/§8.5) per [M4_REPORTING_MILESTONE.md](M4_REPORTING_MILESTONE.md) | Independent tracking/wellbeing controls and retention policy; unresolved TR-03/full TR matrix; routed alerts and sustained freshness/load SLO qualification |
 | M5 Cross-platform reliability | Sync protocol v1 hardened and scenario-verified — SY-01–SY-05 explicitly green (offline create + pull visibility, replay/duplicate, different-field merge, same-field conflict with preserved contents and resolution, delete-wins with tombstone propagation and restore), same-entity batch ordering, pull sequencing/cursor monotonicity, delete-of-deleted duplicate, completion preservation, tenant isolation across push/pull/cache; replay-safe online creates via the reserved `clientMutationId`; scoped IndexedDB primitives extended with per-workspace sync cursor, pull-side change/tombstone application, pending/needs-attention summaries and `reconcileOnce`; app-global reconcile loop (mount recovery, reconnect, new-work-while-online, stored 1 s–5 min jittered backoff, quarantine never auto-retries, needs-attention surfaced in the shell); offline quick capture (deterministic local parse, client-UUID durable enqueue, optimistic cached row, 4xx never enqueued, recurrence refused offline without losing text); Today cached fallback + recovery with tombstone-cleared cache per [M5_SYNC_RELIABILITY_MILESTONE.md](M5_SYNC_RELIABILITY_MILESTONE.md); conflict-resolution view (side-by-side per-field browse, choose `local`/`server` via the idempotent resolve endpoint, quarantined-mutation review with raw payload and retry, badge-linked, axe-clean) and SY-06–SY-09 multi-device scenarios (two-device completion, overlapping timers, 10-minute clock skew, batch-with-invalid mutation) plus two-device browser E2E (conflict browse/keyboard-resolve, offline capture cross-device + tombstone propagation, lost-ack idempotent retry + quarantine UI) per [M5_CONFLICT_RESOLUTION_MILESTONE.md](M5_CONFLICT_RESOLUTION_MILESTONE.md); SY-10 qualified (5,000-mutation 4-device drain: 100% of connected mutations ack < 5 s, 100% integrity, zero duplicates/loss/ordering/tombstone/tenant violations, 125/125 preserved snapshots, plan-cap interaction asserted) | Offline edits/deletes via the task editor and offline timers (only quick capture enqueues today); Windows Tauri/SQLite/WebView2 client, notifications, packaging/signing/update/rollback; per-field mixed adjudication of multi-field snapshots and conflict dashboards; multi-node/replica drain and sustained-hourly throughput measurement |
-| M6 Commercial readiness | Server entitlement limits; authenticated JSON export with legacy notification-reference privacy guards; reauthenticated deletion/grace/purge; audit trail; asynchronous expiring JSON/CSV exports (bounded worker generation, signed 24-hour downloads, plan quota plus durable hourly limit, purge-aware artifact deletion) per [DATA_EXPORT_MILESTONE.md](DATA_EXPORT_MILESTONE.md) | Real Google Calendar two-way OAuth/sync/revocation; provider billing/webhooks/refunds/reconciliation; attachments/upload/scan/download gating; support/status/dashboards and operational acceptance |
+| M6 Commercial readiness | Server entitlement limits; authenticated JSON export with legacy notification-reference privacy guards; reauthenticated deletion/grace/purge; audit trail; asynchronous expiring JSON/CSV exports (bounded worker generation, signed 24-hour downloads, plan quota plus durable hourly limit, purge-aware artifact deletion) per [DATA_EXPORT_MILESTONE.md](DATA_EXPORT_MILESTONE.md); entitlement endpoint `GET /api/v1/account/entitlements` (plan + configured §18.1 limits + live usage), FREE 30-day historical-analytics window enforced on the tracking summary endpoint (workspace-local boundary), plan-based audit-history retention window (None/30 d/1 y/7 y), and a DB-backed + browser regression suite for plan boundaries, tenant isolation, quota failure and export privacy per [M6_ENTITLEMENTS_EXPORT_MILESTONE.md](M6_ENTITLEMENTS_EXPORT_MILESTONE.md) | Real Google Calendar two-way OAuth/sync/revocation; provider billing/webhooks/refunds/reconciliation; attachments/upload/scan/download gating (limits configured and surfaced, feature unbuilt); seats/shared-workspace caps, custom scoring rules, AI quotas (features unbuilt); destructive retention/anonymization/legal-hold operations (open policy item); support/status/dashboards and operational acceptance |
 
 ### Specific current implementation evidence
 
@@ -88,6 +92,17 @@ notification and data-integrity acceptance was retained in the full run.
   payload-preserved, and the plan-cap (PRD §18.1) interaction asserted
   as its own test. No implementation changes were required. See
   [M5_SYNC_SLO_MILESTONE.md](M5_SYNC_SLO_MILESTONE.md).
+- Commercial readiness (M6 first increment): the §18.1 entitlement endpoint
+  is live (`GET /api/v1/account/entitlements`), the FREE 30-day
+  historical-analytics window is enforced server-side with a
+  workspace-local boundary, `audit.list` honors the plan retention window
+  (None/30 d/1 y/7 y) while the actor boundary and internal security
+  evidence are preserved, and 11 new DB-backed tests + 4 browser E2E
+  verify plan boundaries (200/201 tasks, 3/4 projects), plan-change
+  re-evaluation both directions, quota-failure no-row behavior, export
+  tenant isolation, and foreign-notification scrubbing. No billing,
+  Calendar, attachments, desktop or AI work started. See
+  [M6_ENTITLEMENTS_EXPORT_MILESTONE.md](M6_ENTITLEMENTS_EXPORT_MILESTONE.md).
 - Recurring creation is atomic; the shared DB generator, scheduled worker,
   lifecycle APIs, confirmation UI and paginated series management now have real-DB
   and browser evidence. Snapshot-less legacy scaffold rows remain unscheduled.
@@ -185,8 +200,18 @@ command. All release gates in §19.4 remain required, not only this checklist.
    and `exports.expire` worker jobs with claim/lease fencing, signed 24-hour download
    tokens, FREE 1/day quota plus durable 3-per-hour limit, tenant-scoped reads, artifact
    deletion on expiry and account purge; 9 integration regressions and 4 browser E2E
-   verified). Retention, backup deletion and distributed limits still need
-   operational resources.
+   verified). **Delivered (M6 first increment):** the §18.1 entitlement endpoint
+   (`GET /api/v1/account/entitlements`: plan + configured limits + live usage),
+   server-side enforcement of the FREE 30-day historical-analytics window
+   (workspace-local boundary, 402 beyond it, paid unbounded) and the plan-based
+   audit-history retention window (None/30 d/1 y/7 y) on `audit.list`, plus 11
+   DB-backed regression tests (200/201 task boundary, 3/4 project boundary with
+   downgrade preservation, plan-change re-evaluation both directions, retention
+   windows, export quota failure leaves no row, export tenant isolation and
+   foreign-notification scrubbing) and 4 browser E2E — see
+   [M6_ENTITLEMENTS_EXPORT_MILESTONE.md](M6_ENTITLEMENTS_EXPORT_MILESTONE.md).
+   Destructive retention/anonymization, backup deletion and distributed limits
+   still need operational resources and the open F15 policy decision.
 4. **Remaining task/planning UX:** **Delivered:** free-text task `location`
    end to end — migration 0016, shared contracts, create/update/read services,
    sync writable field, recurrence occurrence inheritance, editor UI, 6
