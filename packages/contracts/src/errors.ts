@@ -19,6 +19,8 @@ export const ERROR_CODES = [
   'EXPORT_NOT_READY',
   /** An export's 24-hour download window has elapsed. */
   'EXPORT_EXPIRED',
+  /** The attachment has not reached a CLEAN scan status (PRD §6.8). */
+  'ATTACHMENT_NOT_CLEAN',
   'PROVIDER_UNAVAILABLE',
   'INTERNAL_ERROR',
 ] as const;
@@ -38,6 +40,7 @@ const STATUS_BY_CODE: Record<ErrorCode, number> = {
   RATE_LIMITED: 429,
   EXPORT_NOT_READY: 409,
   EXPORT_EXPIRED: 410,
+  ATTACHMENT_NOT_CLEAN: 409,
   PROVIDER_UNAVAILABLE: 503,
   INTERNAL_ERROR: 500,
 };
@@ -55,6 +58,7 @@ const TITLE_BY_CODE: Record<ErrorCode, string> = {
   RATE_LIMITED: 'Too many requests',
   EXPORT_NOT_READY: 'Export not ready',
   EXPORT_EXPIRED: 'Export expired',
+  ATTACHMENT_NOT_CLEAN: 'Attachment not clean',
   PROVIDER_UNAVAILABLE: 'Upstream provider unavailable',
   INTERNAL_ERROR: 'Internal error',
 };

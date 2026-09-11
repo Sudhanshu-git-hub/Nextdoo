@@ -1,21 +1,23 @@
 import { and, eq, inArray, lte, or } from 'drizzle-orm';
 import type { Database } from './client';
-import { exports as exportsTable, idempotencyKeys, outbox, users, workspaces } from './schema';
+import { attachments, exports as exportsTable, idempotencyKeys, outbox, users, workspaces } from './schema';
 import type { ExportArtifactStore } from './export-storage';
+import type { AttachmentObjectStore } from './attachment-storage';
 
 /**
  * Shared by API service and worker; audit/security evidence is NOT cascaded.
- * Export artifact files are removed after the row cascade commits — the keys
- * are enumerated under the same lock, so no private export file outlives the
- * account (PRD §11.9).
+ * Export artifact and attachment files are removed after the row cascade
+ * commits — the keys are enumerated under the same lock, so no private file
+ * outlives the account (PRD §11.9).
  */
 export async function purgeAccount(
   db: Database,
   userId: string,
   cutoff: Date,
-  opts: { artifactStore?: ExportArtifactStore } = {},
+  opts: { artifactStore?: ExportArtifactStore; attachmentStore?: AttachmentObjectStore } = {},
 ): Promise<boolean> {
   const objectKeys: string[] = [];
+  const attachmentKeys: string[] = [];
   const purged = await db.transaction(async (tx) => {
     // Recheck under lock: a concurrent cancellation must not be ignored after
     // the worker's candidate scan. Empty/stale candidates are harmless retries.
@@ -31,6 +33,12 @@ export async function purgeAccount(
     for (const row of artifactRows) {
       if (row.objectKey) objectKeys.push(row.objectKey);
     }
+    // Attachment rows cascade with their task/workspace; their files do not.
+    const attachmentRows = await tx
+      .select({ objectKey: attachments.objectKey })
+      .from(attachments)
+      .where(or(eq(attachments.uploaderId, userId), ids.length ? inArray(attachments.workspaceId, ids) : undefined));
+    for (const row of attachmentRows) attachmentKeys.push(row.objectKey);
     // These tables intentionally have no FK; don't leave private replay bodies
     // or undelivered account messages behind after the domain rows are purged.
     await tx.delete(idempotencyKeys).where(eq(idempotencyKeys.userId, userId));
@@ -41,6 +49,11 @@ export async function purgeAccount(
   if (purged && opts.artifactStore) {
     for (const key of objectKeys) {
       try { await opts.artifactStore.remove(key); } catch { /* one bad file must not block purging */ }
+    }
+  }
+  if (purged && opts.attachmentStore) {
+    for (const key of attachmentKeys) {
+      try { await opts.attachmentStore.remove(key); } catch { /* one bad file must not block purging */ }
     }
   }
   return purged;

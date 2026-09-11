@@ -22,6 +22,10 @@ const envSchema = z.object({
   S3_BUCKET: z.string().optional(),
   S3_ACCESS_KEY_ID: z.string().optional(),
   S3_SECRET_ACCESS_KEY: z.string().optional(),
+  /** Attachment file data root (default: ./var/attachments; durable local store). */
+  ATTACHMENT_STORAGE_DIR: z.string().optional(),
+  /** ClamAV `clamscan` binary for attachment malware scanning (default: clamscan). */
+  ATTACHMENT_SCAN_BIN: z.string().optional(),
   /** SMTP transport for the durable worker. Missing production transport fails closed. */
   SMTP_URL: z.string().optional(),
   MAIL_FROM: z.string().default('NEXTDOO <no-reply@nextdoo.local>'),
@@ -49,6 +53,8 @@ export function getEnv(): Env {
     S3_BUCKET: process.env.S3_BUCKET,
     S3_ACCESS_KEY_ID: process.env.S3_ACCESS_KEY_ID,
     S3_SECRET_ACCESS_KEY: process.env.S3_SECRET_ACCESS_KEY,
+    ATTACHMENT_STORAGE_DIR: process.env.ATTACHMENT_STORAGE_DIR,
+    ATTACHMENT_SCAN_BIN: process.env.ATTACHMENT_SCAN_BIN,
     SMTP_URL: process.env.SMTP_URL,
     MAIL_FROM: process.env.MAIL_FROM,
     LOG_LEVEL: process.env.LOG_LEVEL,
@@ -68,7 +74,11 @@ export function features() {
   return {
     googleCalendar: Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET),
     billing: Boolean(env.STRIPE_SECRET_KEY),
-    attachments: Boolean(env.S3_BUCKET && env.S3_ACCESS_KEY_ID),
+    // Attachments run on the durable local store by default; managed object
+    // storage (S3) is the documented operational switching point. Scanner
+    // availability is a runtime health dimension, not a feature gate —
+    // downloads fail closed on scan status either way.
+    attachments: true,
     redis: Boolean(env.REDIS_URL),
     email: Boolean(env.SMTP_URL),
   };

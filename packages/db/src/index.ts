@@ -30,3 +30,23 @@ export {
   type ExportGenerationResult,
   type DailyRollup,
 } from './export-work';
+export {
+  createDurableFileAttachmentStore,
+  assertAttachmentObjectKey,
+  defaultAttachmentStorageRoot,
+  type AttachmentObjectStore,
+} from './attachment-storage';
+export {
+  createClamavScanner,
+  attachmentScannerHealthy,
+  defaultClamavBin,
+  type AttachmentScanner,
+  type AttachmentScanVerdict,
+  type ClamavBin,
+} from './attachment-scanner';
+export {
+  runAttachmentScan,
+  recoverStaleAttachmentClaims,
+  type AttachmentScanResult,
+  type AttachmentScanFailure,
+} from './attachment-work';

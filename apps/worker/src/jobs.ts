@@ -1,6 +1,6 @@
 import { deliverMail } from './mail-delivery';
 import { and, eq, isNotNull, isNull, lt, lte, sql as raw } from 'drizzle-orm';
-import { authTokens, idempotencyKeys, reminders, users, purgeAccount, deliverDueReminders, runRecurrenceGeneration, relayTrackingOutbox, reconcileTracking, runTrackingEvaluation, runTrackingBackfill, createDurableFileExportStore, expireExports, runExportGeneration } from '@nextdoo/db';
+import { authTokens, idempotencyKeys, reminders, users, purgeAccount, deliverDueReminders, runRecurrenceGeneration, relayTrackingOutbox, reconcileTracking, runTrackingEvaluation, runTrackingBackfill, createDurableFileExportStore, expireExports, runExportGeneration, createDurableFileAttachmentStore, createClamavScanner, defaultClamavBin, runAttachmentScan } from '@nextdoo/db';
 import { db, logger, type Job, type JobResult } from './runtime';
 
 /**
@@ -87,6 +87,8 @@ const backfillTrackingJob: Job = {
 
 /** Shared artifact store for generation, expiry and purge cleanup. */
 const exportStore = createDurableFileExportStore();
+/** Shared attachment file store for scanning and purge cleanup. */
+const attachmentStore = createDurableFileAttachmentStore();
 
 /** Deletes accounts whose 30-day grace period has elapsed (PRD §12.4). */
 const purgeAccounts: Job = {
@@ -105,7 +107,7 @@ const purgeAccounts: Job = {
     for (const user of due) {
       try {
         // Artifact files are removed alongside the rows (PRD §11.9).
-        if (!await purgeAccount(db, user.id, cutoff, { artifactStore: exportStore })) continue;
+        if (!await purgeAccount(db, user.id, cutoff, { artifactStore: exportStore, attachmentStore })) continue;
         purged += 1;
         // Retain only the opaque identifier here; audit evidence follows its own retention.
         logger.info('account.purged', { userId: user.id });
@@ -152,6 +154,34 @@ const expireExportArtifacts: Job = {
     const result = await expireExports(db, { store: exportStore });
     if (result.expired) logger.info('exports.expired', result);
     return { processed: result.expired };
+  },
+};
+
+/**
+ * Scans uploaded attachments with the real ClamAV engine (PRD §6.8, §14:
+ * attachment.scan, on upload, 3 attempts, quarantine on exhaustion). Fail
+ * closed: an unavailable engine consumes retries and ends in FAILED — a file
+ * never reaches CLEAN without a successful scan, so nothing unsafe is served.
+ */
+const scanAttachments: Job = {
+  name: 'attachment.scan',
+  intervalMs: 10_000,
+  async run(): Promise<JobResult> {
+    const result = await runAttachmentScan(db, {
+      store: attachmentStore,
+      scanner: createClamavScanner(defaultClamavBin()),
+    });
+    for (const failure of result.failures) {
+      logger.error('attachment.scan.quarantined', {
+        attachmentId: failure.attachmentId,
+        attempts: failure.attempts,
+        error: failure.error,
+        reference: `attachment-${failure.attachmentId}`,
+      });
+    }
+    if (result.retrying) logger.warn('attachment.scan.retrying', { retrying: result.retrying });
+    if (result.deferred) logger.warn('attachment.scan.deferred', { deferred: result.deferred });
+    return { processed: result.processed, details: { ...result } };
   },
 };
 
@@ -223,6 +253,7 @@ export const JOBS: Job[] = [
   backfillTrackingJob,
   generateExports,
   expireExportArtifacts,
+  scanAttachments,
   purgeAccounts,
   purgeAuthTokens,
   purgeIdempotencyKeys,

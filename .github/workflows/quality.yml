@@ -10,7 +10,7 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     services:
       postgres:
         image: postgres:16
@@ -40,6 +40,22 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @nextdoo/web exec playwright install --with-deps chromium
+      # The attachment E2E suite drives the REAL ClamAV engine end to end and
+      # fails closed without it (no mocked scanner, no skip). Install the
+      # engine + fresh signature database before any test step.
+      - name: Install ClamAV (real malware engine for attachment E2E)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clamav
+          freshclam || (sleep 15 && freshclam)
+      - name: Verify ClamAV detects the EICAR test file
+        run: |
+          clamscan --version
+          printf '%s' 'X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*' > /tmp/nextdoo-eicar.txt
+          clamscan /tmp/nextdoo-eicar.txt > /tmp/nextdoo-eicar-scan.log 2>&1
+          code=$?
+          cat /tmp/nextdoo-eicar-scan.log
+          test "$code" -eq 1
       - run: pnpm audit --audit-level high
       - run: pnpm db:migrate && pnpm db:migrate
       - run: pnpm lint

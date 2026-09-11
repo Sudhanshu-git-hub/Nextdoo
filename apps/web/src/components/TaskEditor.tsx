@@ -1,4 +1,5 @@
 'use client';
+import { TaskAttachments } from './TaskAttachments';
 import { TaskLifecycleActions } from './TaskLifecycleActions';
 import { TaskRecurrenceActions } from './TaskRecurrenceActions';
 import { TaskRelations } from './TaskRelations';
@@ -155,6 +156,9 @@ function TaskEditorForm({ task, onClose, onSaved, onNavigate, onBack }: {
     {draft && <TaskRecurrenceActions timeZone={taskTimeZone} taskId={task.id} version={version} recurrenceId={recurrenceId}
       disabled={busy || relationsBusy || lifecycleBusy || dirty || relationDraft || !!conflict}
       onBusyChange={setRecurrenceBusy} onDraftChange={setRecurrenceDraft} onReload={reloadDetails} onSaved={onSaved} />}
+    {draft && <div style={{ marginTop: 20 }}>
+      <TaskAttachments taskId={task.id} disabled={busy || relationsBusy || lifecycleBusy || recurrenceBusy || relationDraft || recurrenceDraft || !!conflict} />
+    </div>}
     {draft && <div style={{ marginTop: 20 }}><h3>Task lifecycle</h3>
       <TaskLifecycleActions task={{ id: task.id, title: draft.title, version, status: taskStatus }}
         disabled={busy || relationsBusy || recurrenceBusy || recurrenceDraft || dirty || relationDraft || recurrenceDraft || !!conflict} onBusyChange={setLifecycleBusy}

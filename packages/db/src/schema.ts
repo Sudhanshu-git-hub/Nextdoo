@@ -614,12 +614,21 @@ export const attachments = pgTable(
     scanStatus: scanStatusEnum('scan_status').notNull().default('PENDING'),
     uploadedAt: timestamp('uploaded_at', { withTimezone: true }),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    /** Initial attempt plus two retries (PRD §14: attachment.scan, 3 attempts). */
+    attempts: integer('attempts').notNull().default(0),
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    claimToken: uuid('claim_token'),
+    leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),
+    scanError: varchar('scan_error', { length: 300 }),
     ...timestamps,
   },
   (t) => [
     index('attachments_task_idx').on(t.taskId),
     uniqueIndex('attachments_object_key_unique').on(t.objectKey),
     check('attachments_size_positive', sql`${t.sizeBytes} > 0`),
+    index('attachments_scan_idx').on(t.nextAttemptAt).where(sql`${t.scanStatus} = 'PENDING' AND ${t.uploadedAt} IS NOT NULL AND ${t.claimToken} IS NULL AND ${t.attempts} < 3`),
+    index('attachments_claimed_idx').on(t.leaseExpiresAt).where(sql`${t.claimToken} IS NOT NULL`),
   ],
 );
 

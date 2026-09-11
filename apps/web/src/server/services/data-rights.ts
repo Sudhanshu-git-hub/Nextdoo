@@ -3,6 +3,7 @@ import { and, desc, eq, gte, inArray, isNotNull, isNull, like, lte, or } from 'd
 import { AppError } from '@nextdoo/contracts';
 import {
   purgeAccount,
+  attachments,
   auditLogs,
   projects,
   reminders,
@@ -48,6 +49,8 @@ export interface ExportBundle {
   trackingEvents: unknown[];
   trackingResults: unknown[];
   auditLogs: unknown[];
+  /** Attachment metadata only — file bytes are never part of the snapshot. */
+  attachments: unknown[];
   preferences: unknown[];
   recurrenceRules: unknown[];
   taskOccurrences: unknown[];
@@ -91,7 +94,7 @@ export async function buildExport(userId: string): Promise<ExportBundle> {
 
   const [
     workspaceRows, projectRows, sectionRows, tagRows, taskRows,
-    reminderRows, timerRows, eventRows, resultRows, auditRows,
+    reminderRows, timerRows, eventRows, resultRows, auditRows, attachmentRows,
   ] = await Promise.all([
     db.select().from(workspaces).where(inArray(workspaces.id, workspaceIds)),
     db.select().from(projects).where(inArray(projects.workspaceId, workspaceIds)),
@@ -103,6 +106,7 @@ export async function buildExport(userId: string): Promise<ExportBundle> {
     db.select().from(trackingEvents).where(inArray(trackingEvents.workspaceId, workspaceIds)),
     db.select().from(trackingResults).where(inArray(trackingResults.workspaceId, workspaceIds)),
     db.select().from(auditLogs).where(or(inArray(auditLogs.workspaceId, workspaceIds), and(eq(auditLogs.actorId, userId), isNull(auditLogs.workspaceId)))),
+    db.select().from(attachments).where(inArray(attachments.workspaceId, workspaceIds)),
   ]);
 
   const taskIds = taskRows.map((t) => t.id);
@@ -147,6 +151,7 @@ export async function buildExport(userId: string): Promise<ExportBundle> {
     auditLogs: auditRows,
     preferences, recurrenceRules: rules, taskOccurrences: occurrences, taskDependencies: dependencies,
     trackingCorrections: corrections, notifications: notices.filter((n) => n.workspaceId === null || workspaceIds.includes(n.workspaceId)).map((n) => n.taskId && !ownedTaskIds.has(n.taskId) ? { ...n, taskId: null, reminderId: null, title: 'Reminder for unavailable task', body: null } : n), subscriptions: plans, sessions: sessionRows, devices,
+    attachments: attachmentRows,
   };
   }, { isolationLevel: 'repeatable read' });
 }
