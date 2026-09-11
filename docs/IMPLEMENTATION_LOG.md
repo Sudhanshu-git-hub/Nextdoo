@@ -861,3 +861,25 @@ typecheck, production build, coverage thresholds (core 97.91% lines /
 90.58% branches / 100% functions), migration replay (idempotent), E2E
 discovery (144). See
 [M6_ACCOUNT_SESSIONS_MILESTONE.md](M6_ACCOUNT_SESSIONS_MILESTONE.md).
+
+Closure (final CI verification): after this milestone's first commit, CI
+failed 5 consecutive runs on the pre-existing data-export E2E test (30 s
+timeout at `waitForEvent('download')`). Reproduced with a real Chromium 149
+against a local production build (the sandbox runs the npm-bundled
+`@sparticuz/chromium`, self-contained libs) and root-caused before any
+change: the new Sessions card made the settings grid hold 8 cards, moving
+the DataExport card next to the audit-log card; the export table's
+min-content width overflows the card, so the Download link rendered under
+the neighbouring card (which paints on top). `toBeVisible()` passes (no
+occlusion check) but the click's actionability never passes, so the click
+hung and the timeout fired at `waitForEvent('download')`. Fix (`9e6ca88`):
+wrap the table in a `.table-scroll` (`overflow-x: auto`) container — no
+assertion weakened or removed; the export E2E then passes locally in ~1 s
+(4/4 export tests). A pre-existing shared-DB batch race in
+`export-workflow.integration.test.ts` (flaky `expected 2 to be 1` at the
+retry count, hit on the push run of `9e6ca88`) was hardened with the file's
+own already-documented lower-bound pattern; row-level product guarantees
+are unchanged (`205133f`). Final CI verified green on tip `205133f`: push
+run `34645716502` and pull-request run `34645719988`, full pipeline
+including the 144-test real-browser E2E suite. The temporary diagnostic
+spec was deleted with the fix.

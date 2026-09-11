@@ -1,6 +1,6 @@
 # M6 — increment 5: account & session management
 
-Date: 2026-09-11 · Branch: `arena/01a085b7-nextdoo` · Status: **complete** (this commit)
+Date: 2026-09-11 (closed 2026-09-12) · Branch: `arena/01a085b7-nextdoo` · Status: **complete, CI-verified on `205133f`**
 
 Bounded M6 slice per PRD §6.1 (MVP behavior "session listing/revocation"),
 §11.2, §14.3 and the §6.1 acceptance criterion *"Sessions can be revoked
@@ -84,18 +84,71 @@ material.
   strict fields, origin, idempotency), and axe + keyboard accessibility of the
   sessions card. E2E total: **144** tests (138 before this milestone).
 
-Note: the local sandbox cannot launch Chromium (missing NSS libraries, no
-egress for the dependency install), so the browser specs are demonstrated by
-GitHub CI (real Chromium + production server + provisioned PostgreSQL), the
-same pattern as every prior milestone. Local functional proof came from the
-integration suite plus the production-server curl smoke test above.
+Note: at milestone commit time the local sandbox could not launch the
+bundled Chromium (missing NSS libraries, no egress for a system install),
+so the browser specs were demonstrated by GitHub CI (real Chromium +
+production server + provisioned PostgreSQL), the same pattern as every
+prior milestone. During closure (see below) the sandbox was proven to run a
+real Chromium 149 from the npm-bundled `@sparticuz/chromium` package
+(self-contained native libraries), and that real local browser was used to
+reproduce and verify the exports regression fix.
 
 ## Validation
 
 Full local validation passed: 705/705 unit+integration tests, lint
 (0 warnings), typecheck, production build, migration replay (idempotent),
-E2E discovery (144 tests), plus the production-server smoke test. CI status
-is recorded in the completion ledger entry when the run finishes.
+E2E discovery (144 tests), plus the production-server smoke test.
+
+## Closure: exports E2E regression — root cause, fix, final CI
+
+After this milestone's first commit, CI failed 5 consecutive runs with the
+pre-existing data-export E2E test timing out (30 s, at
+`page.waitForEvent('download')`). It was reproduced with a real Chromium
+149 against a local production build and root-caused **before any change**:
+
+- The new Sessions card made the settings `grid grid-2` (3 columns at
+  1280 px) hold 8 cards, moving the DataExport card from the rightmost
+  column to a column whose right neighbour is the audit-log card.
+- The export table's min-content width (four columns of dates/status)
+  exceeds the card's `1fr` width, so the plain `<table>` overflowed the
+  card edge; the Download link in the ACTION column rendered **under the
+  neighbouring card**, which paints on top.
+- `toBeVisible()` passes (Playwright does not check occlusion), but the
+  click's actionability ("receives pointer events") never passes —
+  `elementFromPoint` at the link's center returned the neighbouring
+  `<section class="card">` — so the click hung and the 30 s test timeout
+  fired at `waitForEvent('download')`. The download never started. CI
+  annotations from the diagnostic replica confirmed the same signature:
+  its `download-click` step hung past its 24 s guard.
+
+**Fix (`9e6ca88`)**: the table is wrapped in a `.table-scroll`
+(`overflow-x: auto`) container so it scrolls inside the card instead of
+overflowing it. No assertion was weakened or removed; with a real local
+Chromium the export E2E test passes in ~1 s (was a deterministic 30 s
+timeout), the full local E2E suite is green (138/139; the one skipped
+suite requires a real ClamAV engine, which the sandbox cannot install —
+CI provides it), and 705/705 unit+integration tests, lint, typecheck and
+the production build are green. The temporary diagnostic spec
+(`exports-diag2.spec.ts`) was deleted with the fix.
+
+**Pre-existing test race fixed along the way (disclosed)**: the push run
+of `9e6ca88` hit a flaky assertion in
+`export-workflow.integration.test.ts` (`expected 2 to be 1` at the
+`pass.retrying` check), unrelated to the UI fix. The generation batch is
+global over all due PENDING exports, and
+`entitlements.export.integration.test.ts` leaves a due PENDING row in the
+shared scratch database; when its creation lands in the retry loop's
+window the batch counts 2. This is the same shared-DB race class the file
+already documents and mitigates in its first test, so the identical
+lower-bound pattern was applied to the retry/exhaustion assertions
+(`205133f`); every product-behavior guarantee (attempts 1/2/3, error
+text, backoff into the future, FAILED status, failure notification) stays
+pinned at row level for the suite's own export.
+
+**Final CI (verified green on the closed tip `205133f`)**: push run
+`34645716502` and pull-request run `34645719988` — full pipeline green,
+including the complete 144-test real-browser E2E suite and the
+production-server smoke test.
 
 ## Remaining account/security work (not in this scope)
 
