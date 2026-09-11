@@ -105,7 +105,12 @@ it('JSON export is generated durably, scoped, and ready for 24 hours', async () 
     expect(summary.downloadUrl).toBeNull();
 
     const result = await runExportGeneration(getDb(), { store: s });
-    expect(result.processed).toBe(1);
+    // The batch is global (all due PENDING exports, limit 5): parallel
+    // suites on the shared test database may contribute rows, so only the
+    // batch's lower bound is asserted here; the row-level checks below pin
+    // this suite's own export. (Same shared-DB race class as the 2026-09-11
+    // CI flake, push run of 818a364's predecessor.)
+    expect(result.processed).toBeGreaterThanOrEqual(1);
     expect(result.failed).toBe(0);
 
     const row = (await getDb().select().from(exports).where(eq(exports.id, summary.id)))[0]!;
@@ -196,7 +201,7 @@ it('failures retry with backoff and exhaust into a visible failure notification'
 
     // Recovery after the fault clears: a new request generates normally.
     const fresh = await requestExport(actor, { format: 'json' });
-    expect((await runExportGeneration(getDb(), { store: s })).processed).toBe(1);
+    expect((await runExportGeneration(getDb(), { store: s })).processed).toBeGreaterThanOrEqual(1);
     expect((await getDb().select().from(exports).where(eq(exports.id, fresh.id)))[0]!.status).toBe('READY');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -213,7 +218,7 @@ it('a stale claim is reclaimed without double counting, and a delayed worker can
           attempts=1, next_attempt_at=clock_timestamp() + interval '2 minutes'
       where id=${id}`);
     const pass = await runExportGeneration(getDb(), { store: s });
-    expect(pass.processed).toBe(1);
+    expect(pass.processed).toBeGreaterThanOrEqual(1);
     const row = (await getDb().select().from(exports).where(eq(exports.id, id)))[0]!;
     expect(row.status).toBe('READY');
     expect(row.attempts).toBe(2); // the crashed attempt kept its count
@@ -228,7 +233,9 @@ it('a stale claim is reclaimed without double counting, and a delayed worker can
           expires_at=null, completed_at=null, object_key=null
       where id=${id}`);
     const pass2 = await runExportGeneration(getDb(), { store: s });
-    expect(pass2.processed).toBe(0);
+    // (processed is not asserted: it is a global batch count that parallel
+    // suites' rows can shift; the terminal state of this suite's own claim —
+    // FAILED with STALE_EXPORT_CLAIM below — is what the test pins.)
     expect(pass2.failed).toBe(1);
     const after = (await getDb().select().from(exports).where(eq(exports.id, id)))[0]!;
     expect(after.status).toBe('FAILED');
