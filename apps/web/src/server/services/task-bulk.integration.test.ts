@@ -18,8 +18,13 @@ async function fixture() {
  for (const title of ['First', 'Second']) rows.push(await createTask(actor, { workspaceId: actor.workspaceId, title, priority: 'HIGH', tagIds: [], dueAt: '2026-09-12T12:00:00Z' }));
  return { actor, rows, input: { workspaceId: actor.workspaceId, tasks: rows.map(({ id, version }) => ({ id, version })) } };
 }
+// Deterministic ordering: these selects are compared with toEqual, and a
+// bare WHERE (no ORDER BY) lets Postgres return the same rows in different
+// physical/plan order under concurrent load from other test files sharing
+// the database (observed CI flake, 2026-09-11 push run of bd773f9 — the
+// row sets were identical, only the order differed).
 async function snapshot(workspaceId: string) {
- return Promise.all([getDb().select().from(tasks).where(eq(tasks.workspaceId, workspaceId)), getDb().select().from(trackingEvents).where(eq(trackingEvents.workspaceId, workspaceId)), getDb().select().from(syncChanges).where(eq(syncChanges.workspaceId, workspaceId)), getDb().select().from(outbox).where(eq(outbox.workspaceId, workspaceId)), getDb().select().from(auditLogs).where(eq(auditLogs.workspaceId, workspaceId)), getDb().select().from(reminders).where(eq(reminders.workspaceId, workspaceId)), getDb().select().from(trackingResults).where(eq(trackingResults.workspaceId, workspaceId))]);
+ return Promise.all([getDb().select().from(tasks).where(eq(tasks.workspaceId, workspaceId)).orderBy(tasks.id), getDb().select().from(trackingEvents).where(eq(trackingEvents.workspaceId, workspaceId)).orderBy(trackingEvents.sequence), getDb().select().from(syncChanges).where(eq(syncChanges.workspaceId, workspaceId)).orderBy(syncChanges.sequence), getDb().select().from(outbox).where(eq(outbox.workspaceId, workspaceId)).orderBy(outbox.id), getDb().select().from(auditLogs).where(eq(auditLogs.workspaceId, workspaceId)).orderBy(auditLogs.id), getDb().select().from(reminders).where(eq(reminders.workspaceId, workspaceId)).orderBy(reminders.id), getDb().select().from(trackingResults).where(eq(trackingResults.workspaceId, workspaceId)).orderBy(trackingResults.id)]);
 }
 for (const operation of ['complete', 'archive', 'reschedule'] as const) it(`atomic ${operation} uses existing events, versions and reminder semantics`, async () => {
  const { actor, rows, input } = await fixture();
