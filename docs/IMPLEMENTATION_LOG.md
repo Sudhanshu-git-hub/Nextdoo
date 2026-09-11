@@ -792,4 +792,10 @@ still required for the live sandbox pass (test-mode only): see
 [M6_BILLING_CORE_MILESTONE.md](M6_BILLING_CORE_MILESTONE.md) §"What is
 still required for live sandbox verification".
 
-CI: (recorded after the CI run for this tip.)
+CI: tip `9adefa7`, run 34598366098 — **all steps green** (install,
+Playwright Chromium, ClamAV + EICAR, audit, `db:migrate` ×2 — migration
+0020 idempotency proven —, lint, typecheck, test:coverage, build,
+`playwright test --retries=2` with **138/138 E2E, no failures**; the
+failed-E2E annotation step was skipped). Run logs unreachable from the
+session (results-receiver EOF, same as M6-i1) — step/annotation status
+is the verification record.

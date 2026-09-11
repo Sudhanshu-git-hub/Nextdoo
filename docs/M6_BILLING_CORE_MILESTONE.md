@@ -188,8 +188,18 @@ test secret or a stubbed REST call.
 
 ## CI outcomes (recorded as verified)
 
-(Updated after the CI run — see the implementation log entry for this
-milestone.)
+CI run for tip `9adefa7` (run 34598366098) — **all steps green**:
+`pnpm install --frozen-lockfile`, Playwright Chromium install, ClamAV
+install + EICAR verification, `pnpm audit --audit-level high`,
+`pnpm db:migrate && pnpm db:migrate` (migration 0020 proven idempotent
+by the double run), `pnpm lint`, `pnpm typecheck`, `pnpm test:coverage`
+(full unit + integration suite, incl. the 62 package tests and the 31
+lifecycle tests), `pnpm build`, and
+`pnpm --filter @nextdoo/web exec playwright test --retries=2` —
+**138 E2E tests, no failures** (the failed-E2E annotation step was
+skipped, i.e. nothing to surface). Run logs remain unreachable from this
+session (results-receiver EOF, persistent since M6-i1); step/annotation
+status is the verification record.
 
 ## What is still required for live sandbox verification (exact list)
 
