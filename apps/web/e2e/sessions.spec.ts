@@ -80,7 +80,8 @@ test('revoking the current session signs that client out at once', async ({ page
     await expect(cardB.locator('li')).toHaveCount(2);
     const currentRow = cardB.locator('li').filter({ has: pageB.getByText('This device') });
     pageB.once('dialog', (d) => d.accept());
-    await currentRow.getByRole('button', { name: /Revoke & sign out/i }).click();
+    // The button's accessible name is its aria-label (aria-label wins over text).
+    await currentRow.getByRole('button', { name: 'Revoke this session and sign out' }).click();
     await expect(pageB).toHaveURL(/\/login/);
     expect((await pageB.request.get('/api/v1/me')).status()).toBe(401);
   } finally {
