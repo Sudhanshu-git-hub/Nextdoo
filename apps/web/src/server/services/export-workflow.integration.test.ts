@@ -181,7 +181,12 @@ it('failures retry with backoff and exhaust into a visible failure notification'
     };
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       const pass = await runExportGeneration(getDb(), { store: failing });
-      expect(pass.retrying).toBe(1);
+      // The batch is global: parallel suites on the shared test database
+      // (e.g. entitlements.export) may contribute due PENDING rows, so only
+      // the batch's lower bound is asserted; the row-level checks below pin
+      // this suite's own export. (Same shared-DB race class as the 2026-09-11
+      // CI flake, push run of 818a364's predecessor.)
+      expect(pass.retrying).toBeGreaterThanOrEqual(1);
       const row = (await getDb().select().from(exports).where(eq(exports.id, id)))[0]!;
       expect(row.status).toBe('PENDING');
       expect(row.attempts).toBe(attempt);
@@ -191,8 +196,8 @@ it('failures retry with backoff and exhaust into a visible failure notification'
       await forceDue(id);
     }
     const exhausted = await runExportGeneration(getDb(), { store: failing });
-    expect(exhausted.failed).toBe(1);
-    expect(exhausted.failures[0]!.exportId).toBe(id);
+    expect(exhausted.failed).toBeGreaterThanOrEqual(1);
+    expect(exhausted.failures.some((f) => f.exportId === id)).toBe(true);
     const row = (await getDb().select().from(exports).where(eq(exports.id, id)))[0]!;
     expect(row.status).toBe('FAILED');
     expect(row.attempts).toBe(3);
