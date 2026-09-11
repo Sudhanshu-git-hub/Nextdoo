@@ -9,7 +9,15 @@ export const dynamic = 'force-dynamic';
 export default async function SettingsPage() {
   const auth = await requireAuth();
   const entitlements = await getEntitlementSnapshot(auth.userId, auth.workspaceId);
-  const profile = await getProfile(auth.userId);
+  // A transient profile read must not 500 the whole settings page: the auth
+  // context already carries the session-joined time zone, so fall back to it.
+  let profile: { name: string | null; timeZone: string };
+  try {
+    const p = await getProfile(auth.userId);
+    profile = { name: p.name, timeZone: p.timeZone };
+  } catch {
+    profile = { name: null, timeZone: auth.timeZone };
+  }
 
   return (
     /* SettingsView reads search params for the deletion-cancelled notice. */
@@ -18,7 +26,7 @@ export default async function SettingsPage() {
         email={auth.email}
         emailVerified={auth.emailVerified}
         entitlements={entitlements}
-        profile={{ name: profile.name, timeZone: profile.timeZone }}
+        profile={profile}
       />
     </Suspense>
   );

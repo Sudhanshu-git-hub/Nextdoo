@@ -41,14 +41,14 @@ test('settings lists both devices; revoking one signs it out immediately (measur
     await pageB.goto('/settings');
     const cardB = pageB.getByTestId('sessions-card');
     await expect(cardB.getByText('This device')).toHaveCount(1);
-    expect(await cardB.locator('li').count()).toBe(2);
+    await expect(cardB.locator('li')).toHaveCount(2);
 
     // Revoke the row that is NOT this device.
     const otherRow = cardB.locator('li').filter({ hasNot: pageB.getByText('This device') });
     pageB.once('dialog', (d) => d.accept());
     await otherRow.getByRole('button').click();
     await expect(cardB.getByRole('status')).toContainText('Session revoked.');
-    expect(await cardB.locator('li').count()).toBe(1);
+    await expect(cardB.locator('li')).toHaveCount(1);
 
     // The revoked device's next request must 401 — measured.
     const t0 = Date.now();
@@ -76,6 +76,8 @@ test('revoking the current session signs that client out at once', async ({ page
     await secondDevice(pageB, email);
     await pageB.goto('/settings');
     const cardB = pageB.getByTestId('sessions-card');
+    await expect(cardB.getByText('This device')).toHaveCount(1);
+    await expect(cardB.locator('li')).toHaveCount(2);
     const currentRow = cardB.locator('li').filter({ has: pageB.getByText('This device') });
     pageB.once('dialog', (d) => d.accept());
     await currentRow.getByRole('button', { name: /Revoke & sign out/i }).click();
@@ -94,7 +96,7 @@ test('sign out everywhere revokes ALL sessions, including the caller’s (measur
     await secondDevice(pageB, email);
     await pageB.goto('/settings');
     const cardB = pageB.getByTestId('sessions-card');
-    expect(await cardB.locator('li').count()).toBe(2);
+    await expect(cardB.locator('li')).toHaveCount(2);
 
     pageB.once('dialog', (d) => d.accept());
     await cardB.getByRole('button', { name: 'Sign out everywhere', exact: true }).click();
@@ -203,7 +205,7 @@ test('sessions area is accessible (axe) and works from the keyboard', async ({ p
     pageB.once('dialog', (d) => d.accept());
     await pageB.keyboard.press('Enter');
     await expect(card.getByRole('status')).toContainText('Session revoked.');
-    expect(await card.locator('li').count()).toBe(1);
+    await expect(card.locator('li')).toHaveCount(1);
   } finally {
     await ctxB.close();
   }
