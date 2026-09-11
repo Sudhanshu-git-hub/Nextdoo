@@ -82,7 +82,9 @@ test('diag2: exact replica of exports test 1 with browser capture', async ({ pag
     if (c.status !== 'PENDING') throw new Error(`status ${c.status}`);
     const replay = await page.request.post('/api/v1/exports', { headers: { ...ORIGIN, 'Idempotency-Key': idemKey }, data: { format: 'json' } });
     if (replay.status() !== 200) throw new Error(`replay ${replay.status}`);
-    if (JSON.stringify(await replay.json()) !== JSON.stringify(c)) throw new Error('replay mismatch');
+    // Same semantics as the real test: deep-equal (the idempotency store
+    // re-serializes stored responses, so key order may differ).
+    expect(await replay.json()).toEqual(c);
     const list = await (await page.request.get('/api/v1/exports')).json();
     if (list.data.length !== 1) throw new Error(`list len ${list.data.length}`);
     pending = c;
