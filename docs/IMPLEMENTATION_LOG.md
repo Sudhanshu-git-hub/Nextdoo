@@ -818,3 +818,46 @@ local branch to the already-pushed remote tip `89b5624` — working tree
 verified byte-identical (clean status), no history rewrite, no force-push.
 Unblocking requires the test-mode values (milestone doc table) in an
 environment with provider egress and a reachable webhook URL.
+
+## M6 commercial readiness — increment 5: account & session management — 2026-09-11
+
+Bounded M6 slice per PRD §6.1/§11.2/§14.3: `GET`/`PATCH /api/v1/me` (own
+profile only: id, email, name, timeZone, MFA-enabled, createdAt; strict
+validation of name 1–120 or null and IANA time zones), `GET
+/api/v1/me/sessions` (owner-scoped active sessions with device label, last
+seen, created, current-session flag — never token/IP digests), `DELETE
+/api/v1/me/sessions/:id` (owner-only individual revocation; foreign or
+unknown ids a uniform 404), and `POST /api/v1/auth/logout-all` which, per
+the recorded user decision, revokes ALL of the caller's sessions INCLUDING
+the caller's own. Every mutation is audit-logged
+(`account.profile_updated`, `account.session_revoked`,
+`account.sessions_revoked_all`). No migration needed; existing auth, MFA,
+reset, verification, session-rotation-on-privilege-change, entitlement and
+billing behavior untouched.
+
+Settings UI: profile form (name/time zone) in the Account card and a new
+Sessions card (per-session revoke with confirmation, "Revoke & sign out"
+for the current device, sign out everywhere; loading/error/success states;
+keyboard-operable, axe-clean).
+
+Revocation takes effect on the very next request (the per-request
+`revokedAt IS NULL` check) — MEASURED, not assumed: 59 ms individual
+revocation and 53 ms sign-out-everywhere end-to-end through the production
+server (curl, two cookie contexts); 4 ms / 2 ms at service level against
+real PostgreSQL. PRD bound is 60 s; tests assert a 5 s margin and log the
+actual value each run.
+
+Tests: 13 new DB-backed integration tests (shape, strict validation,
+owner-scoping, revocation including the current session, logout-all,
+cross-user isolation, audit trail) and 6 new real-browser E2E specs
+(144 total E2E; two device contexts; axe + keyboard). Local sandbox cannot
+launch Chromium (missing NSS libs, no egress) — browser specs are
+demonstrated in CI as in all prior milestones; locally the production
+server was smoke-tested end-to-end (401/403/404/400/409 contracts,
+idempotent replay, measured latencies, settings SSR).
+
+Full validation passed: 705/705 unit+integration tests, lint (0 warnings),
+typecheck, production build, coverage thresholds (core 97.91% lines /
+90.58% branches / 100% functions), migration replay (idempotent), E2E
+discovery (144). See
+[M6_ACCOUNT_SESSIONS_MILESTONE.md](M6_ACCOUNT_SESSIONS_MILESTONE.md).
