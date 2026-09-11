@@ -132,43 +132,45 @@ export function DataExport({ exportsPerDay }: { exportsPerDay: number | null }) 
       ) : items.length === 0 ? (
         <p className="muted">You have not requested an export yet.</p>
       ) : (
-        <table>
-          <caption className="visually-hidden">Your requested exports and their status</caption>
-          <thead>
-            <tr>
-              <th scope="col">Requested</th>
-              <th scope="col">Format</th>
-              <th scope="col">Status</th>
-              <th scope="col"><span className="visually-hidden">Action</span></th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((item) => (
-              <tr key={item.id} data-export-status={item.status}>
-                <td>{new Date(item.createdAt).toLocaleString()}</td>
-                <td style={{ textTransform: 'uppercase' }}>{item.format}</td>
-                <td>
-                  {STATUS_LABEL[item.status]}
-                  {item.status === 'FAILED' && item.error && (
-                    <span className="muted"> · {item.error}</span>
-                  )}
-                  {item.status === 'READY' && item.expiresAt && (
-                    <span className="muted"> · until {new Date(item.expiresAt).toLocaleString()}</span>
-                  )}
-                </td>
-                <td style={{ textAlign: 'right' }}>
-                  {item.downloadUrl ? (
-                    <a className="btn-sm" href={item.downloadUrl} data-export-download={item.id}>
-                      Download
-                    </a>
-                  ) : item.status === 'PENDING' || item.status === 'PROCESSING' ? (
-                    <span className="muted">Preparing…</span>
-                  ) : null}
-                </td>
+        <div className="table-scroll">
+          <table>
+            <caption className="visually-hidden">Your requested exports and their status</caption>
+            <thead>
+              <tr>
+                <th scope="col">Requested</th>
+                <th scope="col">Format</th>
+                <th scope="col">Status</th>
+                <th scope="col"><span className="visually-hidden">Action</span></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {items.map((item) => (
+                <tr key={item.id} data-export-status={item.status}>
+                  <td>{new Date(item.createdAt).toLocaleString()}</td>
+                  <td style={{ textTransform: 'uppercase' }}>{item.format}</td>
+                  <td>
+                    {STATUS_LABEL[item.status]}
+                    {item.status === 'FAILED' && item.error && (
+                      <span className="muted"> · {item.error}</span>
+                    )}
+                    {item.status === 'READY' && item.expiresAt && (
+                      <span className="muted"> · until {new Date(item.expiresAt).toLocaleString()}</span>
+                    )}
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    {item.downloadUrl ? (
+                      <a className="btn-sm" href={item.downloadUrl} data-export-download={item.id}>
+                        Download
+                      </a>
+                    ) : item.status === 'PENDING' || item.status === 'PROCESSING' ? (
+                      <span className="muted">Preparing…</span>
+                    ) : null}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </section>
   );

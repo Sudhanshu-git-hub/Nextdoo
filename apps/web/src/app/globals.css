@@ -234,6 +234,9 @@ label { display: block; font-size: 13px; color: var(--text-dim); margin-bottom: 
 table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
 th { color: var(--text-dim); font-weight: 550; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+/* Wide tables (e.g. the data-export status table) scroll inside their card instead of
+   overflowing it and being covered by the neighbouring grid card. */
+.table-scroll { overflow-x: auto; }
 
 .auth-wrap { display: grid; place-items: center; min-height: 100vh; padding: 20px; }
 .auth-card { width: 100%; max-width: 380px; }
