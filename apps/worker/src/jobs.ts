@@ -1,6 +1,7 @@
 import { deliverMail } from './mail-delivery';
 import { and, eq, isNotNull, isNull, lt, lte, sql as raw } from 'drizzle-orm';
-import { authTokens, idempotencyKeys, reminders, users, purgeAccount, deliverDueReminders, runRecurrenceGeneration, relayTrackingOutbox, reconcileTracking, runTrackingEvaluation, runTrackingBackfill, createDurableFileExportStore, expireExports, runExportGeneration, createDurableFileAttachmentStore, createClamavScanner, defaultClamavBin, runAttachmentScan } from '@nextdoo/db';
+import { authTokens, idempotencyKeys, reminders, users, purgeAccount, deliverDueReminders, runRecurrenceGeneration, relayTrackingOutbox, reconcileTracking, runTrackingEvaluation, runTrackingBackfill, createDurableFileExportStore, expireExports, runExportGeneration, createDurableFileAttachmentStore, createClamavScanner, defaultClamavBin, runAttachmentScan, applyBillingDeadlines, reconcileBilling } from '@nextdoo/db';
+import { buildBillingProviders } from '@nextdoo/billing';
 import { db, logger, type Job, type JobResult } from './runtime';
 
 /**
@@ -241,6 +242,54 @@ const purgeAuthenticationAttempts: Job = {
   },
 };
 
+/**
+ * Applies time-driven subscription transitions that are clocks, not webhooks
+ * (PRD §18.2): trial end, dunning exhaustion after the 7-day grace window,
+ * paid-period end after cancellation, and next-period swap of a pending
+ * downgrade. Idempotent and version-fenced; entitlements follow immediately
+ * because readEffectivePlan() reads the same row.
+ */
+const sweepBillingDeadlines: Job = {
+  name: 'billing.sweep',
+  intervalMs: 5 * MINUTE,
+  async run(): Promise<JobResult> {
+    const result = await applyBillingDeadlines(db);
+    if (result.expired || result.downgradesApplied) logger.info('billing.deadlines_swept', { ...result });
+    return { processed: result.expired + result.downgradesApplied, details: { ...result } };
+  },
+};
+
+// Provider instances are built once at boot from the worker environment.
+const billingProviders = buildBillingProviders(process.env);
+
+/**
+ * PRD §18.3: "A nightly reconciliation job compares provider subscription
+ * state against local entitlements and alerts on drift." Unconfigured
+ * providers are simply skipped (checked: 0) — the job degrades to the
+ * deadline sweep, it never fakes a comparison.
+ */
+const reconcileBillingJob: Job = {
+  name: 'billing.reconcile',
+  intervalMs: 24 * HOUR,
+  async run(): Promise<JobResult> {
+    let checked = 0;
+    let drifted = 0;
+    let unreachable = 0;
+    for (const provider of Object.values(billingProviders)) {
+      if (!provider || !provider.isConfigured()) continue;
+      const result = await reconcileBilling(db, provider);
+      checked += result.checked;
+      drifted += result.drifted.length;
+      unreachable += result.unreachable;
+      for (const report of result.drifted) {
+        logger.error('billing.reconciliation_drift', { provider: provider.id, subscription: report.providerSubscriptionId, diffs: report.diffs });
+      }
+      if (result.unreachable) logger.warn('billing.reconciliation_unreachable', { provider: provider.id, unreachable: result.unreachable });
+    }
+    return { processed: checked, details: { checked, drifted, unreachable } };
+  },
+};
+
 export const JOBS: Job[] = [
   { name: 'recurrence.generate', intervalMs: 60000, run: async () => { const result = await runRecurrenceGeneration(db); if (result.details.failed) logger.warn('recurrence.generation_failed', result.details); return result; } },
   purgeAuthenticationAttempts,
@@ -254,6 +303,8 @@ export const JOBS: Job[] = [
   generateExports,
   expireExportArtifacts,
   scanAttachments,
+  sweepBillingDeadlines,
+  reconcileBillingJob,
   purgeAccounts,
   purgeAuthTokens,
   purgeIdempotencyKeys,

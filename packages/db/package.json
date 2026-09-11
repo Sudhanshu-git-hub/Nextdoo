@@ -19,7 +19,8 @@
     "@nextdoo/contracts": "workspace:*",
     "@nextdoo/core": "workspace:*",
     "drizzle-orm": "0.45.2",
-    "postgres": "3.4.5"
+    "postgres": "3.4.5",
+    "@nextdoo/billing": "workspace:*"
   },
   "devDependencies": {
     "typescript": "5.7.2",

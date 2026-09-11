@@ -52,6 +52,7 @@ export const subscriptionStatusEnum = pgEnum('subscription_status', [
   'TRIALING', 'ACTIVE', 'PAST_DUE', 'GRACE_PERIOD', 'CANCELED', 'EXPIRED', 'PAUSED',
 ]);
 export const planEnum = pgEnum('plan', ['FREE', 'PRO', 'TEAM', 'ENTERPRISE']);
+export const billingProviderEnum = pgEnum('billing_provider', ['STRIPE', 'RAZORPAY']);
 export const syncOperationEnum = pgEnum('sync_operation', ['create', 'update', 'delete']);
 export const scanStatusEnum = pgEnum('scan_status', ['PENDING', 'CLEAN', 'INFECTED', 'FAILED']);
 export const occurrenceStatusEnum = pgEnum('occurrence_status', ['PENDING', 'COMPLETED', 'SKIPPED']);
@@ -704,32 +705,51 @@ export const subscriptions = pgTable(
   {
     id: uuid('id').primaryKey(),
     userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    /** Which provider this row mirrors (M6-i3). FREE rows keep the default; the sync service sets it when a provider customer is created. */
+    provider: billingProviderEnum('provider').notNull().default('STRIPE'),
     providerCustomerId: varchar('provider_customer_id', { length: 120 }),
     providerSubscriptionId: varchar('provider_subscription_id', { length: 120 }),
+    /** The provider's plan/price identifier (Stripe price id or Razorpay plan id). */
+    providerPlanRef: varchar('provider_plan_ref', { length: 120 }),
     plan: planEnum('plan').notNull().default('FREE'),
+    /** A downgrade awaiting the next billing period (PRD §18.3). */
+    pendingPlan: planEnum('pending_plan'),
+    pendingPlanEffectiveAt: timestamp('pending_plan_effective_at', { withTimezone: true }),
     status: subscriptionStatusEnum('status').notNull().default('ACTIVE'),
     currentPeriodEnd: timestamp('current_period_end', { withTimezone: true }),
     trialEndsAt: timestamp('trial_ends_at', { withTimezone: true }),
     cancelAtPeriodEnd: boolean('cancel_at_period_end').notNull().default(false),
     graceEndsAt: timestamp('grace_ends_at', { withTimezone: true }),
+    /** When the last applied provider event occurred (out-of-order horizon). */
+    lastEventAt: timestamp('last_event_at', { withTimezone: true }),
     version: integer('version').notNull().default(1),
     ...timestamps,
   },
   (t) => [
     uniqueIndex('subscriptions_user_unique').on(t.userId),
     index('subscriptions_provider_idx').on(t.providerCustomerId),
+    index('subscriptions_provider_sub_idx').on(t.provider, t.providerSubscriptionId),
   ],
 );
 
-/** Deduplicates billing webhooks on the provider event id (PRD §18.3). */
+/**
+ * Deduplicates billing webhooks per-provider on the provider event id
+ * (PRD §18.3). The same event id in two providers is NOT a duplicate, hence
+ * the composite (provider, provider_event_id) key.
+ */
 export const billingEvents = pgTable(
   'billing_events',
   {
-    providerEventId: varchar('provider_event_id', { length: 120 }).primaryKey(),
+    provider: billingProviderEnum('provider').notNull().default('STRIPE'),
+    providerEventId: varchar('provider_event_id', { length: 120 }).notNull(),
     type: varchar('type', { length: 80 }).notNull(),
+    /** Set once the event is resolved to a local user (null = unresolved). */
+    userId: uuid('user_id'),
+    receivedAt: timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
     processedAt: timestamp('processed_at', { withTimezone: true }).notNull().defaultNow(),
     payload: jsonb('payload').notNull(),
   },
+  (t) => [primaryKey({ columns: [t.provider, t.providerEventId] })],
 );
 
 export const entitlements = pgTable(

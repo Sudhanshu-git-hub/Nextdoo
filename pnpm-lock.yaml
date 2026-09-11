@@ -59,6 +59,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@nextdoo/billing':
+        specifier: workspace:*
+        version: link:../../packages/billing
       '@nextdoo/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
@@ -123,6 +126,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@nextdoo/billing':
+        specifier: workspace:*
+        version: link:../../packages/billing
       '@nextdoo/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
@@ -155,6 +161,25 @@ importers:
         specifier: 5.7.2
         version: 5.7.2
 
+  packages/billing:
+    dependencies:
+      '@nextdoo/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      zod:
+        specifier: 3.24.1
+        version: 3.24.1
+    devDependencies:
+      '@types/node':
+        specifier: 22.20.1
+        version: 22.20.1
+      typescript:
+        specifier: 5.7.2
+        version: 5.7.2
+      vitest:
+        specifier: 4.1.11
+        version: 4.1.11(@types/node@22.20.1)(@vitest/coverage-v8@4.1.11)(vite@8.2.2(@types/node@22.20.1)(esbuild@0.28.2)(tsx@4.23.13))
+
   packages/contracts:
     dependencies:
       zod:
@@ -186,6 +211,9 @@ importers:
 
   packages/db:
     dependencies:
+      '@nextdoo/billing':
+        specifier: workspace:*
+        version: link:../billing
       '@nextdoo/contracts':
         specifier: workspace:*
         version: link:../contracts

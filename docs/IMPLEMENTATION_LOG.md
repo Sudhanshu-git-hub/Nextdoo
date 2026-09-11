@@ -721,3 +721,75 @@ row). Both fixed by pinning/removing the incidental shared-state assertion
 only; every substantive assertion unchanged. Run log unreachable from the
 session (results-receiver EOF, same as M6-i1) — diagnostics via workflow
 annotations. See [M6_ATTACHMENTS_MILESTONE.md](M6_ATTACHMENTS_MILESTONE.md).
+
+## M6 commercial readiness — increment 3: multi-provider billing core (Stripe + Razorpay, provider-agnostic) — 2026-09-11
+
+Bounded M6 slice per PRD §10.7/§18: the provider-agnostic billing core —
+internal subscription state machine + normalized event model with **Stripe
+and Razorpay** adapters behind one `PaymentProvider` interface; no provider
+concept leaks into the app. Webhooks are untrusted: signature verification
+with replay protection (Stripe 5-min header window; Razorpay raw-body HMAC +
+15-min event age), per-provider event-id dedup, out-of-order tolerance
+(event horizon), version-fenced application, tenant resolution scoped to
+the event's provider. Entitlements move only through server-normalized
+state via `readEffectivePlan()`. Binding user decisions: Stripe USD /
+Razorpay INR prices on the same PRO/TEAM/ENTERPRISE plans; TRIALING modeled
+but M1 checkout = direct paid (no trials offered); `POST
+/v1/billing/portal` deferred; test/sandbox mode only — no live credentials
+required or used; no Calendar/AI/desktop/retention work; no existing test
+weakened.
+
+- New `packages/billing` (62 hermetic tests): internal types, pure state
+  machine (PRD table: immediate upgrade, deferred downgrade with
+  `pendingPlan`/`pendingPlanEffectiveAt`, 7-day grace on first failed
+  payment, dunning, illegal-transition refusals with `skipReason`),
+  signature verifiers (constant-time), plan/price mapping (Stripe price id;
+  Razorpay plan id + paise), alert-only reconciliation diff,
+  `buildBillingProviders` fail-loud (absent config ⇒ provider unavailable,
+  never a stub, never a cross-provider fallback).
+- Adapters: Stripe (customers/checkout sessions/subscription REST;
+  `checkout.session.completed`, `customer.subscription.*`,
+  `invoice.payment_failed|paid`, `charge.refunded`) and Razorpay
+  (customers/orders/subscription REST; `payment.captured` activation with
+  plan from notes/amount, `payment.failed`, `refund.*`,
+  `subscription.charged|cancelled|completed|halted`).
+- DB (migration 0020, idempotent): `billing_provider` enum,
+  `subscriptions.provider/provider_plan_ref/pending_plan(+effective_at)/
+  last_event_at`, per-provider `billing_events` uniqueness + owner link.
+  `startCheckout` (idempotent customer upsert, cross-provider switch
+  rejected), `handleBillingEvent` (persist+dedup first, tenant resolution,
+  stale-provider-subscription + event-horizon guards, version-fenced write
+  with retry, audit on every resolved event), `applyBillingDeadlines`
+  (trial end / grace exhaustion / paid-period end / pending downgrade —
+  idempotent), `reconcileBilling` (drift + audit, alert-only),
+  `getBillingSubscriptionState` (server-authoritative view).
+- Web: `server/billing.ts` (only provider construction point; HMR-safe;
+  `requireProvider` 503 `PROVIDER_UNAVAILABLE`), `GET
+  /api/v1/billing/subscription`, `POST /api/v1/billing/checkout` (handoff
+  only; idempotent), `POST /api/v1/billing/webhooks` (provider chosen by
+  signature-header presence; 400 on missing/ambiguous; 200 once accepted).
+  Env: 6 optional `STRIPE_*`/`RAZORPAY_*` vars (see `.env.example`).
+- Worker: `billing.sweep` (5 min), `billing.reconcile` (24 h, per provider).
+- New `e2e/billing.spec.ts` (3 tests, API-only — these endpoints have no
+  browser surface): unconfigured deployment, real HTTP: auth-gated
+  server-normalized FREE view; checkout 503 `PROVIDER_UNAVAILABLE` for BOTH
+  providers with no state change; webhook ingress untrusted (400
+  missing/ambiguous signature; 503 forged for unconfigured provider).
+- `billing-lifecycle.integration.test.ts` (31 tests): the 12-area lifecycle
+  matrix run for **both** providers through the real sync service (see
+  milestone doc). One genuine product defect found and fixed by the suite:
+  Razorpay `mapSubscription` hardcoded `cancelAtPeriodEnd: false`,
+  contradicting the CANCELED-while-period-runs semantics (access through
+  period end, PRD §18.3) — now derived from the mapped status.
+
+Verification (local, PG 18): lint 0; typecheck clean in all 6 packages;
+production build green; **65 files / 692 unit + integration tests all
+passing** (62 package + 31 lifecycle + pre-existing suites, no regressions);
+E2E billing spec **3/3** against `next start`. Live sandbox checkout /
+webhook delivery is explicitly NOT claimed — all provider interactions in
+tests use generated secrets or stubbed REST. Exact credentials/config
+still required for the live sandbox pass (test-mode only): see
+[M6_BILLING_CORE_MILESTONE.md](M6_BILLING_CORE_MILESTONE.md) §"What is
+still required for live sandbox verification".
+
+CI: (recorded after the CI run for this tip.)

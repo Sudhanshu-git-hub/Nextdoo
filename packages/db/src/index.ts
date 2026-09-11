@@ -7,6 +7,18 @@ export { deliverDueReminders } from './reminder-delivery';
 
 export { serialiseTaskRecord } from './task-record';
 export { readEffectivePlan } from './effective-plan';
+export {
+  handleBillingEvent,
+  startCheckout,
+  applyBillingDeadlines,
+  reconcileBilling,
+  getBillingSubscriptionState,
+  type BillingEventInput,
+  type BillingEventOutcome,
+  type BillingSweepResult,
+  type ReconcileOutcome,
+  type CheckoutInput,
+} from './billing-sync';
 export { generateRecurrenceBatch, generateRecurrenceInTransaction, runRecurrenceGeneration } from './recurrence';
 
 export { buildScoringInput, evaluateTrackingInTransaction, readCorrectionStates, CALCULATION_VERSION, type StoredResult } from './tracking-engine';
