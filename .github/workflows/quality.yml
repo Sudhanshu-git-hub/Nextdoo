@@ -66,8 +66,10 @@ jobs:
         run: |
           clamscan --version > /tmp/nextdoo-eicar-scan.log 2>&1
           printf '%s' 'X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*' > /tmp/nextdoo-eicar.txt
-          clamscan /tmp/nextdoo-eicar.txt >> /tmp/nextdoo-eicar-scan.log 2>&1
-          code=$?
+          # clamscan exits 1 when it DETECTS the file — the expected outcome.
+          # Capture it explicitly; the default `set -e` shell would otherwise
+          # abort the step on a correct detection.
+          if clamscan /tmp/nextdoo-eicar.txt >> /tmp/nextdoo-eicar-scan.log 2>&1; then code=0; else code=$?; fi
           if [ "$code" -ne 1 ]; then
             echo "::error::EICAR verification failed (clamscan exit $code); log follows:"
             while IFS= read -r line; do echo "::error::[eicar-verify] $line"; done < /tmp/nextdoo-eicar-scan.log
