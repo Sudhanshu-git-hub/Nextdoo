@@ -108,7 +108,7 @@ test('the task editor uploads, waits for the clean scan, downloads and deletes a
   expect(result.clean).toBeGreaterThanOrEqual(1);
 
   // The UI polls and reports the clean verdict.
-  await expect(editor.locator('.chip', { hasText: /^ready$/i }).first()).toBeVisible({ timeout: 15_000 });
+  await expect(editor.locator('.pill', { hasText: /^ready$/i }).first()).toBeVisible({ timeout: 15_000 });
   const downloadLink = editor.getByRole('link', { name: 'Download', exact: true }).first();
   await expect(downloadLink).toBeVisible();
 
@@ -141,7 +141,7 @@ test('rejects over-size files, disallowed types, and mismatched upload sizes', a
     headers: headers(),
     data: { taskId, fileName: 'big.pdf', contentType: 'application/pdf', sizeBytes: freeLimits.maxFileBytes + 1 },
   });
-  expect(over.status()).toBe(403);
+  expect(over.status()).toBe(402);
   expect((await over.json()).code).toBe('ENTITLEMENT_LIMIT_REACHED');
 
   const badType = await page.request.post('/api/v1/attachments', {
