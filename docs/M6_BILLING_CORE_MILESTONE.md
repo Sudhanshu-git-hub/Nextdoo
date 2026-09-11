@@ -218,6 +218,36 @@ payment in the provider's test console → real webhook delivery → entitlement
 flip, plus reconciliation against the live provider view. That pass is the
 **next milestone's verification step**, not part of this one.
 
+## M6-i4 pre-check (live sandbox verification) — 2026-09-11, STOPPED
+
+The live-verification attempt was stopped at the pre-flight check, per the
+milestone guardrail ("if required configuration is missing, STOP and report
+exactly what is missing — never invent values, use production credentials,
+or fake provider responses"):
+
+1. **All seven required test-mode values are absent from the session
+   environment**: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
+   `STRIPE_PLANS`, `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`,
+   `RAZORPAY_WEBHOOK_SECRET`, `RAZORPAY_PLANS` — verified absent from the
+   process environment; the only env file in the workspace is the empty
+   `.env.example` template; no `.env`/`.env.local`/`.env.*.local` exists.
+2. **No provider egress from this sandbox** (independent second blocker):
+   `api.stripe.com`, `api.razorpay.com` and `checkout.stripe.com` are all
+   unreachable (connection failures; the sandbox network allowlist admits
+   only the npm registry and GitHub). Live outbound provider calls — and
+   inbound provider webhook delivery to this sandbox — cannot be completed
+   from here even with credentials present.
+
+No live verification was performed and none is claimed. Zero code changes
+were needed for the pre-check; the core at tip `89b5624` stands as
+verified (CI 34602273607 all steps green, incl. coverage and 138/138 E2E).
+**To unblock**: supply the test-mode values from the table above in an
+environment with egress to the provider APIs and a publicly reachable
+`{APP_URL}/api/v1/billing/webhooks` (real deployment or tunnel), then run
+the 12-step live matrix (checkout → webhook → activation/entitlement,
+plan changes, cancellation/grace, failed payment, duplicate/out-of-order,
+reconciliation).
+
 ## Known limitations / next
 
 - `POST /v1/billing/portal` (self-serve management) — deferred by decision;

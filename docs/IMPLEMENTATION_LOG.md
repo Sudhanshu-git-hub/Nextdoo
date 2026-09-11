@@ -799,3 +799,22 @@ Playwright Chromium, ClamAV + EICAR, audit, `db:migrate` ×2 — migration
 failed-E2E annotation step was skipped). Run logs unreachable from the
 session (results-receiver EOF, same as M6-i1) — step/annotation status
 is the verification record.
+
+## M6 commercial readiness — increment 4 (attempted): live test-mode verification (Stripe + Razorpay) — 2026-09-11, STOPPED at pre-flight
+
+Pre-flight per the milestone guardrail: **all seven required test-mode
+values are missing from the session environment** (`STRIPE_SECRET_KEY`,
+`STRIPE_WEBHOOK_SECRET`, `STRIPE_PLANS`, `RAZORPAY_KEY_ID`,
+`RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`, `RAZORPAY_PLANS` — empty
+`.env.example` template only), and this sandbox has **no egress to the
+provider APIs** (`api.stripe.com`, `api.razorpay.com`,
+`checkout.stripe.com` all unreachable; allowlist = npm + GitHub only).
+STOPPED with no live verification performed or claimed, no invented values,
+no fake provider responses, and zero code changes. The core at tip
+`89b5624` remains as verified (CI 34602273607 all steps green). Environment
+incident noted for the record: the session sandbox reset mid-attempt and
+re-cloned `.git` at a stale base (`49b2e68`); recovered by re-pointing the
+local branch to the already-pushed remote tip `89b5624` — working tree
+verified byte-identical (clean status), no history rewrite, no force-push.
+Unblocking requires the test-mode values (milestone doc table) in an
+environment with provider egress and a reachable webhook URL.
