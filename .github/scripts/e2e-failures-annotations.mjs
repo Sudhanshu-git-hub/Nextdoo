@@ -21,7 +21,16 @@ for (const spec of report.suites ?? []) {
     for (const t of s.specs ?? []) {
       for (const r of t.tests ?? []) {
         const bad = (r.results ?? []).filter((x) => x.status === 'failed' || x.status === 'timedOut');
-        if (bad.length) failed.push({ file: t.file, line: t.line, title: t.title, errors: bad.map((x) => x.error?.message ?? x.status) });
+        if (bad.length) {
+          // Include the top non-internal stack frames so a bare "Test timeout
+          // of 30000ms exceeded" annotation still shows WHICH operation was
+          // in flight (runner logs/artifacts may be unreachable).
+          const frames = (x) => {
+            const raw = (x.error?.stack ?? x.error?.message ?? x.status).split('\n');
+            return raw.filter((l) => l.includes('at ') && !l.includes('node_modules') && !l.includes('playwright/lib')).slice(0, 4).map((l) => l.trim());
+          };
+          failed.push({ file: t.file, line: t.line, title: t.title, errors: bad.map((x) => `${x.error?.message ?? x.status} [${frames(x).join(' | ')}]`) });
+        }
       }
     }
     for (const child of s.suites ?? []) walk(child);

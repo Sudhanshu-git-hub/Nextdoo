@@ -10,13 +10,19 @@ import { test, expect, type Page } from '@playwright/test';
  */
 
 const origin = { Origin: 'http://localhost:3100' };
+
+// Dedicated X-Forwarded-For range: public auth routes rate-limit per IP
+// (10/min), so specs must not share spoofed IPs with the rest of the suite.
+const IP_FIXTURE = '198.51.100.241';
+const IP_SECOND_DEVICE = '198.51.100.242';
+const IP_OUTSIDER = '198.51.100.243';
 const headers = () => ({ ...origin, 'Idempotency-Key': randomUUID() });
 const PASSWORD = 'session-e2e-password-123';
 
 async function fixture(page: Page, prefix = 'sessions') {
   const email = `${prefix}-${randomUUID()}@test.local`;
   const r = await page.request.post('/api/v1/auth/register', {
-    headers: { ...origin, 'X-Forwarded-For': '198.51.100.201' },
+    headers: { ...origin, 'X-Forwarded-For': IP_FIXTURE },
     data: { email, password: PASSWORD, timeZone: 'UTC' },
   });
   expect(r.status()).toBe(200);
@@ -26,7 +32,7 @@ async function fixture(page: Page, prefix = 'sessions') {
 /** Second browser device: sign in as the same user (creates a second session). */
 async function secondDevice(pageB: Page, email: string) {
   const r = await pageB.request.post('/api/v1/auth/login', {
-    headers: { ...origin, 'X-Forwarded-For': '198.51.100.202' },
+    headers: { ...origin, 'X-Forwarded-For': IP_SECOND_DEVICE },
     data: { email, password: PASSWORD },
   });
   expect(r.status()).toBe(200);
@@ -153,7 +159,7 @@ test('HTTP contracts: authentication, ownership, strict fields, origin and idemp
     expect((await guest.patch('/api/v1/me', { headers: headers(), data: { name: 'Nope' } })).status()).toBe(401);
 
     // Cross-user isolation: a stranger cannot see or revoke this user's sessions.
-    expect((await guest.post('/api/v1/auth/register', { headers: { ...origin, 'X-Forwarded-For': '198.51.100.203' }, data: { email: `outsider-${randomUUID()}@test.local`, password: PASSWORD, timeZone: 'UTC' } })).status()).toBe(200);
+    expect((await guest.post('/api/v1/auth/register', { headers: { ...origin, 'X-Forwarded-For': IP_OUTSIDER }, data: { email: `outsider-${randomUUID()}@test.local`, password: PASSWORD, timeZone: 'UTC' } })).status()).toBe(200);
     const own = await (await page.request.get('/api/v1/me/sessions')).json();
     expect(Array.isArray(own)).toBe(true);
     expect(own.length).toBe(1);
