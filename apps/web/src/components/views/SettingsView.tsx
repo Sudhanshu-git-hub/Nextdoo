@@ -310,7 +310,7 @@ export function SettingsView({
           </a>
 
           {!deletion?.scheduled && (
-            <>
+            <div data-testid="delete-account">
               <h2 style={{ marginTop: 22, color: 'var(--danger)' }}>Delete account</h2>
               <p className="muted" style={{ marginBottom: 10 }}>
                 Your account is scheduled for deletion and permanently removed after 30 days. Signing in during that
@@ -350,7 +350,7 @@ export function SettingsView({
                   {busy ? 'Scheduling…' : 'Delete my account'}
                 </button>
               </form>
-            </>
+            </div>
           )}
         </section>
 
