@@ -1064,7 +1064,22 @@ lines; overall 89.4% statements), production build, E2E in CI. See
 [M6_CLOSEOUT_MILESTONE.md](M6_CLOSEOUT_MILESTONE.md) and the
 consolidated [M6_COMPLETION_REPORT.md](M6_COMPLETION_REPORT.md).
 
-Closure (final CI verification): no incidents. Final CI verified green
-on tip: push run `34695107048` on the code fix (`b833652`), full
-pipeline including ClamAV verification and the real-browser E2E suite
-(zero failures), and the docs-only run on this commit.
+Closure (final CI verification): one benign CI flake, root-caused
+before any change (none was made). Push run `34695107048` on the code
+fix (`b833652`) was fully green — full pipeline including ClamAV
+verification and the real-browser E2E suite (zero failures). On the
+docs-only commit, push run `34695520987` failed exactly one assertion:
+`reminder-workflow.integration.test.ts:69` (the 24 h expiration
+boundary). Root cause: the dispatcher's per-row transaction carries a
+5 s lock / 10 s statement timeout under CI coverage load, and the
+documented per-row failure isolation deferred that one row to `retrying`
+(backoff 60 s; the row is never lost — the next 30 s production pass
+resolves it). The boundary logic itself is deterministic and passed in
+every run, including the companion assertion at line 72. Evidence the
+failure was environmental, not a defect: local runs of the file
+10/10 green in isolation and 3 full-suite (parallel-load) runs at
+741/741 green; and the `pull_request` run on the identical SHA
+(`34695523204`) passed the full pipeline with zero failures. No code or
+assertion changed (a rerun of the failed push run was refused by
+GitHub). The final push run on the closing commit below is the
+authoritative green.
