@@ -75,6 +75,11 @@ export const SECURITY_AUDIT_ACTIONS: readonly string[] = [
   'account.sessions_revoked_all',
   'account.deletion_requested',
   'account.deletion_cancelled',
+  // Compliance evidence for the destructive deletion step itself: when the
+  // account was purged (and that the purge was attempted), per PRD §11.1
+  // "account deletion ... audit".
+  'account.purged',
+  'account.purge_failed',
 ];
 
 /**

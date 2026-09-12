@@ -261,8 +261,18 @@ export async function purgeDueAccounts(now = new Date()): Promise<string[]> {
 
   const purged: string[] = [];
   for (const candidate of due) {
-    // One statement per account so a single failure cannot abort the whole run.
-    if (await purgeAccount(db, candidate.id, cutoff)) purged.push(candidate.id);
+    // One statement per account so a single failure cannot abort the whole
+    // run. A failed account stays eligible (its deletion_requested_at is
+    // untouched) and is retried on the next pass; the failure is evidence,
+    // not a silent skip.
+    try {
+      if (await purgeAccount(db, candidate.id, cutoff)) purged.push(candidate.id);
+    } catch (error) {
+      logger.warn('account.purge_failed', {
+        userId: candidate.id,
+        errorType: error instanceof Error ? error.name : 'unknown',
+      });
+    }
   }
   return purged;
 }

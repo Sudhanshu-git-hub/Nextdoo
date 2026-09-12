@@ -1,6 +1,7 @@
+import { randomUUID } from 'node:crypto';
 import { deliverMail } from './mail-delivery';
 import { and, eq, isNotNull, isNull, lt, lte, sql as raw } from 'drizzle-orm';
-import { authTokens, idempotencyKeys, reminders, users, purgeAccount, deliverDueReminders, runRecurrenceGeneration, relayTrackingOutbox, reconcileTracking, runTrackingEvaluation, runTrackingBackfill, createDurableFileExportStore, expireExports, runExportGeneration, createDurableFileAttachmentStore, createClamavScanner, defaultClamavBin, runAttachmentScan, applyBillingDeadlines, reconcileBilling, runRetentionPurge } from '@nextdoo/db';
+import { authTokens, auditLogs, idempotencyKeys, reminders, users, purgeAccount, deliverDueReminders, runRecurrenceGeneration, relayTrackingOutbox, reconcileTracking, runTrackingEvaluation, runTrackingBackfill, createDurableFileExportStore, expireExports, runExportGeneration, createDurableFileAttachmentStore, createClamavScanner, defaultClamavBin, runAttachmentScan, applyBillingDeadlines, reconcileBilling, runRetentionPurge } from '@nextdoo/db';
 import { buildBillingProviders } from '@nextdoo/billing';
 import { db, logger, type Job, type JobResult } from './runtime';
 
@@ -91,35 +92,120 @@ const exportStore = createDurableFileExportStore();
 /** Shared attachment file store for scanning and purge cleanup. */
 const attachmentStore = createDurableFileAttachmentStore();
 
-/** Deletes accounts whose 30-day grace period has elapsed (PRD §12.4). */
+/** Mirrors DELETION_GRACE_DAYS in the web data-rights service. */
+const DELETION_GRACE_DAYS = 30;
+
+/**
+ * One pass over accounts whose 30-day grace period has elapsed (PRD §12.4).
+ *
+ * Idempotent and crash-safe per account: purgeAccount re-checks
+ * deletion_requested_at under the user-row lock, so a candidate that was
+ * cancelled between scan and purge is a no-op, and a crash leaves the
+ * remainder eligible for the next pass. A per-account failure NEVER aborts
+ * the run — one poisoned account must not hold every other account's
+ * deletion hostage — and it is written to the audit trail so the failure is
+ * evidence, not a silent skip; the account is retried on the next pass.
+ */
+export async function sweepDueAccounts(cutoff: Date): Promise<{ purged: string[]; failed: Array<{ userId: string; error: string }> }> {
+  const due = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(and(isNotNull(users.deletionRequestedAt), lte(users.deletionRequestedAt, cutoff)))
+    .limit(50);
+
+  const purged: string[] = [];
+  const failed: Array<{ userId: string; error: string }> = [];
+  for (const user of due) {
+    try {
+      // Artifact and attachment files are removed alongside the rows (PRD §11.9).
+      if (!await purgeAccount(db, user.id, cutoff, { artifactStore: exportStore, attachmentStore })) continue;
+      purged.push(user.id);
+      // Retain only the opaque identifier here; audit evidence follows its own retention.
+      logger.info('account.purged', { userId: user.id });
+    } catch (error) {
+      const errorType = error instanceof Error ? error.name : 'unknown';
+      failed.push({ userId: user.id, error: errorType });
+      // Compliance evidence for the failed attempt (PRD §11.1: deletion is
+      // auditable, including its failures). Best-effort: the audit insert
+      // must never mask or extend the original failure.
+      try {
+        await db.insert(auditLogs).values({
+          id: randomUUID(),
+          workspaceId: null,
+          actorId: user.id,
+          action: 'account.purge_failed',
+          targetType: 'user',
+          targetId: user.id,
+          metadata: { error: errorType, attemptedAt: new Date().toISOString() },
+        });
+      } catch {
+        logger.error('account.purge_failed_audit_unavailable', { userId: user.id });
+      }
+    }
+  }
+  return { purged, failed };
+}
+
+/**
+ * PRD §12.4 general job contract for `accounts.purge` (max retry count,
+ * exponential backoff, dead-letter behavior, structured error code).
+ * "3 retries" follows the codebase convention: initial attempt + 3 retries.
+ *
+ * Only a whole-run failure (the candidate scan itself, e.g. the database)
+ * takes the retry path; per-account failures are already isolated above and
+ * are retried by the next scheduled pass. Exhaustion dead-letters with a
+ * loud error alert; no account is ever silently skipped.
+ */
+export const ACCOUNT_PURGE_MAX_RETRIES = 3;
+export const ACCOUNT_PURGE_MAX_ATTEMPTS = 1 + ACCOUNT_PURGE_MAX_RETRIES;
+export const ACCOUNT_PURGE_BACKOFF_MS = [60_000, 5 * MINUTE, 15 * MINUTE];
+
+export interface AccountPurgeRunner {
+  sweep: () => Promise<{ purged: string[]; failed: Array<{ userId: string; error: string }> }>;
+  sleep: (ms: number) => Promise<void>;
+  log: { info: (m: string, f?: Record<string, unknown>) => void; error: (m: string, f?: Record<string, unknown>) => void };
+}
+
+export async function runAccountPurgeWithRetries(runner: AccountPurgeRunner): Promise<JobResult> {
+  const errorTypeOf = (e: unknown) => (e instanceof Error ? e.name : 'unknown');
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= ACCOUNT_PURGE_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      const result = await runner.sweep();
+      runner.log.info('accounts.purge.completed', {
+        attempt,
+        accountsPurged: result.purged.length,
+        accountsFailed: result.failed.length,
+      });
+      for (const failure of result.failed) {
+        runner.log.error('account.purge_failed', { userId: failure.userId, error: failure.error, retriedOn: 'next pass' });
+      }
+      return { processed: result.purged.length, details: { ...result } };
+    } catch (error) {
+      lastError = error;
+      const retrying = attempt < ACCOUNT_PURGE_MAX_ATTEMPTS;
+      const retryInMs = retrying ? ACCOUNT_PURGE_BACKOFF_MS[attempt - 1]! : 0;
+      runner.log.error('accounts.purge.attempt_failed', {
+        attempt, maxAttempts: ACCOUNT_PURGE_MAX_ATTEMPTS, errorType: errorTypeOf(error), retryInMs,
+      });
+      if (retrying) await runner.sleep(retryInMs);
+    }
+  }
+  // Dead letter: bounded retries exhausted. Alert loudly; the due accounts
+  // remain in place for the next scheduled pass — never auto-skip.
+  runner.log.error('accounts.purge.dead_lettered', { maxAttempts: ACCOUNT_PURGE_MAX_ATTEMPTS, errorType: errorTypeOf(lastError) });
+  return { processed: 0, details: { deadLettered: true, errorType: errorTypeOf(lastError) } };
+}
+
 const purgeAccounts: Job = {
   name: 'accounts.purge',
   intervalMs: 6 * HOUR,
   async run(): Promise<JobResult> {
-    const cutoff = new Date(Date.now() - 30 * 24 * HOUR);
-
-    const due = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(and(isNotNull(users.deletionRequestedAt), lte(users.deletionRequestedAt, cutoff)))
-      .limit(50);
-
-    let purged = 0;
-    for (const user of due) {
-      try {
-        // Artifact files are removed alongside the rows (PRD §11.9).
-        if (!await purgeAccount(db, user.id, cutoff, { artifactStore: exportStore, attachmentStore })) continue;
-        purged += 1;
-        // Retain only the opaque identifier here; audit evidence follows its own retention.
-        logger.info('account.purged', { userId: user.id });
-      } catch (error) {
-        logger.error('account.purge_failed', {
-          userId: user.id,
-          errorType: error instanceof Error ? error.name : 'unknown',
-        });
-      }
-    }
-    return { processed: purged };
+    return runAccountPurgeWithRetries({
+      sweep: () => sweepDueAccounts(new Date(Date.now() - DELETION_GRACE_DAYS * 24 * HOUR)),
+      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      log: logger,
+    });
   },
 };
 

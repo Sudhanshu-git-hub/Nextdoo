@@ -28,7 +28,14 @@ describe('policy-safe account purge', () => {
     expect(await getDb().select().from(trackingEvents).where(eq(trackingEvents.workspaceId, actor.workspaceId))).toHaveLength(0);
     expect(await getDb().select().from(idempotencyKeys).where(eq(idempotencyKeys.userId, actor.userId))).toHaveLength(0);
     expect(await getDb().select().from(outbox).where(eq(outbox.workspaceId, actor.workspaceId))).toHaveLength(0);
-    expect(await getDb().select().from(auditLogs).where(eq(auditLogs.actorId, actor.userId))).toEqual(before);
+    // All pre-purge evidence remains, and the destructive step itself is
+    // recorded as exactly one new account.purged compliance row.
+    const after = await getDb().select().from(auditLogs).where(eq(auditLogs.actorId, actor.userId));
+    const beforeIds = new Set(before.map((r) => r.id));
+    expect(after.filter((r) => beforeIds.has(r.id))).toHaveLength(before.length);
+    const added = after.filter((r) => !beforeIds.has(r.id));
+    expect(added).toHaveLength(1);
+    expect(added[0]!.action).toBe('account.purged');
   });
   it('the real worker purge job also removes accounts with history', async () => {
     const { actor } = await fixture(31);
