@@ -410,6 +410,44 @@ it('isolates tenants: each owner\u2019s plan window applies only to their own ro
   expect(await exists(auditLogs, eq(auditLogs.id, p3))).toBe(true);
 });
 
+it('caps the per-run tenant scan at distinct tenants (a busy tenant cannot starve the others) and catches up on the next run', async () => {
+  const a = await makeOwner('FREE');
+  const b = await makeOwner('FREE');
+  const c = await makeOwner('FREE');
+  // Tenant "a" is busy (many eligible rows). A row-based candidate cap would
+  // let its rows fill the whole slot budget, so the other tenants would not
+  // be scanned at all; a distinct-tenant cap guarantees each scanned tenant
+  // is one, and every tenant is eventually reached.
+  for (let i = 0; i < 5; i++) await insertAudit(a.workspaceId, a.userId, NON_SEC, daysAgo(10));
+  await insertAudit(b.workspaceId, b.userId, NON_SEC, daysAgo(10));
+  await insertAudit(b.workspaceId, b.userId, NON_SEC, daysAgo(11));
+  await insertAudit(c.workspaceId, c.userId, NON_SEC, daysAgo(10));
+  await insertAudit(c.workspaceId, c.userId, NON_SEC, daysAgo(11));
+
+  const counts: Record<string, number> = { [a.workspaceId]: 5, [b.workspaceId]: 2, [c.workspaceId]: 2 };
+  const ordered = [a.workspaceId, b.workspaceId, c.workspaceId].sort();
+  const first = ordered[0]!;
+  const second = ordered[1]!;
+  const third = ordered[2]!;
+  const expectedFirstRun = (counts[first] ?? 0) + (counts[second] ?? 0);
+
+  const run1 = await runRetentionPurge(db, { now: NOW, limit: { workspaces: 2 } });
+  expect(run1.failures).toEqual([]);
+  expect(run1.workspacesScanned).toBe(2);
+  expect(run1.auditLogsPurged).toBe(expectedFirstRun);
+
+  // The third tenant (largest workspace id) was not scanned yet: its rows
+  // survive, untouched, and remain eligible for the next run.
+  expect(await rowCount(auditLogs, and(eq(auditLogs.workspaceId, third), eq(auditLogs.action, NON_SEC)))).toBe(counts[third] ?? 0);
+
+  // The next daily run picks up the remainder.
+  const run2 = await runRetentionPurge(db, { now: NOW });
+  expect(run2.failures).toEqual([]);
+  expect(run2.workspacesScanned).toBe(1);
+  expect(run2.auditLogsPurged).toBe(counts[third] ?? 0);
+  expect(await rowCount(auditLogs, eq(auditLogs.action, NON_SEC))).toBe(0);
+});
+
 it('retains eligible tasks while the owner has an in-flight export and purges them once it completes', async () => {
   const pending = await makeOwner('FREE');
   const ready = await makeOwner('FREE');

@@ -75,8 +75,15 @@ test('after 30 days a deleted task is unrecoverable, and audit history follows t
   await seedAudit(stillRecoverable.id, 5);
 
   // The daily purge — exactly what the worker's retention.purge job runs.
-  const result = await runRetentionPurge(db);
+  // The tenant-scan cap is raised for this spec: in CI the database is shared
+  // with every earlier E2E spec, and the production cap (200 distinct
+  // tenants per run, verified in the web integration suite) could otherwise
+  // defer THIS workspace to the next run and make the user-visible outcome
+  // non-deterministic within a single test.
+  const result = await runRetentionPurge(db, { limit: { workspaces: 100_000, accountOwners: 100_000 } });
   expect(result.failures).toEqual([]);
+  expect(result.workspacesScanned).toBeGreaterThanOrEqual(1);
+  expect(result.auditLogsPurged).toBeGreaterThanOrEqual(1);
 
   // The long-gone task is physically gone: restore is a 404 (no tombstone
   // to recover), and the task API no longer knows it.

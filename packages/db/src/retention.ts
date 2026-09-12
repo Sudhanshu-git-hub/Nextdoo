@@ -149,6 +149,10 @@ const DEFAULT_LIMITS = {
   tasks: 1000,
   tombstones: 1000,
   auditBatchesPerWorkspace: 20,
+  // Per-run caps on how many DISTINCT tenants are scanned, not on raw rows:
+  // a single busy tenant must not be able to inflate its way into the whole
+  // slot budget and starve other tenants' retention. Purged tenants drop out
+  // of the candidate set, so each daily run makes forward progress.
   workspaces: 200,
   accountOwners: 200,
   failedJobs: 1000,
@@ -374,9 +378,9 @@ export async function runRetentionPurge(
   try {
     const candidateWorkspaces = new Set(
       ((await db.execute(sql`
-        select workspace_id from audit_logs
+        select distinct workspace_id from audit_logs
         where workspace_id is not null and created_at < ${nowIso}
-        order by workspace_id
+        order by 1
         limit ${L.workspaces}
       `)) as unknown as { workspace_id: string }[]).map((r) => r.workspace_id),
     );
@@ -396,9 +400,9 @@ export async function runRetentionPurge(
   try {
     const candidateOwners = new Set(
       ((await db.execute(sql`
-        select actor_id from audit_logs
+        select distinct actor_id from audit_logs
         where workspace_id is null and actor_id is not null and created_at < ${nowIso}
-        order by actor_id
+        order by 1
         limit ${L.accountOwners}
       `)) as unknown as { actor_id: string }[]).map((r) => r.actor_id),
     );
