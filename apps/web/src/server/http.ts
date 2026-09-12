@@ -1,10 +1,11 @@
-import { createHash } from 'node:crypto';
+import { assertRequestOrigin } from './request-security';
 import { NextResponse } from 'next/server';
 import { ZodError, type ZodTypeAny, type z } from 'zod';
-import { AppError, type ProblemDetails } from '@nextdoo/contracts';
-import { eq, lt } from 'drizzle-orm';
+import { AppError, uuid, type ProblemDetails } from '@nextdoo/contracts';
+import { lt } from 'drizzle-orm';
 import { idempotencyKeys } from '@nextdoo/db';
 import { getDb } from './db';
+import { idempotentMutation } from './idempotency';
 import { logger, newRequestId } from './observability';
 import { rateLimit, requireAuth, type AuthContext } from './auth';
 
@@ -83,6 +84,7 @@ export function authedRoute<T>(
     const started = performance.now();
 
     try {
+      assertRequestOrigin(request);
       const auth = await requireAuth();
 
       const limit = options.rateLimitPerMinute ?? 600;
@@ -97,25 +99,20 @@ export function authedRoute<T>(
 
       const ctx: RouteContext = { requestId, auth, ip };
 
-      // Idempotency replay (PRD §14.1).
-      const idemKey = request.headers.get('idempotency-key');
-      if (options.idempotent && idemKey) {
-        const replay = await replayIdempotent(idemKey, auth.userId, options.routeName);
-        if (replay) {
-          logger.info('request.replayed', { requestId, route: options.routeName, userId: auth.userId });
-          return NextResponse.json(replay.body, {
-            status: replay.status,
-            headers: { 'X-Request-Id': requestId, 'Idempotent-Replay': 'true' },
-          });
+      const perform = async () => {
+        const match = /^\/api\/v1\/(?:tasks|projects|sections|timers|reminders|exports)\/([^/]+)/.exec(new URL(request.url).pathname);
+        // Static bulk command is not a task UUID. Keep all resource-ID validation otherwise.
+        if (match && !(options.routeName === 'tasks.bulk' && new URL(request.url).pathname === '/api/v1/tasks/bulk')) {
+          let id: string;
+          try { id = decodeURIComponent(match[1]!); } catch { throw new AppError('VALIDATION_FAILED', 'Invalid resource identifier.'); }
+          uuid.parse(id);
         }
-      }
-
-      const result = await handler(request, ctx);
-      const status = result === undefined || result === null ? 204 : 200;
-
-      if (options.idempotent && idemKey && status !== 204) {
-        await storeIdempotent(idemKey, auth.userId, options.routeName, status, result);
-      }
+        return handler(request, ctx);
+      };
+      const outcome = options.idempotent
+        ? await idempotentMutation(request, auth.userId, options.routeName, perform)
+        : await perform().then((body) => ({ body, status: body == null ? 204 : 200, replay: false }));
+      const { body: result, status } = outcome;
 
       logger.info('request.ok', {
         requestId,
@@ -126,7 +123,7 @@ export function authedRoute<T>(
 
       return status === 204
         ? new NextResponse(null, { status: 204, headers: { 'X-Request-Id': requestId } })
-        : jsonResponse(result, requestId, status);
+        : jsonResponse(result, requestId, status, outcome.replay ? { 'Idempotent-Replay': 'true' } : {});
     } catch (error) {
       const problem = toProblem(error, requestId);
       logger.warn('request.failed', {
@@ -150,6 +147,7 @@ export function publicRoute<T>(
     const requestId = newRequestId();
     const ip = clientIp(request);
     try {
+      assertRequestOrigin(request);
       const limit = options.rateLimitPerMinute ?? 10;
       const { ok, retryAfter } = rateLimit(`${options.routeName}:${ip}`, limit, 60_000);
       if (!ok) {
@@ -162,7 +160,9 @@ export function publicRoute<T>(
       const result = await handler(request, { requestId, ip });
       return jsonResponse(result, requestId, 200);
     } catch (error) {
-      return problemResponse(toProblem(error, requestId));
+      const response = problemResponse(toProblem(error, requestId));
+      if (error instanceof AppError && error.code === 'RATE_LIMITED' && 'retryAfter' in error) response.headers.set('Retry-After', String(error.retryAfter));
+      return response;
     }
   };
 }
@@ -186,43 +186,6 @@ export function parseQuery<S extends ZodTypeAny>(request: Request, schema: S): z
   return schema.parse(obj);
 }
 
-async function replayIdempotent(
-  key: string,
-  userId: string,
-  scope: string,
-): Promise<{ status: number; body: unknown } | null> {
-  const db = getDb();
-  const composite = `${scope}:${userId}:${key}`;
-  const rows = await db.select().from(idempotencyKeys).where(eq(idempotencyKeys.key, composite)).limit(1);
-  const row = rows[0];
-  if (!row || row.expiresAt < new Date()) return null;
-  return { status: row.responseStatus ?? 200, body: row.responseBody };
-}
-
-async function storeIdempotent(
-  key: string,
-  userId: string,
-  scope: string,
-  status: number,
-  body: unknown,
-): Promise<void> {
-  const db = getDb();
-  const composite = `${scope}:${userId}:${key}`;
-  await db
-    .insert(idempotencyKeys)
-    .values({
-      key: composite,
-      scope,
-      userId,
-      requestHash: createHash('sha256').update(JSON.stringify(body ?? {})).digest('hex').slice(0, 64),
-      responseStatus: status,
-      responseBody: body as never,
-      // 24-hour replay window per PRD §14.4.
-      expiresAt: new Date(Date.now() + 24 * 3_600_000),
-    })
-    .onConflictDoNothing();
-}
-
 /** Housekeeping for the idempotency ledger. */
 export async function purgeExpiredIdempotencyKeys(): Promise<number> {
   const db = getDb();
@@ -231,4 +194,14 @@ export async function purgeExpiredIdempotencyKeys(): Promise<number> {
     .where(lt(idempotencyKeys.expiresAt, new Date()))
     .returning({ key: idempotencyKeys.key });
   return removed.length;
+}
+
+
+/** Compatible additions to endpoints which historically accepted no body. */
+export async function parseOptionalBody<S extends ZodTypeAny>(request: Request, schema: S): Promise<z.output<S> | undefined> {
+  const text = await request.text();
+  if (!text.trim()) return undefined;
+  let raw: unknown;
+  try { raw = JSON.parse(text); } catch { throw new AppError('VALIDATION_FAILED', 'Request body must be valid JSON.'); }
+  return schema.parse(raw);
 }

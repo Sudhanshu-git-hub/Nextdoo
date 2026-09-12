@@ -3,6 +3,8 @@ import {
   bigserial,
   boolean,
   check,
+  date,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -50,6 +52,7 @@ export const subscriptionStatusEnum = pgEnum('subscription_status', [
   'TRIALING', 'ACTIVE', 'PAST_DUE', 'GRACE_PERIOD', 'CANCELED', 'EXPIRED', 'PAUSED',
 ]);
 export const planEnum = pgEnum('plan', ['FREE', 'PRO', 'TEAM', 'ENTERPRISE']);
+export const billingProviderEnum = pgEnum('billing_provider', ['STRIPE', 'RAZORPAY']);
 export const syncOperationEnum = pgEnum('sync_operation', ['create', 'update', 'delete']);
 export const scanStatusEnum = pgEnum('scan_status', ['PENDING', 'CLEAN', 'INFECTED', 'FAILED']);
 export const occurrenceStatusEnum = pgEnum('occurrence_status', ['PENDING', 'COMPLETED', 'SKIPPED']);
@@ -221,6 +224,7 @@ export const tasks = pgTable(
     parentTaskId: uuid('parent_task_id'),
     title: varchar('title', { length: 500 }).notNull(),
     description: text('description'),
+    location: varchar('location', { length: 500 }),
     status: taskStatusEnum('status').notNull().default('ACTIVE'),
     priority: taskPriorityEnum('priority').notNull().default('NONE'),
     dueAt: timestamp('due_at', { withTimezone: true }),
@@ -228,6 +232,7 @@ export const tasks = pgTable(
     estimateMinutes: integer('estimate_minutes'),
     /** Derived from timer sessions plus audited manual adjustments. */
     actualMinutes: integer('actual_minutes').notNull().default(0),
+    actualSecondsRemainder: integer('actual_seconds_remainder').notNull().default(0),
     position: numeric('position', { precision: 30, scale: 10 }).notNull().default('0'),
     /** Counter feeding the RESCHEDULED outcome. */
     rescheduleCount: integer('reschedule_count').notNull().default(0),
@@ -240,12 +245,15 @@ export const tasks = pgTable(
     ...timestamps,
   },
   (t) => [
+    uniqueIndex('tasks_id_workspace_unique').on(t.id,t.workspaceId),
     index('tasks_ws_status_due_idx').on(t.workspaceId, t.status, t.dueAt),
     index('tasks_project_idx').on(t.projectId),
     index('tasks_parent_idx').on(t.parentTaskId),
     uniqueIndex('tasks_occurrence_unique').on(t.recurrenceRuleId, t.occurrenceKey),
+    foreignKey({ name: 'tasks_parent_task_id_fkey', columns: [t.parentTaskId], foreignColumns: [t.id] }).onDelete('no action'),
     check('tasks_no_self_parent', sql`${t.parentTaskId} IS DISTINCT FROM ${t.id}`),
     check('tasks_estimate_nonneg', sql`${t.estimateMinutes} IS NULL OR ${t.estimateMinutes} >= 0`),
+    check('tasks_actual_seconds_remainder_check', sql`${t.actualSecondsRemainder} >= 0 AND ${t.actualSecondsRemainder} < 60`),
     check('tasks_actual_nonneg', sql`${t.actualMinutes} >= 0`),
     check('tasks_title_len', sql`char_length(${t.title}) BETWEEN 1 AND 500`),
   ],
@@ -279,6 +287,7 @@ export const recurrenceRules = pgTable(
   'recurrence_rules',
   {
     id: uuid('id').primaryKey(),
+    trackingRevision: integer('tracking_revision').notNull().default(0),
     workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
     /** The template task this series belongs to. */
     templateTaskId: uuid('template_task_id').notNull().references(() => tasks.id, { onDelete: 'cascade' }),
@@ -286,11 +295,15 @@ export const recurrenceRules = pgTable(
     timeZone: varchar('time_zone', { length: 64 }).notNull(),
     seriesStart: timestamp('series_start', { withTimezone: true }).notNull(),
     lastGeneratedAt: timestamp('last_generated_at', { withTimezone: true }),
+    templateSnapshot: jsonb('template_snapshot'),
+    generationError: varchar('generation_error', { length: 100 }),
+    failureCount: integer('failure_count').notNull().default(0),
+    nextRunAt: timestamp('next_run_at', { withTimezone: true }).notNull().defaultNow(),
     active: boolean('active').notNull().default(true),
     version: integer('version').notNull().default(1),
     ...timestamps,
   },
-  (t) => [index('recurrence_rules_ws_active_idx').on(t.workspaceId, t.active)],
+  (t) => [index('recurrence_rules_ws_active_idx').on(t.workspaceId, t.active), index('recurrence_rules_due_idx').on(t.nextRunAt, t.id).where(sql`${t.active} AND ${t.templateSnapshot} IS NOT NULL`)],
 );
 
 export const taskOccurrences = pgTable(
@@ -305,7 +318,7 @@ export const taskOccurrences = pgTable(
     status: occurrenceStatusEnum('status').notNull().default('PENDING'),
     ...timestamps,
   },
-  (t) => [uniqueIndex('task_occurrences_key_unique').on(t.recurrenceRuleId, t.occurrenceKey)],
+  (t) => [uniqueIndex('task_occurrences_key_unique').on(t.recurrenceRuleId, t.occurrenceKey), uniqueIndex('task_occurrences_task_unique').on(t.taskId).where(sql`${t.taskId} IS NOT NULL`)],
 );
 
 // ----------------------------------------------------------------- reminders & timers
@@ -319,6 +332,8 @@ export const reminders = pgTable(
     userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     scheduledAt: timestamp('scheduled_at', { withTimezone: true }).notNull(),
     minutesBeforeDue: integer('minutes_before_due'),
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
+    supersededById: uuid('superseded_by_id'),
     channel: reminderChannelEnum('channel').notNull().default('WEB'),
     status: reminderStatusEnum('status').notNull().default('SCHEDULED'),
     attempts: integer('attempts').notNull().default(0),
@@ -330,6 +345,7 @@ export const reminders = pgTable(
   (t) => [
     index('reminders_due_idx').on(t.status, t.scheduledAt),
     index('reminders_task_idx').on(t.taskId),
+    index('reminders_history_idx').on(t.userId, t.workspaceId, t.createdAt, t.id),
     /** Guarantees at-most-once delivery per channel (PRD §6.6). */
     uniqueIndex('reminders_dispatch_unique').on(t.id, t.channel),
   ],
@@ -348,6 +364,7 @@ export const timerSessions = pgTable(
     /** Accumulated across pause/resume cycles. */
     accumulatedSeconds: integer('accumulated_seconds').notNull().default(0),
     lastResumedAt: timestamp('last_resumed_at', { withTimezone: true }),
+    lastTransitionAt: timestamp('last_transition_at', { withTimezone: true }).notNull().defaultNow(),
     status: timerStatusEnum('status').notNull().default('RUNNING'),
     manualAdjustmentSeconds: integer('manual_adjustment_seconds').notNull().default(0),
     version: integer('version').notNull().default(1),
@@ -365,6 +382,7 @@ export const trackingEvents = pgTable(
   'tracking_events',
   {
     id: uuid('id').primaryKey(),
+    sequence: bigserial('sequence', { mode: 'number' }).notNull(),
     workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
     taskId: uuid('task_id').notNull(),
     occurrenceKey: varchar('occurrence_key', { length: 120 }),
@@ -381,6 +399,8 @@ export const trackingEvents = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
+    uniqueIndex('tracking_events_sequence_unique').on(t.sequence),
+    index('tracking_events_stream_idx').on(t.workspaceId,t.taskId,t.sequence),
     uniqueIndex('tracking_events_idem_unique').on(t.idempotencyKey),
     index('tracking_events_task_time_idx').on(t.taskId, t.occurredAt),
     index('tracking_events_ws_time_idx').on(t.workspaceId, t.occurredAt),
@@ -401,14 +421,15 @@ export const trackingResults = pgTable(
     explanation: text('explanation').notNull(),
     measuredWeight: numeric('measured_weight', { precision: 4, scale: 2 }).notNull(),
     calculationVersion: integer('calculation_version').notNull().default(1),
-    /** Hash of the inputs; identical inputs must not create a second row. */
+    /** Hash of inputs; unchanged ACTIVE inputs are a no-op, history is retained. */
     inputHash: varchar('input_hash', { length: 64 }).notNull(),
+    inputSnapshot: jsonb('input_snapshot').$type<Record<string, unknown>>(),
     recalculated: boolean('recalculated').notNull().default(false),
     supersededAt: timestamp('superseded_at', { withTimezone: true }),
     ...timestamps,
   },
   (t) => [
-    uniqueIndex('tracking_results_unique').on(t.taskId, t.occurrenceKey, t.calculationVersion, t.inputHash),
+    uniqueIndex('tracking_results_unique').on(t.taskId, sql`coalesce(${t.occurrenceKey}, '')`).where(sql`${t.supersededAt} IS NULL`),
     index('tracking_results_ws_created_idx').on(t.workspaceId, t.createdAt),
   ],
 );
@@ -427,6 +448,32 @@ export const trackingCorrections = pgTable(
   },
   (t) => [index('tracking_corrections_task_idx').on(t.taskId)],
 );
+
+/**
+ * Bounded date-range recalculation (PRD §7.6). The worker advances
+ * `cursorDate` one day per run; history is durable progress, never a cache.
+ */
+export const trackingBackfills = pgTable(
+  'tracking_backfills',
+  {
+    id: uuid('id').primaryKey(),
+    workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+    fromDate: date('from_date').notNull(),
+    toDate: date('to_date').notNull(),
+    /** Next day chunk to process; >= fromDate by constraint. */
+    cursorDate: date('cursor_date').notNull(),
+    totalDays: integer('total_days').notNull(),
+    status: varchar('status', { length: 12 }).notNull().default('PENDING'),
+    requestedBy: uuid('requested_by').notNull(),
+    reason: varchar('reason', { length: 500 }).notNull(),
+    ...timestamps,
+  },
+  (t) => [
+    index('tracking_backfills_workspace_idx').on(t.workspaceId, t.createdAt),
+    index('tracking_backfills_pending_idx').on(t.createdAt, t.id).where(sql`${t.status} = 'PENDING'`),
+  ],
+);
+
 
 // ----------------------------------------------------------------- sync
 
@@ -464,6 +511,7 @@ export const syncMutations = pgTable(
   'sync_mutations',
   {
     mutationId: uuid('mutation_id').primaryKey(),
+    requestHash: varchar('request_hash', { length: 64 }),
     workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
     deviceId: varchar('device_id', { length: 100 }).notNull(),
     entityType: varchar('entity_type', { length: 40 }).notNull(),
@@ -567,12 +615,21 @@ export const attachments = pgTable(
     scanStatus: scanStatusEnum('scan_status').notNull().default('PENDING'),
     uploadedAt: timestamp('uploaded_at', { withTimezone: true }),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    /** Initial attempt plus two retries (PRD §14: attachment.scan, 3 attempts). */
+    attempts: integer('attempts').notNull().default(0),
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    claimToken: uuid('claim_token'),
+    leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),
+    scanError: varchar('scan_error', { length: 300 }),
     ...timestamps,
   },
   (t) => [
     index('attachments_task_idx').on(t.taskId),
     uniqueIndex('attachments_object_key_unique').on(t.objectKey),
     check('attachments_size_positive', sql`${t.sizeBytes} > 0`),
+    index('attachments_scan_idx').on(t.nextAttemptAt).where(sql`${t.scanStatus} = 'PENDING' AND ${t.uploadedAt} IS NOT NULL AND ${t.claimToken} IS NULL AND ${t.attempts} < 3`),
+    index('attachments_claimed_idx').on(t.leaseExpiresAt).where(sql`${t.claimToken} IS NOT NULL`),
   ],
 );
 
@@ -648,32 +705,51 @@ export const subscriptions = pgTable(
   {
     id: uuid('id').primaryKey(),
     userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    /** Which provider this row mirrors (M6-i3). FREE rows keep the default; the sync service sets it when a provider customer is created. */
+    provider: billingProviderEnum('provider').notNull().default('STRIPE'),
     providerCustomerId: varchar('provider_customer_id', { length: 120 }),
     providerSubscriptionId: varchar('provider_subscription_id', { length: 120 }),
+    /** The provider's plan/price identifier (Stripe price id or Razorpay plan id). */
+    providerPlanRef: varchar('provider_plan_ref', { length: 120 }),
     plan: planEnum('plan').notNull().default('FREE'),
+    /** A downgrade awaiting the next billing period (PRD §18.3). */
+    pendingPlan: planEnum('pending_plan'),
+    pendingPlanEffectiveAt: timestamp('pending_plan_effective_at', { withTimezone: true }),
     status: subscriptionStatusEnum('status').notNull().default('ACTIVE'),
     currentPeriodEnd: timestamp('current_period_end', { withTimezone: true }),
     trialEndsAt: timestamp('trial_ends_at', { withTimezone: true }),
     cancelAtPeriodEnd: boolean('cancel_at_period_end').notNull().default(false),
     graceEndsAt: timestamp('grace_ends_at', { withTimezone: true }),
+    /** When the last applied provider event occurred (out-of-order horizon). */
+    lastEventAt: timestamp('last_event_at', { withTimezone: true }),
     version: integer('version').notNull().default(1),
     ...timestamps,
   },
   (t) => [
     uniqueIndex('subscriptions_user_unique').on(t.userId),
     index('subscriptions_provider_idx').on(t.providerCustomerId),
+    index('subscriptions_provider_sub_idx').on(t.provider, t.providerSubscriptionId),
   ],
 );
 
-/** Deduplicates billing webhooks on the provider event id (PRD §18.3). */
+/**
+ * Deduplicates billing webhooks per-provider on the provider event id
+ * (PRD §18.3). The same event id in two providers is NOT a duplicate, hence
+ * the composite (provider, provider_event_id) key.
+ */
 export const billingEvents = pgTable(
   'billing_events',
   {
-    providerEventId: varchar('provider_event_id', { length: 120 }).primaryKey(),
+    provider: billingProviderEnum('provider').notNull().default('STRIPE'),
+    providerEventId: varchar('provider_event_id', { length: 120 }).notNull(),
     type: varchar('type', { length: 80 }).notNull(),
+    /** Set once the event is resolved to a local user (null = unresolved). */
+    userId: uuid('user_id'),
+    receivedAt: timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
     processedAt: timestamp('processed_at', { withTimezone: true }).notNull().defaultNow(),
     payload: jsonb('payload').notNull(),
   },
+  (t) => [primaryKey({ columns: [t.provider, t.providerEventId] })],
 );
 
 export const entitlements = pgTable(
@@ -696,13 +772,14 @@ export const notifications = pgTable(
     userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     workspaceId: uuid('workspace_id').references(() => workspaces.id, { onDelete: 'cascade' }),
     type: varchar('type', { length: 60 }).notNull(),
-    title: varchar('title', { length: 300 }).notNull(),
+    title: varchar('title', { length: 500 }).notNull(),
     body: text('body'),
     taskId: uuid('task_id'),
+    reminderId: uuid('reminder_id').references(() => reminders.id, { onDelete: 'set null' }),
     readAt: timestamp('read_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index('notifications_user_idx').on(t.userId, t.readAt)],
+  (t) => [index('notifications_user_idx').on(t.userId, t.readAt), uniqueIndex('notifications_reminder_unique').on(t.reminderId), index('notifications_history_idx').on(t.userId, t.workspaceId, t.createdAt, t.id)],
 );
 
 export const exports = pgTable(
@@ -718,9 +795,18 @@ export const exports = pgTable(
     /** Short-lived by policy (PRD §13.5: 24 hours). */
     expiresAt: timestamp('expires_at', { withTimezone: true }),
     error: varchar('error', { length: 300 }),
+    /** Initial attempt plus two retries (PRD §12.4: export.generate, retries 2). */
+    attempts: integer('attempts').notNull().default(0),
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    claimToken: uuid('claim_token'),
+    leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),
     ...timestamps,
   },
-  (t) => [index('exports_user_status_idx').on(t.userId, t.status)],
+  (t) => [index('exports_user_status_idx').on(t.userId, t.status),
+  index('exports_ready_idx').on(t.userId,t.nextAttemptAt).where(sql`${t.status} = 'PENDING' AND ${t.claimToken} IS NULL AND ${t.attempts} < 3`),
+  index('exports_claimed_idx').on(t.leaseExpiresAt).where(sql`${t.claimToken} IS NOT NULL`),
+  index('exports_expiring_idx').on(t.expiresAt).where(sql`${t.status} = 'READY' AND ${t.expiresAt} IS NOT NULL`)],
 );
 
 export const userPreferences = pgTable(
@@ -775,3 +861,77 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
   sections: many(sections),
   tasks: many(tasks),
 }));
+
+
+/** Durable authentication backoff; identities are HMACs, never raw addresses. */
+export const authenticationAttempts = pgTable('authentication_attempts', {
+  key: varchar('key', { length: 64 }).primaryKey(),
+  attempts: integer('attempts').notNull(),
+  blockedUntil: timestamp('blocked_until', { withTimezone: true }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+}, (t) => [index('authentication_attempts_expiry').on(t.expiresAt)]);
+
+/** Encrypted mail payloads; user purge cascades their private contents. */
+export const mailDeliveries = pgTable('mail_deliveries', {
+  id: uuid('id').primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  kind: varchar('kind', { length: 40 }).notNull(),
+  encryptedMessage: text('encrypted_message').notNull(),
+  status: varchar('status', { length: 16 }).notNull().default('PENDING'),
+  attempts: integer('attempts').notNull().default(0),
+  nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
+  leaseToken: uuid('lease_token'),
+  leaseUntil: timestamp('lease_until', { withTimezone: true }),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  sentAt: timestamp('sent_at', { withTimezone: true }),
+  lastError: varchar('last_error', { length: 80 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index('mail_delivery_due').on(t.status, t.nextAttemptAt)]);
+
+/** Durable invalidation, queue and consumer checkpoint; workspace/task ownership is a composite FK. */
+export const trackingJobs = pgTable('tracking_jobs', {
+ taskId: uuid('task_id').primaryKey(),
+ workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+ revision: integer('revision').notNull().default(1),
+ queuedRevision: integer('queued_revision').notNull().default(0),
+ acknowledgedRevision: integer('acknowledged_revision').notNull().default(0),
+ evaluatedRevision: integer('evaluated_revision').notNull().default(0),
+ evaluatedCohortRevision: integer('evaluated_cohort_revision').notNull().default(0),
+ queuedCohortRevision: integer('queued_cohort_revision').notNull().default(0),
+ calculationVersion: integer('calculation_version').notNull().default(0),
+ queuedCalculationVersion: integer('queued_calculation_version').notNull().default(0),
+ nextEvaluationAt: timestamp('next_evaluation_at', { withTimezone: true }),
+ evaluatedAt: timestamp('evaluated_at', { withTimezone: true }),
+ requestedAt: timestamp('requested_at', { withTimezone: true }).notNull().defaultNow(),
+ queuedAt: timestamp('queued_at', { withTimezone: true }),
+ claimToken: uuid('claim_token'),
+ leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),
+ attempts: integer('attempts').notNull().default(0),
+ nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
+ lastError: varchar('last_error', { length: 80 }),
+ lastErrorAt: timestamp('last_error_at', { withTimezone: true }),
+}, (t) => [index('tracking_jobs_workspace_idx').on(t.workspaceId, t.taskId),
+ index('tracking_jobs_ready_idx').on(t.nextAttemptAt,t.queuedAt).where(sql`${t.queuedRevision}>${t.acknowledgedRevision} AND ${t.attempts}<6`),
+ index('tracking_jobs_clock_idx').on(t.nextEvaluationAt).where(sql`${t.nextEvaluationAt} IS NOT NULL`),
+ index('tracking_jobs_expired_lease_idx').on(t.leaseExpiresAt).where(sql`${t.claimToken} IS NOT NULL`),
+ check('tracking_jobs_attempts_check',sql`${t.attempts} BETWEEN 0 AND 6`),
+ check('tracking_jobs_lease_pair',sql`(${t.claimToken} IS NULL) = (${t.leaseExpiresAt} IS NULL)`),
+ foreignKey({ columns: [t.taskId, t.workspaceId], foreignColumns: [tasks.id, tasks.workspaceId] }).onDelete('cascade')]);
+
+/** Per-consumer receipts never pretend other outbox consumers have delivered. */
+export const trackingOutboxReceipts = pgTable('tracking_outbox_receipts', {
+ outboxId: uuid('outbox_id').primaryKey().references(() => outbox.id, { onDelete: 'cascade' }),
+ workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+ receivedAt: timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Optional review-flow note per local day (PRD §8.5); `day` is the workspace-local date key. */
+export const reviewNotes = pgTable('review_notes', {
+ workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+ day: date('day', { mode: 'string' }).notNull(),
+ body: varchar('body', { length: 500 }).notNull(),
+ updatedBy: uuid('updated_by').notNull().references(() => users.id),
+ createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+ updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.workspaceId, t.day] }),
+ index('review_notes_workspace_idx').on(t.workspaceId, t.day)]);

@@ -16,10 +16,10 @@ export class ApiError extends Error {
 }
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(`/api/v1${path}`, {
-    ...init,
-    headers: { 'Content-Type': 'application/json', ...(init.headers ?? {}) },
-  });
+  const headers = new Headers(init.headers);
+  if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+  if (!['GET', 'HEAD', 'OPTIONS'].includes((init.method ?? 'GET').toUpperCase()) && !headers.has('Idempotency-Key')) headers.set('Idempotency-Key', crypto.randomUUID());
+  const response = await fetch(`/api/v1${path}`, { ...init, headers });
 
   if (response.status === 204) return undefined as T;
 
@@ -42,15 +42,23 @@ export interface Task {
   id: string;
   workspaceId: string;
   projectId: string | null;
+  sectionId?: string | null;
+  parentTaskId?: string | null;
+  recurrenceRuleId?: string | null;
   title: string;
   description: string | null;
+  location: string | null;
   status: 'ACTIVE' | 'COMPLETED' | 'ARCHIVED' | 'DELETED';
   priority: 'NONE' | 'LOW' | 'MEDIUM' | 'HIGH';
   dueAt: string | null;
+  timeZone?: string | null;
   estimateMinutes: number | null;
   actualMinutes: number;
+  actualSeconds: number;
   rescheduleCount: number;
   version: number;
   completedAt: string | null;
+  deletedAt?: string | null;
+  restoreUntil?: string | null;
   createdAt: string;
 }

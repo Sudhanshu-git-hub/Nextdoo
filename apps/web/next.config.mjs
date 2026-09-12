@@ -3,11 +3,6 @@ const nextConfig = {
   reactStrictMode: true,
   transpilePackages: ['@nextdoo/contracts', '@nextdoo/core', '@nextdoo/db'],
   serverExternalPackages: ['postgres', '@node-rs/argon2'],
-  experimental: {
-    // The sandbox preview is proxied through an e2b host, so server actions
-    // must accept that origin in addition to localhost.
-    serverActions: { allowedOrigins: ['*'] },
-  },
   async headers() {
     return [
       {

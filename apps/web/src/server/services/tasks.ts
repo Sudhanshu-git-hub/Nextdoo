@@ -1,6 +1,11 @@
-import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, or, sql } from 'drizzle-orm';
+import { serialiseTaskRecord as serialise } from '@nextdoo/db';
+import { taskOrder } from '../task-order';
+import { createTag } from './projects';
+import { and, eq, getTableColumns, gt, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import {
   AppError,
+  taskQuerySchema,
+  taskVersionSchema,
   type CreateTaskInput,
   type TaskQueryInput,
   type UpdateTaskInput,
@@ -8,11 +13,15 @@ import {
   versionConflict,
 } from '@nextdoo/contracts';
 import { nextStatus } from '@nextdoo/core';
-import { tasks, taskTags, syncTombstones } from '@nextdoo/db';
+import { projects, tasks, taskTags, taskDependencies, taskOccurrences, syncTombstones, workspaces } from '@nextdoo/db';
 import { getDb } from '../db';
 import { newId } from '../ids';
 import { appendTrackingEvent, publishEvent, recordSyncChange, writeAudit } from './events';
 import { scheduleTrackingEvaluation } from './tracking';
+import { assertTaskReferences } from './task-references';
+import { withWorkspaceTransaction } from './transactions';
+import { withTaskMetric, recordActiveTaskCount, type MutationChannel } from '../metrics';
+import { enforceTaskLimit } from './entitlements';
 
 /**
  * Task domain service (PRD §6.3).
@@ -28,34 +37,30 @@ export interface TaskActor {
   workspaceId: string;
   requestId?: string;
   deviceId?: string | null;
+  /** Which channel initiated the mutation (metric tagging; defaults to http). */
+  via?: MutationChannel;
+}
+
+/**
+ * Emits the active-task count gauge after a count-changing mutation. The
+ * read happens after the transaction committed; a failure here must never
+ * fail the already-committed mutation.
+ */
+async function emitActiveTaskCount(workspaceId: string): Promise<void> {
+  try {
+    const rows = await getDb()
+      .select({ count: sql<number>`count(*)` })
+      .from(tasks)
+      .where(and(eq(tasks.workspaceId, workspaceId), eq(tasks.status, 'ACTIVE')));
+    recordActiveTaskCount(workspaceId, Number(rows[0]?.count ?? 0));
+  } catch {
+    // Gauge emission is best-effort by design.
+  }
 }
 
 export type TaskRow = typeof tasks.$inferSelect;
+export const TASK_RESTORE_WINDOW_MS = 30 * 86_400_000;
 
-function serialise(task: TaskRow) {
-  return {
-    id: task.id,
-    workspaceId: task.workspaceId,
-    projectId: task.projectId,
-    sectionId: task.sectionId,
-    parentTaskId: task.parentTaskId,
-    title: task.title,
-    description: task.description,
-    status: task.status,
-    priority: task.priority,
-    dueAt: task.dueAt?.toISOString() ?? null,
-    timeZone: task.timeZone,
-    estimateMinutes: task.estimateMinutes,
-    actualMinutes: task.actualMinutes,
-    position: Number(task.position),
-    rescheduleCount: task.rescheduleCount,
-    version: task.version,
-    completedAt: task.completedAt?.toISOString() ?? null,
-    archivedAt: task.archivedAt?.toISOString() ?? null,
-    createdAt: task.createdAt.toISOString(),
-    updatedAt: task.updatedAt.toISOString(),
-  };
-}
 
 export type SerialisedTask = ReturnType<typeof serialise>;
 
@@ -72,12 +77,29 @@ export async function loadTask(workspaceId: string, taskId: string): Promise<Tas
   return row;
 }
 
-export async function createTask(actor: TaskActor, input: CreateTaskInput): Promise<SerialisedTask> {
-  const db = getDb();
-  const id = newId();
+export async function createTask(actor: TaskActor, input: CreateTaskInput, options: { id?: string } = {}): Promise<SerialisedTask> {
+  return withTaskMetric(actor.workspaceId, actor.via ?? 'http', 'create', () => createTaskCore(actor, input, options), () => emitActiveTaskCount(actor.workspaceId));
+}
+
+async function createTaskCore(actor: TaskActor, input: CreateTaskInput, options: { id?: string } = {}): Promise<SerialisedTask> {
+  const id = options.id ?? newId();
   const now = new Date();
 
-  return db.transaction(async (tx) => {
+  return withWorkspaceTransaction(actor.workspaceId, async (tx) => {
+
+    await enforceTaskLimit(actor.userId, actor.workspaceId);
+    if (input.projectName !== undefined) {
+      if (input.projectId) throw new AppError('VALIDATION_FAILED', 'Choose a project ID or a project name, not both.');
+      const matches = await tx.select({ id: projects.id }).from(projects).where(and(
+        eq(projects.workspaceId, actor.workspaceId), eq(projects.status, 'ACTIVE'), isNull(projects.deletedAt),
+        sql`lower(${projects.name}) = lower(${input.projectName})`,
+      )).limit(2);
+      if (matches.length !== 1) throw new AppError('VALIDATION_FAILED', 'Project name is missing or ambiguous. Create it in Projects, or remove +project and assign it with the task editor. No task was created.');
+      input = { ...input, projectId: matches[0]!.id };
+    }
+    await assertTaskReferences(tx, actor.workspaceId, input);
+    const tagIds = await resolveTags(actor.workspaceId, input.tagIds, input.tagNames);
+    input = { ...input, tagIds };
     // Parent must live in the same workspace — prevents cross-tenant nesting.
     if (input.parentTaskId) {
       const parent = await tx
@@ -98,9 +120,10 @@ export async function createTask(actor: TaskActor, input: CreateTaskInput): Prom
         parentTaskId: input.parentTaskId ?? null,
         title: input.title,
         description: input.description ?? null,
+        location: input.location ?? null,
         priority: input.priority,
         dueAt: input.dueAt ? new Date(input.dueAt) : null,
-        timeZone: input.timeZone ?? null,
+        timeZone: input.timeZone ?? (await tx.select({ timeZone: workspaces.timeZone }).from(workspaces).where(eq(workspaces.id, actor.workspaceId)))[0]?.timeZone ?? 'UTC',
         estimateMinutes: input.estimateMinutes ?? null,
         position: String(now.getTime()),
         createdAt: now,
@@ -142,7 +165,7 @@ export async function createTask(actor: TaskActor, input: CreateTaskInput): Prom
       entityType: 'task',
       entityId: id,
       operation: 'create',
-      payload: serialise(created) as unknown as Record<string, unknown>,
+      payload: { ...serialise(created), tagIds: input.tagIds },
       version: created.version,
       deviceId: actor.deviceId ?? null,
     });
@@ -163,18 +186,42 @@ export async function createTask(actor: TaskActor, input: CreateTaskInput): Prom
       requestId: actor.requestId ?? null,
     });
 
-    return serialise(created);
+    if (input.recurrenceRule) {
+      const { attachRecurrence } = await import('./recurrence');
+      await attachRecurrence(actor, id, { version: created.version, rule: input.recurrenceRule });
+      return { ...serialise(await loadTask(actor.workspaceId, id)), tagIds: input.tagIds };
+    }
+    return { ...serialise(created), tagIds: input.tagIds };
   });
+}
+
+export interface UpdateTaskOptions {
+  /**
+   * Skip the best-effort fast-path evaluation. Used by score corrections
+   * (PRD §7.7): the durable worker path must produce the new result so it is
+   * marked `recalculated`; the durable invalidation (PG trigger + outbox)
+   * still re-evaluates the task either way.
+   */
+  fastTracking?: boolean;
 }
 
 export async function updateTask(
   actor: TaskActor,
   taskId: string,
   input: UpdateTaskInput,
+  options: UpdateTaskOptions = {},
 ): Promise<SerialisedTask> {
-  const db = getDb();
+  return withTaskMetric(actor.workspaceId, actor.via ?? 'http', 'update', () => updateTaskCore(actor, taskId, input, options));
+}
 
-  return db.transaction(async (tx) => {
+async function updateTaskCore(
+  actor: TaskActor,
+  taskId: string,
+  input: UpdateTaskInput,
+  options: UpdateTaskOptions = {},
+): Promise<SerialisedTask> {
+
+  return withWorkspaceTransaction(actor.workspaceId, async (tx) => {
     const rows = await tx
       .select()
       .from(tasks)
@@ -186,9 +233,13 @@ export async function updateTask(
     // Optimistic lock (PRD §6.3 acceptance criteria).
     if (current.version !== input.version) throw versionConflict('task', taskId);
 
+    await assertTaskReferences(tx, actor.workspaceId, input, current.projectId);
+    if (input.tagNames !== undefined) input = { ...input, tagIds: await resolveTags(actor.workspaceId, input.tagIds ?? [], input.tagNames) };
     const patch: Partial<typeof tasks.$inferInsert> = { updatedAt: new Date() };
+    if (input.projectId !== undefined && input.projectId !== current.projectId && input.sectionId === undefined) patch.sectionId = null;
     if (input.title !== undefined) patch.title = input.title;
     if (input.description !== undefined) patch.description = input.description ?? null;
+    if (input.location !== undefined) patch.location = input.location ?? null;
     if (input.projectId !== undefined) patch.projectId = input.projectId ?? null;
     if (input.sectionId !== undefined) patch.sectionId = input.sectionId ?? null;
     if (input.priority !== undefined) patch.priority = input.priority;
@@ -197,6 +248,8 @@ export async function updateTask(
     if (input.dueAt !== undefined) patch.dueAt = input.dueAt ? new Date(input.dueAt) : null;
     if (input.estimateMinutes !== undefined) patch.estimateMinutes = input.estimateMinutes ?? null;
 
+    const dueChanged = input.dueAt !== undefined && (input.dueAt ?? null) !== (current.dueAt?.toISOString() ?? null);
+    if (dueChanged && current.dueAt) patch.rescheduleCount = current.rescheduleCount + 1;
     const [updated] = await tx
       .update(tasks)
       .set({ ...patch, version: sql`${tasks.version} + 1` })
@@ -213,6 +266,11 @@ export async function updateTask(
       }
     }
 
+    if (dueChanged) {
+      await appendTrackingEvent(tx, { workspaceId: actor.workspaceId, taskId, actorId: actor.userId,
+        type: current.dueAt ? 'TASK_RESCHEDULED' : 'TASK_PLANNED', payload: { from: current.dueAt?.toISOString() ?? null, to: input.dueAt ?? null } });
+      await rescheduleRelativeReminders(taskId, updated.dueAt);
+    }
     const estimateChanged =
       input.estimateMinutes !== undefined && input.estimateMinutes !== current.estimateMinutes;
     if (estimateChanged) {
@@ -230,7 +288,7 @@ export async function updateTask(
       entityType: 'task',
       entityId: taskId,
       operation: 'update',
-      payload: serialise(updated) as unknown as Record<string, unknown>,
+      payload: { ...serialise(updated), ...(input.tagIds !== undefined ? { tagIds: input.tagIds } : {}) } as unknown as Record<string, unknown>,
       version: updated.version,
       deviceId: actor.deviceId ?? null,
     });
@@ -241,9 +299,13 @@ export async function updateTask(
       entityType: 'task',
       entityId: taskId,
       correlationId: actor.requestId ?? null,
-      payload: { fields: Object.keys(patch).filter((k) => k !== 'updatedAt') },
+      payload: { fields: [...Object.keys(patch).filter((k) => k !== 'updatedAt'), ...(input.tagIds !== undefined ? ['tagIds'] : [])] },
     });
 
+    // Fast path is best-effort only; durable invalidation (PG trigger + outbox)
+    // re-evaluates regardless. Corrections suppress it so the worker path
+    // writes the single new result marked `recalculated` (PRD §7.7).
+    if (options.fastTracking !== false) await scheduleTrackingEvaluation(actor.workspaceId, taskId);
     return serialise(updated);
   });
 }
@@ -254,10 +316,18 @@ export async function completeTask(
   version: number,
   completedAt?: string,
 ): Promise<SerialisedTask> {
-  const db = getDb();
+  return withTaskMetric(actor.workspaceId, actor.via ?? 'http', 'complete', () => completeTaskCore(actor, taskId, version, completedAt), () => emitActiveTaskCount(actor.workspaceId));
+}
+
+async function completeTaskCore(
+  actor: TaskActor,
+  taskId: string,
+  version: number,
+  completedAt?: string,
+): Promise<SerialisedTask> {
   const when = completedAt ? new Date(completedAt) : new Date();
 
-  const result = await db.transaction(async (tx) => {
+  return withWorkspaceTransaction(actor.workspaceId, async (tx) => {
     const rows = await tx
       .select()
       .from(tasks)
@@ -291,7 +361,7 @@ export async function completeTask(
       deviceId: actor.deviceId ?? null,
       payload: { dueAt: current.dueAt?.toISOString() ?? null },
       // Deterministic: replaying the same completion cannot create a second event.
-      idempotencyKey: `complete:${taskId}:${when.toISOString()}`,
+      idempotencyKey: `complete:${taskId}:${updated.version}:${when.toISOString()}`,
     });
 
     await recordSyncChange(tx, {
@@ -320,18 +390,20 @@ export async function completeTask(
       requestId: actor.requestId ?? null,
     });
 
+    await cancelRemindersForTask(taskId);
+    if (current.recurrenceRuleId) await tx.update(taskOccurrences).set({ status: 'COMPLETED', updatedAt: new Date() }).where(and(eq(taskOccurrences.taskId, taskId), eq(taskOccurrences.recurrenceRuleId, current.recurrenceRuleId)));
+    await scheduleTrackingEvaluation(actor.workspaceId, taskId);
     return serialise(updated);
   });
 
-  // Cancel pending reminders and recompute the execution result.
-  await cancelRemindersForTask(taskId);
-  await scheduleTrackingEvaluation(actor.workspaceId, taskId);
-  return result;
 }
 
 export async function reopenTask(actor: TaskActor, taskId: string, version: number): Promise<SerialisedTask> {
-  const db = getDb();
-  return db.transaction(async (tx) => {
+  return withTaskMetric(actor.workspaceId, actor.via ?? 'http', 'reopen', () => reopenTaskCore(actor, taskId, version), () => emitActiveTaskCount(actor.workspaceId));
+}
+
+async function reopenTaskCore(actor: TaskActor, taskId: string, version: number): Promise<SerialisedTask> {
+  return withWorkspaceTransaction(actor.workspaceId, async (tx) => {
     const rows = await tx
       .select()
       .from(tasks)
@@ -341,6 +413,7 @@ export async function reopenTask(actor: TaskActor, taskId: string, version: numb
     if (!current) throw notFound('task', taskId);
     if (current.version !== version) throw versionConflict('task', taskId);
     nextStatus(current.status, 'reopen');
+    await enforceTaskLimit(actor.userId, actor.workspaceId);
 
     const [updated] = await tx
       .update(tasks)
@@ -370,6 +443,8 @@ export async function reopenTask(actor: TaskActor, taskId: string, version: numb
       entityType: 'task',
       entityId: taskId,
     });
+    if (current.recurrenceRuleId) await tx.update(taskOccurrences).set({ status: 'PENDING', updatedAt: new Date() }).where(and(eq(taskOccurrences.taskId, taskId), eq(taskOccurrences.recurrenceRuleId, current.recurrenceRuleId)));
+    await scheduleTrackingEvaluation(actor.workspaceId, taskId);
     return serialise(updated);
   });
 }
@@ -381,8 +456,17 @@ export async function rescheduleTask(
   dueAt: string | null,
   reason?: string,
 ): Promise<SerialisedTask> {
-  const db = getDb();
-  return db.transaction(async (tx) => {
+  return withTaskMetric(actor.workspaceId, actor.via ?? 'http', 'reschedule', () => rescheduleTaskCore(actor, taskId, version, dueAt, reason));
+}
+
+async function rescheduleTaskCore(
+  actor: TaskActor,
+  taskId: string,
+  version: number,
+  dueAt: string | null,
+  reason?: string,
+): Promise<SerialisedTask> {
+  return withWorkspaceTransaction(actor.workspaceId, async (tx) => {
     const rows = await tx
       .select()
       .from(tasks)
@@ -427,13 +511,18 @@ export async function rescheduleTask(
       entityType: 'task',
       entityId: taskId,
     });
+    await rescheduleRelativeReminders(taskId, updated.dueAt);
+    await scheduleTrackingEvaluation(actor.workspaceId, taskId);
     return serialise(updated);
   });
 }
 
 export async function archiveTask(actor: TaskActor, taskId: string, version: number): Promise<SerialisedTask> {
-  const db = getDb();
-  return db.transaction(async (tx) => {
+  return withTaskMetric(actor.workspaceId, actor.via ?? 'http', 'archive', () => archiveTaskCore(actor, taskId, version), () => emitActiveTaskCount(actor.workspaceId));
+}
+
+async function archiveTaskCore(actor: TaskActor, taskId: string, version: number): Promise<SerialisedTask> {
+  return withWorkspaceTransaction(actor.workspaceId, async (tx) => {
     const rows = await tx
       .select()
       .from(tasks)
@@ -465,14 +554,21 @@ export async function archiveTask(actor: TaskActor, taskId: string, version: num
       payload: serialise(updated) as unknown as Record<string, unknown>,
       version: updated.version,
     });
+    await publishEvent(tx, { workspaceId: actor.workspaceId, actorId: actor.userId, entityType: 'task', entityId: taskId, eventType: 'task.archived', correlationId: actor.requestId, payload: { version: updated.version } });
+    await writeAudit(tx, { workspaceId: actor.workspaceId, actorId: actor.userId, action: 'task.archived', targetType: 'task', targetId: taskId, requestId: actor.requestId, metadata: { fromStatus: current.status, version: updated.version } });
+    await scheduleTrackingEvaluation(actor.workspaceId, taskId);
     return serialise(updated);
   });
 }
 
 /** Soft delete with a tombstone and a 30-day restore window (PRD §13.5). */
-export async function deleteTask(actor: TaskActor, taskId: string): Promise<void> {
-  const db = getDb();
-  await db.transaction(async (tx) => {
+export async function deleteTask(actor: TaskActor, taskId: string, version?: number): Promise<void> {
+  return withTaskMetric(actor.workspaceId, actor.via ?? 'http', 'delete', () => deleteTaskCore(actor, taskId, version), () => emitActiveTaskCount(actor.workspaceId));
+}
+
+async function deleteTaskCore(actor: TaskActor, taskId: string, version?: number): Promise<void> {
+  if (version !== undefined) taskVersionSchema.parse({ version });
+  await withWorkspaceTransaction(actor.workspaceId, async (tx) => {
     const rows = await tx
       .select()
       .from(tasks)
@@ -480,12 +576,16 @@ export async function deleteTask(actor: TaskActor, taskId: string): Promise<void
       .limit(1);
     const current = rows[0];
     if (!current) throw notFound('task', taskId);
+    if (version !== undefined && current.version !== version) throw versionConflict('task', taskId);
+    if (current.status === 'DELETED') return;
 
     const now = new Date();
-    await tx
+    const [deleted] = await tx
       .update(tasks)
       .set({ status: 'DELETED', deletedAt: now, updatedAt: now, version: sql`${tasks.version} + 1` })
-      .where(eq(tasks.id, taskId));
+      .where(and(eq(tasks.id, taskId), eq(tasks.workspaceId, actor.workspaceId), eq(tasks.version, current.version)))
+      .returning({ id: tasks.id });
+    if (!deleted) throw versionConflict('task', taskId);
 
     await tx
       .insert(syncTombstones)
@@ -495,7 +595,7 @@ export async function deleteTask(actor: TaskActor, taskId: string): Promise<void
         entityType: 'task',
         entityId: taskId,
         deletedAt: now,
-        purgeAfter: new Date(now.getTime() + 30 * 86_400_000),
+        purgeAfter: new Date(now.getTime() + TASK_RESTORE_WINDOW_MS),
       })
       .onConflictDoNothing();
 
@@ -522,13 +622,17 @@ export async function deleteTask(actor: TaskActor, taskId: string): Promise<void
       targetId: taskId,
       requestId: actor.requestId ?? null,
     });
+    await cancelRemindersForTask(taskId);
   });
-  await cancelRemindersForTask(taskId);
 }
 
-export async function restoreTask(actor: TaskActor, taskId: string): Promise<SerialisedTask> {
-  const db = getDb();
-  return db.transaction(async (tx) => {
+export async function restoreTask(actor: TaskActor, taskId: string, version?: number): Promise<SerialisedTask> {
+  return withTaskMetric(actor.workspaceId, actor.via ?? 'http', 'restore', () => restoreTaskCore(actor, taskId, version), () => emitActiveTaskCount(actor.workspaceId));
+}
+
+async function restoreTaskCore(actor: TaskActor, taskId: string, version?: number): Promise<SerialisedTask> {
+  if (version !== undefined) taskVersionSchema.parse({ version });
+  return withWorkspaceTransaction(actor.workspaceId, async (tx) => {
     const rows = await tx
       .select()
       .from(tasks)
@@ -536,23 +640,28 @@ export async function restoreTask(actor: TaskActor, taskId: string): Promise<Ser
       .limit(1);
     const current = rows[0];
     if (!current) throw notFound('task', taskId);
+    if (version !== undefined && current.version !== version) throw versionConflict('task', taskId);
+    nextStatus(current.status, 'restore');
+    if (current.status === 'DELETED' && (!current.deletedAt || current.deletedAt.getTime() <= Date.now() - TASK_RESTORE_WINDOW_MS)) throw new AppError('VALIDATION_FAILED', 'The restore window has expired.');
+    await enforceTaskLimit(actor.userId, actor.workspaceId);
 
     const [updated] = await tx
       .update(tasks)
       .set({
-        status: current.completedAt ? 'COMPLETED' : 'ACTIVE',
+        status: 'ACTIVE',
+        completedAt: null,
         deletedAt: null,
         archivedAt: null,
         updatedAt: new Date(),
         version: sql`${tasks.version} + 1`,
       })
-      .where(eq(tasks.id, taskId))
+      .where(and(eq(tasks.id, taskId), eq(tasks.workspaceId, actor.workspaceId), eq(tasks.version, current.version)))
       .returning();
     if (!updated) throw notFound('task', taskId);
 
     await tx
       .delete(syncTombstones)
-      .where(and(eq(syncTombstones.entityType, 'task'), eq(syncTombstones.entityId, taskId)));
+      .where(and(eq(syncTombstones.workspaceId, actor.workspaceId), eq(syncTombstones.entityType, 'task'), eq(syncTombstones.entityId, taskId)));
 
     await recordSyncChange(tx, {
       workspaceId: actor.workspaceId,
@@ -569,6 +678,9 @@ export async function restoreTask(actor: TaskActor, taskId: string): Promise<Ser
       entityType: 'task',
       entityId: taskId,
     });
+    await writeAudit(tx, { workspaceId: actor.workspaceId, actorId: actor.userId, action: 'task.restored', targetType: 'task', targetId: taskId, requestId: actor.requestId, metadata: { fromStatus: current.status, version: updated.version } });
+    if (current.recurrenceRuleId) await tx.update(taskOccurrences).set({ status: 'PENDING', updatedAt: new Date() }).where(and(eq(taskOccurrences.taskId, taskId), eq(taskOccurrences.recurrenceRuleId, current.recurrenceRuleId)));
+    await scheduleTrackingEvaluation(actor.workspaceId, taskId);
     return serialise(updated);
   });
 }
@@ -578,41 +690,47 @@ export async function queryTasks(
   workspaceId: string,
   query: TaskQueryInput,
 ): Promise<{ data: SerialisedTask[]; nextCursor: string | null; hasMore: boolean }> {
+  query = taskQuerySchema.parse(query);
+  const order = taskOrder(workspaceId, query);
   const db = getDb();
-  const conditions = [eq(tasks.workspaceId, workspaceId), isNull(tasks.deletedAt)];
+  // Deleted content is exposed only by an explicit recovery query, never normal lists.
+  const conditions = [eq(tasks.workspaceId, workspaceId), ...(query.status === 'DELETED'
+    ? [isNotNull(tasks.deletedAt), gt(tasks.deletedAt, new Date(Date.now() - TASK_RESTORE_WINDOW_MS))]
+    : [isNull(tasks.deletedAt)])];
 
+  if (query.parentTaskId) {
+    await loadTask(workspaceId, query.parentTaskId);
+    conditions.push(eq(tasks.parentTaskId, query.parentTaskId));
+  }
+  if (query.dependencyOfTaskId) {
+    await loadTask(workspaceId, query.dependencyOfTaskId);
+    conditions.push(inArray(tasks.id, db.select({ id: taskDependencies.dependsOnTaskId }).from(taskDependencies).where(eq(taskDependencies.taskId, query.dependencyOfTaskId))));
+  }
   if (query.status) conditions.push(eq(tasks.status, query.status));
   else if (!query.includeArchived) conditions.push(inArray(tasks.status, ['ACTIVE', 'COMPLETED']));
 
+  if (query.priority) conditions.push(eq(tasks.priority, query.priority));
+  if (query.hasDueDate !== undefined) conditions.push(query.hasDueDate ? isNotNull(tasks.dueAt) : isNull(tasks.dueAt));
+  if (query.tagId) conditions.push(inArray(tasks.id, db.select({ id: taskTags.taskId }).from(taskTags).where(eq(taskTags.tagId, query.tagId))));
+  if (query.unfiled && query.projectId) throw new AppError('VALIDATION_FAILED', 'Choose unfiled tasks or a project, not both.');
+  if (query.unfiled) conditions.push(isNull(tasks.projectId));
   if (query.projectId) conditions.push(eq(tasks.projectId, query.projectId));
-  if (query.dueBefore) conditions.push(lte(tasks.dueAt, new Date(query.dueBefore)));
-  if (query.dueAfter) conditions.push(gte(tasks.dueAt, new Date(query.dueAfter)));
+  if (query.dueBefore) conditions.push(sql`${tasks.dueAt} <= ${query.dueBefore}::timestamptz`);
+  if (query.dueAfter) conditions.push(sql`${tasks.dueAt} >= ${query.dueAfter}::timestamptz`);
   if (query.q) {
     conditions.push(
       sql`to_tsvector('simple', coalesce(${tasks.title},'') || ' ' || coalesce(${tasks.description},'')) @@ plainto_tsquery('simple', ${query.q})`,
     );
   }
 
-  // Keyset pagination on (createdAt, id) — stable under concurrent inserts.
-  if (query.cursor) {
-    try {
-      const decoded = JSON.parse(Buffer.from(query.cursor, 'base64url').toString('utf8')) as {
-        c: string;
-        i: string;
-      };
-      conditions.push(
-        or(lt(tasks.createdAt, new Date(decoded.c)), and(eq(tasks.createdAt, new Date(decoded.c)), lt(tasks.id, decoded.i)))!,
-      );
-    } catch {
-      throw new AppError('VALIDATION_FAILED', 'Malformed pagination cursor.');
-    }
-  }
+  if (order.after) conditions.push(order.after);
 
   const rows = await db
-    .select()
+    .select({ ...getTableColumns(tasks), cursorKey: order.selection })
     .from(tasks)
+    .leftJoin(projects, and(eq(projects.id, tasks.projectId), eq(projects.workspaceId, workspaceId), isNull(projects.deletedAt)))
     .where(and(...conditions))
-    .orderBy(desc(tasks.createdAt), desc(tasks.id))
+    .orderBy(...order.orderBy)
     .limit(query.limit + 1);
 
   const hasMore = rows.length > query.limit;
@@ -620,7 +738,7 @@ export async function queryTasks(
   const last = page[page.length - 1];
   const nextCursor =
     hasMore && last
-      ? Buffer.from(JSON.stringify({ c: last.createdAt.toISOString(), i: last.id })).toString('base64url')
+      ? order.cursor(last)
       : null;
 
   return { data: page.map(serialise), nextCursor, hasMore };
@@ -632,4 +750,26 @@ export { serialise as serialiseTask };
 async function cancelRemindersForTask(taskId: string): Promise<void> {
   const { cancelRemindersForTask: cancel } = await import('./reminders');
   await cancel(taskId);
+}
+
+async function rescheduleRelativeReminders(taskId: string, dueAt: Date | null): Promise<void> {
+  const { rescheduleRelativeReminders: reschedule } = await import('./reminders');
+  await reschedule(taskId, dueAt);
+}
+
+/** Called only inside the enclosing workspace mutation transaction. */
+async function resolveTags(workspaceId: string, ids: string[], names: string[] = []): Promise<string[]> {
+  const result = new Set(ids);
+  for (const name of new Set(names.map((n) => n.trim().toLowerCase()))) result.add((await createTag(workspaceId, name)).id);
+  if (result.size > 50) throw new AppError('VALIDATION_FAILED', 'A task can have at most 50 tags.');
+  return [...result];
+}
+
+/** One consistent editable snapshot: tags and version share the workspace lock. */
+export async function getTaskDetails(workspaceId: string, taskId: string) {
+  return withWorkspaceTransaction(workspaceId, async (db) => {
+    const task = await loadTask(workspaceId, taskId);
+    const links = await db.select({ id: taskTags.tagId }).from(taskTags).where(eq(taskTags.taskId, taskId));
+    return { ...serialise(task), tagIds: links.map((l) => l.id) };
+  });
 }

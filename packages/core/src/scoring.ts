@@ -40,6 +40,12 @@ export interface ScoringInput {
   skipped: boolean;
   /** Review cutoff used to decide INCOMPLETE vs still-open. Defaults to now. */
   evaluatedAt?: Date;
+  /**
+   * Owner correction (PRD §7.7): the task was blocked by factors outside the
+   * user's control, so timing is UNMEASURED rather than penalised. Only the
+   * timing component is affected; completion and estimate keep measuring.
+   */
+  externallyBlocked?: boolean;
 }
 
 export interface ComponentResult {
@@ -125,6 +131,15 @@ function completionComponent(input: ScoringInput, weight: number): ComponentResu
 }
 
 function timingComponent(input: ScoringInput, weight: number, penaltyPerHour: number): ComponentResult {
+  if (input.externallyBlocked) {
+    return {
+      key: 'timing',
+      value: null,
+      weight,
+      measured: false,
+      reason: 'Marked as externally blocked, so timing is not measured.',
+    };
+  }
   if (!input.dueAt) {
     return { key: 'timing', value: null, weight, measured: false, reason: 'No due date was set, so timing cannot be measured.' };
   }

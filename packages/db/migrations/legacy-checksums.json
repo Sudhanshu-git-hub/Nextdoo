@@ -1,0 +1,11 @@
+{
+  "0000_init.sql": "3239bb13a4a8e29f19f67c878de90fe1bff3ad874c5d60e263bf900781416062",
+  "0001_widen_position.sql": "82c92f5d4148ce9598c96d64e30d1977b0c1d80785bbc558242b54eec2660fd9",
+  "0002_commit_ordered_sync_cursor.sql": "6455352764294b12bdcb5856ecc6aff54426d22c7eefa8808ec0084b95fbfc5b",
+  "0003_sync_request_identity.sql": "009cb3e4498b21d8933f86f7032b399d28ca1f039eb8eed1064f095950f0eebb",
+  "0004_active_tracking_history.sql": "51f97b7e19d01ccf4444cb4b983ed2c9f222d9e70961d606bae49d4b03c4c61c",
+  "0005_timer_transition_clock.sql": "3f1b0413836cb3f0d9f5cc58011b02a9c163ce4cf6978827d1bd1bd4d4efb4bb",
+  "0006_account_history_purge.sql": "9a68c9c5a3fe1dffe5c97e489b3fd67a3c2ad3807375e0c4154fcee4c989b9ab",
+  "0007_authentication_backoff.sql": "2d921da44a6ae496bb5fd933fb1920953f0659e3c15586223464aabc8c768e99",
+  "0008_durable_mail_delivery.sql": "9b65170815c1814de68f86b20c5be0eeeeaac420870b375469acc2cdac72e503"
+}

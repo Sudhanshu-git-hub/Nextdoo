@@ -2,13 +2,23 @@ import { z } from 'zod';
 
 /** PRD §15.1 — every domain event shares this envelope. */
 export const DOMAIN_EVENT_TYPE = [
+  'section.created',
+  'section.updated',
+  'project.created',
+  'project.updated',
+  'project.archived',
+  'project.restored',
   'task.created',
   'task.updated',
   'task.completed',
   'task.reopened',
   'task.rescheduled',
+  'task.archived',
   'task.deleted',
   'task.restored',
+  'workspace.updated',
+  'recurrence.created',
+  'recurrence.updated',
   'recurrence.occurrence_generated',
   'reminder.scheduled',
   'reminder.sent',

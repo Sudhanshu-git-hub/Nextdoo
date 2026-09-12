@@ -12,6 +12,7 @@
   --accent-strong: #4b8dfd;
   --ok: #57c98b;
   --warn: #f0b849;
+  --warn-text: #f0b849;
   --danger: #f2777a;
   --radius: 10px;
   --radius-sm: 6px;
@@ -24,8 +25,13 @@
     --bg: #f7f8fa; --bg-elev: #ffffff; --bg-elev-2: #f0f2f6;
     --border: #dde1e8; --border-strong: #c3cad6;
     --text: #131720; --text-dim: #4d5666; --text-faint: #6b7484;
-    --accent: #1f6feb; --accent-strong: #1a5fd0;
+    /* Link/accent TEXT needs 4.5:1 here: #1f6feb was 4.35:1 on --bg (sub-AA);
+       #1a5fd0 is 5.5:1. (PRD §8.8) */
+    --accent: #1a5fd0; --accent-strong: #1348a8;
     --ok: #1a7f4b; --warn: #9a6700; --danger: #c62f36;
+    /* Warn TEXT needs 4.5:1 on --bg-elev-2 here: #9a6700 was 4.34:1 (sub-AA);
+       #8a5a00 is 5.28:1. (PRD §8.8) */
+    --warn-text: #8a5a00;
     --shadow: 0 4px 16px rgba(16,24,40,.08);
   }
 }
@@ -128,6 +134,41 @@ label { display: block; font-size: 13px; color: var(--text-dim); margin-bottom: 
   padding: 11px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm);
   background: var(--bg-elev); margin-bottom: 7px;
 }
+/* Virtualized task lists (PRD §6.9): height-only placeholders for rows outside the window. */
+.task-list-placeholder { list-style: none; }
+
+/* Calendar day/week/month views (PRD §6.9). */
+.cal-chip { display: flex; align-items: center; gap: 6px; width: 100%; margin-bottom: 5px; }
+.cal-chip .check { margin-top: 0; flex-shrink: 0; }
+.cal-title { flex: 1; min-width: 0; width: auto; margin: 0; text-align: left; white-space: normal; }
+.cal-compact { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cal-time { font-size: 11px; color: var(--text-dim); white-space: nowrap; }
+.cal-edit { flex-shrink: 0; }
+.cal-done .cal-title { text-decoration: line-through; color: var(--text-faint); }
+.cal-over-mark { font-size: 10.5px; color: var(--warn); margin-top: 4px; }
+.cal-month .card { min-height: 92px; }
+.cal-row-error { font-size: 11px; color: var(--danger); margin: 4px 0 0; }
+
+/* Rich task description preview (rendered from the safe Markdown subset). */
+.description-preview { border: 1px solid var(--border); background: var(--bg-elev-2); border-radius: var(--radius-sm); padding: 10px 12px; min-height: 44px; }
+.description-preview p { margin: 0 0 8px; }
+.description-preview p:last-child { margin-bottom: 0; }
+.description-preview h1, .description-preview h2, .description-preview h3, .description-preview h4, .description-preview h5, .description-preview h6 { margin: 10px 0 6px; line-height: 1.3; }
+.description-preview h1 { font-size: 18px; }
+.description-preview h2 { font-size: 16px; }
+.description-preview h3, .description-preview h4, .description-preview h5, .description-preview h6 { font-size: 14px; }
+.description-preview pre { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 10px; overflow-x: auto; margin: 0 0 8px; }
+.description-preview pre code { background: none; padding: 0; }
+.description-preview code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 1px 4px; }
+.description-preview ul, .description-preview ol { margin: 0 0 8px; padding-left: 22px; }
+.description-preview ul ul, .description-preview ul ol, .description-preview ol ul, .description-preview ol ol { margin: 3px 0 0; }
+.description-preview li { margin-bottom: 3px; }
+.description-preview li > input[type="checkbox"] { margin-right: 6px; vertical-align: middle; }
+.description-preview blockquote { border-left: 3px solid var(--border-strong); margin: 0 0 8px; padding-left: 10px; color: var(--text-dim); }
+.description-preview a { color: var(--accent-strong); }
+.description-preview hr { border: 0; border-top: 1px solid var(--border-strong); margin: 10px 0; }
+.desc-count-limit { color: var(--danger); font-weight: 600; }
+#edit-notes { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
 .task-row:hover { border-color: var(--border-strong); }
 .task-row.done .task-title { text-decoration: line-through; color: var(--text-faint); }
 .task-main { flex: 1; min-width: 0; }
@@ -150,13 +191,14 @@ label { display: block; font-size: 13px; color: var(--text-dim); margin-bottom: 
 .pill-medium { border-color: var(--warn); color: var(--warn); }
 .pill-ok { border-color: var(--ok); color: var(--ok); }
 .pill-late { border-color: var(--danger); color: var(--danger); }
+.pill-scan-pending { border-color: var(--warn); color: var(--warn); }
 
 .banner {
   padding: 11px 14px; border-radius: var(--radius-sm); font-size: 13.5px;
   border: 1px solid var(--border-strong); background: var(--bg-elev-2); margin-bottom: 14px;
 }
 .banner-error { border-color: var(--danger); color: var(--danger); }
-.banner-warn { border-color: var(--warn); color: var(--warn); }
+.banner-warn { border-color: var(--warn); color: var(--warn-text); }
 .banner-info { border-color: var(--accent); }
 
 .empty { text-align: center; padding: 44px 20px; color: var(--text-dim); }
@@ -168,11 +210,22 @@ label { display: block; font-size: 13px; color: var(--text-dim); margin-bottom: 
 }
 @keyframes shimmer { to { background-position: -200% 0; } }
 
+/* pointer-events: none keeps the fixed chip from covering page controls on
+   short screens (it can never intercept a click); only the review link is
+   interactive. */
 .offline-badge {
   position: fixed; bottom: 16px; left: 16px; z-index: 50;
   background: var(--warn); color: #101216; padding: 7px 13px;
   border-radius: 999px; font-size: 12.5px; font-weight: 600; box-shadow: var(--shadow);
+  pointer-events: none;
 }
+.offline-badge a { color: inherit; font-weight: 700; pointer-events: auto; }
+
+.conflict-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.conflict-table td, .conflict-table th { font-size: 13.5px; }
+.conflicts-view details { margin-top: 8px; }
+.conflicts-view summary { cursor: pointer; }
+.conflicts-view pre { background: var(--bg-elev-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px; overflow: auto; font-size: 12.5px; }
 
 .kbd {
   font: 11.5px ui-monospace, monospace; padding: 1.5px 5px;
@@ -185,9 +238,42 @@ label { display: block; font-size: 13px; color: var(--text-dim); margin-bottom: 
 table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
 th { color: var(--text-dim); font-weight: 550; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+/* Wide tables (e.g. the data-export status table) scroll inside their card instead of
+   overflowing it and being covered by the neighbouring grid card. */
+.table-scroll { overflow-x: auto; }
 
 .auth-wrap { display: grid; place-items: center; min-height: 100vh; padding: 20px; }
 .auth-card { width: 100%; max-width: 380px; }
 .muted { color: var(--text-dim); font-size: 13px; }
 .row { display: flex; gap: 9px; align-items: center; flex-wrap: wrap; }
 .spread { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+
+/* Task editing uses the browser's modal focus containment and Escape semantics. */
+.task-edit-button { background: transparent; border: 0; padding: 3px 0; color: inherit; text-align: left; min-height: 28px; }
+.task-edit-button:hover { text-decoration: underline; background: transparent; }
+.task-editor { width: min(640px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 12px; padding: 24px; }
+.task-editor::backdrop { background: rgb(0 0 0 / .65); }
+.task-editor label { margin-top: 12px; }
+.task-editor input[type=checkbox] { width: auto; margin-right: 8px; }
+.task-editor fieldset { margin-top: 12px; }
+
+/* Loaded-page project board: scroll columns without overflowing the whole viewport. */
+.board-columns { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(300px, 360px); gap: 16px; overflow-x: auto; padding: 12px 2px 20px; }
+.board-column { min-width: 0; }
+.board-column h2 { overflow-wrap: anywhere; }
+.board-column .task-row { padding-inline: 0; }
+.board-movement { margin-top: 10px; }
+.board-movement select { min-width: 0; max-width: 190px; flex: 1; }
+.project-board > form input { flex: 1; min-width: 150px; }
+.project-board [tabindex="-1"]:focus { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+/* Recovery links sit on the page background; keep contrast in both color schemes. */
+.history-link { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+
+/* Workspace task filters: native keyboard controls, bounded responsive columns. */
+.task-filter-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 14px; }
+.task-filter-grid label { min-width: 0; }
+.task-filter-grid input, .task-filter-grid select { display: block; width: 100%; min-width: 0; margin-top: 6px; }
+
+.bulk-selection { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.bulk-selection input { width: auto; margin: 0; }

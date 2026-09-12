@@ -1,13 +1,16 @@
+import { randomUUID } from 'node:crypto';
+import { deliverMail } from './mail-delivery';
 import { and, eq, isNotNull, isNull, lt, lte, sql as raw } from 'drizzle-orm';
-import { authTokens, idempotencyKeys, outbox, reminders, users } from '@nextdoo/db';
+import { authTokens, auditLogs, idempotencyKeys, reminders, users, purgeAccount, deliverDueReminders, runRecurrenceGeneration, relayTrackingOutbox, reconcileTracking, runTrackingEvaluation, runTrackingBackfill, createDurableFileExportStore, expireExports, runExportGeneration, createDurableFileAttachmentStore, createClamavScanner, defaultClamavBin, runAttachmentScan, applyBillingDeadlines, reconcileBilling, runRetentionPurge } from '@nextdoo/db';
+import { buildBillingProviders } from '@nextdoo/billing';
 import { db, logger, type Job, type JobResult } from './runtime';
 
 /**
  * Background jobs (PRD §15).
  *
- * Every job is idempotent and safe to run concurrently with another worker
- * instance: claims use `FOR UPDATE ... SKIP LOCKED` so two workers never
- * process the same row.
+ * Durable work lives in PostgreSQL, not in setInterval memory. WEB notification
+ * writes commit with acknowledgements; SMTP uses row leases and bounded retries.
+ * Unhandled outbox events remain pending, not falsely published.
  */
 
 const MINUTE = 60_000;
@@ -25,38 +28,9 @@ const dispatchReminders: Job = {
   name: 'reminders.dispatch',
   intervalMs: 30_000,
   async run(): Promise<JobResult> {
-    const now = new Date();
-    const staleBefore = new Date(now.getTime() - 24 * HOUR);
-    // Drizzle's raw `sql` does not bind Date objects; pass ISO strings and let
-    // Postgres cast them to timestamptz.
-    const nowIso = now.toISOString();
-    const staleIso = staleBefore.toISOString();
-
-    const claimed = await db.execute(raw`
-      with due as (
-        select id from reminders
-        where status = 'SCHEDULED'
-          and scheduled_at <= ${nowIso}::timestamptz
-        order by scheduled_at
-        limit 100
-        for update skip locked
-      )
-      update reminders r
-      -- Explicit cast: a CASE over string literals is text, and Postgres will
-      -- not coerce that into the reminder_status enum implicitly.
-      set status = (case when r.scheduled_at < ${staleIso}::timestamptz then 'EXPIRED' else 'SENT' end)::reminder_status,
-          sent_at = case when r.scheduled_at < ${staleIso}::timestamptz then null else ${nowIso}::timestamptz end,
-          updated_at = ${nowIso}::timestamptz
-      from due
-      where r.id = due.id
-      returning r.id, r.task_id, r.user_id, r.channel, r.status
-    `);
-
-    const rows = claimed as unknown as Array<{ id: string; status: string; channel: string }>;
-    const sent = rows.filter((r) => r.status === 'SENT').length;
-    const expired = rows.filter((r) => r.status === 'EXPIRED').length;
-
-    return { processed: rows.length, details: { sent, expired } };
+    const result = await deliverDueReminders(db);
+    if (result.failed || result.retrying) logger.warn('reminders.delivery_attention', { failed: result.failed, retrying: result.retrying });
+    return { processed: result.sent + result.expired + result.failed + result.canceled + result.retrying, details: result };
   },
 };
 
@@ -70,57 +44,231 @@ const relayOutbox: Job = {
   name: 'outbox.relay',
   intervalMs: 10_000,
   async run(): Promise<JobResult> {
-    const claimed = await db.execute(raw`
-      with batch as (
-        select id from outbox
-        where published_at is null and attempts < 10
-        order by occurred_at
-        limit 200
-        for update skip locked
-      )
-      update outbox o
-      set published_at = now(), attempts = o.attempts + 1
-      from batch
-      where o.id = batch.id
-      returning o.id, o.event_type
-    `);
-
-    const rows = claimed as unknown as Array<{ event_type: string }>;
-    // No external bus is configured yet; marking published is what makes the
-    // relay observable and keeps the table from growing unbounded.
-    return { processed: rows.length };
+    const tracking = await relayTrackingOutbox(db);
+    // A tracking receipt is NOT delivery by sync/other future consumers.
+    const blocked = await db.execute(raw`update outbox set last_error='NO_CONSUMER_REGISTERED'
+      where id in (select o.id from outbox o where o.published_at is null and o.last_error is null
+       and not exists(select 1 from tracking_outbox_receipts r where r.outbox_id=o.id)
+       order by o.occurred_at,o.id limit 100) returning id`);
+    if (blocked.length) logger.warn('outbox.consumer_unavailable', { pending: blocked.length });
+    if (tracking.deferred) logger.warn('tracking.relay_deferred', tracking);
+    return { processed: tracking.received, details: { ...tracking, blocked: blocked.length } };
   },
 };
 
-/** Deletes accounts whose 30-day grace period has elapsed (PRD §12.4). */
+const reconcileTrackingJob: Job = {
+  name: 'tracking.reconcile', intervalMs: 10000,
+  async run() {
+    const result = await reconcileTracking(db);
+    if (result.deferred) logger.warn('tracking.reconciliation_deferred', result);
+    return { processed: result.queued, details: result };
+  },
+};
+const evaluateTrackingJob: Job = {
+  name: 'tracking.evaluate', intervalMs: 10000,
+  async run() {
+    const result = await runTrackingEvaluation(db);
+    for (const failure of result.failures) logger.error(failure.attempts===6 ? 'tracking.evaluate.exhausted' : 'tracking.evaluate.retrying', {
+      ...failure, reference: `tracking-${failure.taskId}-${failure.revision}`,
+    });
+    if (result.deferred) logger.warn('tracking.evaluation_deferred', { count: result.deferred });
+    // M4 "unmeasured result rate", worker path (PRD §21.3).
+    if (result.processed) logger.info('tracking.result_evaluated', { evaluated: result.processed, unmeasured: result.unmeasured });
+    return { processed: result.processed, details: result };
+  },
+};
+/** PRD §7.6 bounded backfill: at most one (workspace, day) chunk per range per run. */
+const backfillTrackingJob: Job = {
+  name: 'tracking.backfill', intervalMs: 10000,
+  async run() {
+    const result = await runTrackingBackfill(db);
+    if (result.bumps) logger.info('tracking.backfill.progress', result);
+    return { processed: result.days, details: result };
+  },
+};
+
+/** Shared artifact store for generation, expiry and purge cleanup. */
+const exportStore = createDurableFileExportStore();
+/** Shared attachment file store for scanning and purge cleanup. */
+const attachmentStore = createDurableFileAttachmentStore();
+
+/** Mirrors DELETION_GRACE_DAYS in the web data-rights service. */
+const DELETION_GRACE_DAYS = 30;
+
+/**
+ * One pass over accounts whose 30-day grace period has elapsed (PRD §12.4).
+ *
+ * Idempotent and crash-safe per account: purgeAccount re-checks
+ * deletion_requested_at under the user-row lock, so a candidate that was
+ * cancelled between scan and purge is a no-op, and a crash leaves the
+ * remainder eligible for the next pass. A per-account failure NEVER aborts
+ * the run — one poisoned account must not hold every other account's
+ * deletion hostage — and it is written to the audit trail so the failure is
+ * evidence, not a silent skip; the account is retried on the next pass.
+ */
+export async function sweepDueAccounts(cutoff: Date): Promise<{ purged: string[]; failed: Array<{ userId: string; error: string }> }> {
+  const due = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(and(isNotNull(users.deletionRequestedAt), lte(users.deletionRequestedAt, cutoff)))
+    .limit(50);
+
+  const purged: string[] = [];
+  const failed: Array<{ userId: string; error: string }> = [];
+  for (const user of due) {
+    try {
+      // Artifact and attachment files are removed alongside the rows (PRD §11.9).
+      if (!await purgeAccount(db, user.id, cutoff, { artifactStore: exportStore, attachmentStore })) continue;
+      purged.push(user.id);
+      // Retain only the opaque identifier here; audit evidence follows its own retention.
+      logger.info('account.purged', { userId: user.id });
+    } catch (error) {
+      const errorType = error instanceof Error ? error.name : 'unknown';
+      failed.push({ userId: user.id, error: errorType });
+      // Compliance evidence for the failed attempt (PRD §11.1: deletion is
+      // auditable, including its failures). Best-effort: the audit insert
+      // must never mask or extend the original failure.
+      try {
+        await db.insert(auditLogs).values({
+          id: randomUUID(),
+          workspaceId: null,
+          actorId: user.id,
+          action: 'account.purge_failed',
+          targetType: 'user',
+          targetId: user.id,
+          metadata: { error: errorType, attemptedAt: new Date().toISOString() },
+        });
+      } catch {
+        logger.error('account.purge_failed_audit_unavailable', { userId: user.id });
+      }
+    }
+  }
+  return { purged, failed };
+}
+
+/**
+ * PRD §12.4 general job contract for `accounts.purge` (max retry count,
+ * exponential backoff, dead-letter behavior, structured error code).
+ * "3 retries" follows the codebase convention: initial attempt + 3 retries.
+ *
+ * Only a whole-run failure (the candidate scan itself, e.g. the database)
+ * takes the retry path; per-account failures are already isolated above and
+ * are retried by the next scheduled pass. Exhaustion dead-letters with a
+ * loud error alert; no account is ever silently skipped.
+ */
+export const ACCOUNT_PURGE_MAX_RETRIES = 3;
+export const ACCOUNT_PURGE_MAX_ATTEMPTS = 1 + ACCOUNT_PURGE_MAX_RETRIES;
+export const ACCOUNT_PURGE_BACKOFF_MS = [60_000, 5 * MINUTE, 15 * MINUTE];
+
+export interface AccountPurgeRunner {
+  sweep: () => Promise<{ purged: string[]; failed: Array<{ userId: string; error: string }> }>;
+  sleep: (ms: number) => Promise<void>;
+  log: { info: (m: string, f?: Record<string, unknown>) => void; error: (m: string, f?: Record<string, unknown>) => void };
+}
+
+export async function runAccountPurgeWithRetries(runner: AccountPurgeRunner): Promise<JobResult> {
+  const errorTypeOf = (e: unknown) => (e instanceof Error ? e.name : 'unknown');
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= ACCOUNT_PURGE_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      const result = await runner.sweep();
+      runner.log.info('accounts.purge.completed', {
+        attempt,
+        accountsPurged: result.purged.length,
+        accountsFailed: result.failed.length,
+      });
+      for (const failure of result.failed) {
+        runner.log.error('account.purge_failed', { userId: failure.userId, error: failure.error, retriedOn: 'next pass' });
+      }
+      return { processed: result.purged.length, details: { ...result } };
+    } catch (error) {
+      lastError = error;
+      const retrying = attempt < ACCOUNT_PURGE_MAX_ATTEMPTS;
+      const retryInMs = retrying ? ACCOUNT_PURGE_BACKOFF_MS[attempt - 1]! : 0;
+      runner.log.error('accounts.purge.attempt_failed', {
+        attempt, maxAttempts: ACCOUNT_PURGE_MAX_ATTEMPTS, errorType: errorTypeOf(error), retryInMs,
+      });
+      if (retrying) await runner.sleep(retryInMs);
+    }
+  }
+  // Dead letter: bounded retries exhausted. Alert loudly; the due accounts
+  // remain in place for the next scheduled pass — never auto-skip.
+  runner.log.error('accounts.purge.dead_lettered', { maxAttempts: ACCOUNT_PURGE_MAX_ATTEMPTS, errorType: errorTypeOf(lastError) });
+  return { processed: 0, details: { deadLettered: true, errorType: errorTypeOf(lastError) } };
+}
+
 const purgeAccounts: Job = {
   name: 'accounts.purge',
   intervalMs: 6 * HOUR,
   async run(): Promise<JobResult> {
-    const cutoff = new Date(Date.now() - 30 * 24 * HOUR);
+    return runAccountPurgeWithRetries({
+      sweep: () => sweepDueAccounts(new Date(Date.now() - DELETION_GRACE_DAYS * 24 * HOUR)),
+      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      log: logger,
+    });
+  },
+};
 
-    const due = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(and(isNotNull(users.deletionRequestedAt), lte(users.deletionRequestedAt, cutoff)))
-      .limit(50);
-
-    let purged = 0;
-    for (const user of due) {
-      try {
-        // Foreign keys cascade, so this removes every owned row.
-        await db.delete(users).where(eq(users.id, user.id));
-        purged += 1;
-        // The id is logged because the account is gone; nothing identifying remains.
-        logger.info('account.purged', { userId: user.id });
-      } catch (error) {
-        logger.error('account.purge_failed', {
-          userId: user.id,
-          error: error instanceof Error ? error.message : 'unknown',
-        });
-      }
+/**
+ * Generates requested exports (PRD §12.4: on demand, 2 retries, notify user
+ * with retry link on exhaustion). Durable state and fencing live in
+ * PostgreSQL; artifacts land in the shared export storage.
+ */
+const generateExports: Job = {
+  name: 'export.generate',
+  intervalMs: 10_000,
+  async run(): Promise<JobResult> {
+    const result = await runExportGeneration(db, { store: exportStore });
+    for (const failure of result.failures) {
+      logger.error('export.generate.exhausted', {
+        exportId: failure.exportId,
+        attempts: failure.attempts,
+        error: failure.error,
+        reference: `export-${failure.exportId}`,
+      });
     }
-    return { processed: purged };
+    if (result.retrying) logger.warn('export.generate.retrying', { retrying: result.retrying });
+    if (result.deferred) logger.warn('export.generate.deferred', { deferred: result.deferred });
+    return { processed: result.processed, details: { ...result, failures: result.failures } };
+  },
+};
+
+/** Removes artifacts past their 24-hour window and marks rows EXPIRED (PRD §13.5). */
+const expireExportArtifacts: Job = {
+  name: 'exports.expire',
+  intervalMs: 60_000,
+  async run(): Promise<JobResult> {
+    const result = await expireExports(db, { store: exportStore });
+    if (result.expired) logger.info('exports.expired', result);
+    return { processed: result.expired };
+  },
+};
+
+/**
+ * Scans uploaded attachments with the real ClamAV engine (PRD §6.8, §14:
+ * attachment.scan, on upload, 3 attempts, quarantine on exhaustion). Fail
+ * closed: an unavailable engine consumes retries and ends in FAILED — a file
+ * never reaches CLEAN without a successful scan, so nothing unsafe is served.
+ */
+const scanAttachments: Job = {
+  name: 'attachment.scan',
+  intervalMs: 10_000,
+  async run(): Promise<JobResult> {
+    const result = await runAttachmentScan(db, {
+      store: attachmentStore,
+      scanner: createClamavScanner(defaultClamavBin()),
+    });
+    for (const failure of result.failures) {
+      logger.error('attachment.scan.quarantined', {
+        attachmentId: failure.attachmentId,
+        attempts: failure.attempts,
+        error: failure.error,
+        reference: `attachment-${failure.attachmentId}`,
+      });
+    }
+    if (result.retrying) logger.warn('attachment.scan.retrying', { retrying: result.retrying });
+    if (result.deferred) logger.warn('attachment.scan.deferred', { deferred: result.deferred });
+    return { processed: result.processed, details: { ...result } };
   },
 };
 
@@ -161,7 +309,7 @@ const requeueStuckReminders: Job = {
     const stuckBefore = new Date(Date.now() - 15 * MINUTE);
     const requeued = await db
       .update(reminders)
-      .set({ status: 'SCHEDULED', updatedAt: new Date() })
+      .set({ status: raw`case when ${reminders.attempts} >= 3 then 'FAILED'::reminder_status else 'SCHEDULED'::reminder_status end`, lastError: 'STALE_DELIVERY_CLAIM', updatedAt: new Date(), nextAttemptAt: new Date(), version: raw`${reminders.version} + 1` })
       .where(and(eq(reminders.status, 'PROCESSING'), lt(reminders.updatedAt, stuckBefore), isNull(reminders.sentAt)))
       .returning({ id: reminders.id });
 
@@ -170,11 +318,163 @@ const requeueStuckReminders: Job = {
   },
 };
 
+/**
+ * PRD §12.4 `retention.purge` (Daily, max retry count 3, "Alert; never
+ * auto-skip").
+ *
+ * The sweep itself (runRetentionPurge) is idempotent and crash-safe, so the
+ * bounded retry loop below is safe: an attempt that fails part-way has
+ * already committed its completed units and simply leaves the rest eligible.
+ *
+ * "3 retries" follows the codebase convention (export.generate "2 retries"
+ * = initial attempt + 2): initial attempt + 3 retries with exponential
+ * backoff. If every attempt fails, the run dead-letters with a loud error
+ * alert and returns normally (the supervisor must not loop on a daily job);
+ * un-purged rows remain in the database — never auto-skip — and the next
+ * daily run retries them.
+ */
+export const RETENTION_PURGE_MAX_RETRIES = 3;
+export const RETENTION_PURGE_MAX_ATTEMPTS = 1 + RETENTION_PURGE_MAX_RETRIES;
+export const RETENTION_PURGE_BACKOFF_MS = [60_000, 5 * MINUTE, 15 * MINUTE];
+
+export interface RetentionPurgeRunner {
+  purge: () => ReturnType<typeof runRetentionPurge>;
+  sleep: (ms: number) => Promise<void>;
+  log: { info: (m: string, f?: Record<string, unknown>) => void; error: (m: string, f?: Record<string, unknown>) => void };
+}
+
+export async function runRetentionPurgeWithRetries(runner: RetentionPurgeRunner): Promise<JobResult> {
+  const errorTypeOf = (e: unknown) => (e instanceof Error ? e.name : 'unknown');
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= RETENTION_PURGE_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      const result = await runner.purge();
+      // Report the full accounting so no retention decision is silent.
+      runner.log.info('retention.purge.completed', {
+        attempt,
+        tasksPurged: result.tasksPurged,
+        tasksRetainedForExports: result.tasksRetainedForExports,
+        tasksRetainedForReferencingTasks: result.tasksRetainedForReferencingTasks,
+        syncTombstonesPurged: result.syncTombstonesPurged,
+        auditLogsPurged: result.auditLogsPurged,
+        securityAuditRetained: result.securityAuditRetained,
+        failedJobsPurged: result.failedJobsPurged,
+        attachmentFilesRemoved: result.attachmentFilesRemoved,
+        workspacesScanned: result.workspacesScanned,
+        accountOwnersScanned: result.accountOwnersScanned,
+        rowFailures: result.failures.length,
+      });
+      for (const failure of result.failures) {
+        runner.log.error('retention.purge.row_failed', { kind: failure.kind, id: failure.id, error: failure.error });
+      }
+      const processed =
+        result.tasksPurged + result.syncTombstonesPurged + result.auditLogsPurged +
+        result.failedJobsPurged.trackingJobs + result.failedJobsPurged.reminders +
+        result.failedJobsPurged.exports + result.failedJobsPurged.mailDeliveries;
+      return { processed, details: { ...result, failures: result.failures } };
+    } catch (error) {
+      lastError = error;
+      const retrying = attempt < RETENTION_PURGE_MAX_ATTEMPTS;
+      const retryInMs = retrying ? RETENTION_PURGE_BACKOFF_MS[attempt - 1]! : 0;
+      runner.log.error('retention.purge.attempt_failed', {
+        attempt, maxAttempts: RETENTION_PURGE_MAX_ATTEMPTS, errorType: errorTypeOf(error), retryInMs,
+      });
+      if (retrying) await runner.sleep(retryInMs);
+    }
+  }
+  // Dead letter: bounded retries exhausted. Alert loudly; never auto-skip —
+  // the rows stay in place for the next daily run.
+  runner.log.error('retention.purge.dead_lettered', { maxAttempts: RETENTION_PURGE_MAX_ATTEMPTS, errorType: errorTypeOf(lastError) });
+  return { processed: 0, details: { deadLettered: true, errorType: errorTypeOf(lastError) } };
+}
+
+const retentionPurge: Job = {
+  name: 'retention.purge',
+  intervalMs: 24 * HOUR,
+  async run(): Promise<JobResult> {
+    return runRetentionPurgeWithRetries({
+      purge: () => runRetentionPurge(db, { attachmentStore }),
+      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      log: logger,
+    });
+  },
+};
+
+const purgeAuthenticationAttempts: Job = {
+  name: 'authentication_attempts.purge', intervalMs: 5 * MINUTE,
+  async run() {
+    const rows = await db.execute(raw`delete from authentication_attempts where key in (
+      select key from authentication_attempts where expires_at <= now() order by expires_at limit 1000 for update skip locked
+    ) returning key`);
+    return { processed: rows.length };
+  },
+};
+
+/**
+ * Applies time-driven subscription transitions that are clocks, not webhooks
+ * (PRD §18.2): trial end, dunning exhaustion after the 7-day grace window,
+ * paid-period end after cancellation, and next-period swap of a pending
+ * downgrade. Idempotent and version-fenced; entitlements follow immediately
+ * because readEffectivePlan() reads the same row.
+ */
+const sweepBillingDeadlines: Job = {
+  name: 'billing.sweep',
+  intervalMs: 5 * MINUTE,
+  async run(): Promise<JobResult> {
+    const result = await applyBillingDeadlines(db);
+    if (result.expired || result.downgradesApplied) logger.info('billing.deadlines_swept', { ...result });
+    return { processed: result.expired + result.downgradesApplied, details: { ...result } };
+  },
+};
+
+// Provider instances are built once at boot from the worker environment.
+const billingProviders = buildBillingProviders(process.env);
+
+/**
+ * PRD §18.3: "A nightly reconciliation job compares provider subscription
+ * state against local entitlements and alerts on drift." Unconfigured
+ * providers are simply skipped (checked: 0) — the job degrades to the
+ * deadline sweep, it never fakes a comparison.
+ */
+const reconcileBillingJob: Job = {
+  name: 'billing.reconcile',
+  intervalMs: 24 * HOUR,
+  async run(): Promise<JobResult> {
+    let checked = 0;
+    let drifted = 0;
+    let unreachable = 0;
+    for (const provider of Object.values(billingProviders)) {
+      if (!provider || !provider.isConfigured()) continue;
+      const result = await reconcileBilling(db, provider);
+      checked += result.checked;
+      drifted += result.drifted.length;
+      unreachable += result.unreachable;
+      for (const report of result.drifted) {
+        logger.error('billing.reconciliation_drift', { provider: provider.id, subscription: report.providerSubscriptionId, diffs: report.diffs });
+      }
+      if (result.unreachable) logger.warn('billing.reconciliation_unreachable', { provider: provider.id, unreachable: result.unreachable });
+    }
+    return { processed: checked, details: { checked, drifted, unreachable } };
+  },
+};
+
 export const JOBS: Job[] = [
+  { name: 'recurrence.generate', intervalMs: 60000, run: async () => { const result = await runRecurrenceGeneration(db); if (result.details.failed) logger.warn('recurrence.generation_failed', result.details); return result; } },
+  purgeAuthenticationAttempts,
+  { name: 'mail.deliver', intervalMs: 10000, run: () => deliverMail(1) },
   dispatchReminders,
   requeueStuckReminders,
   relayOutbox,
+  reconcileTrackingJob,
+  evaluateTrackingJob,
+  backfillTrackingJob,
+  generateExports,
+  expireExportArtifacts,
+  scanAttachments,
+  sweepBillingDeadlines,
+  reconcileBillingJob,
   purgeAccounts,
+  retentionPurge,
   purgeAuthTokens,
   purgeIdempotencyKeys,
 ];

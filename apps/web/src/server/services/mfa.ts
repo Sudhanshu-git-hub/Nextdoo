@@ -10,6 +10,8 @@ import {
   verifyTotp,
 } from '@nextdoo/core';
 import { getDb } from '../db';
+import { withAccountTransaction } from '../account-security';
+import { revokeAllSessions } from '../auth';
 import { newId } from '../ids';
 import { decryptSecret, encryptSecret } from '../crypto';
 import { writeAuditLog } from './events';
@@ -33,7 +35,8 @@ export interface EnrolmentStart {
 }
 
 export async function startMfaEnrolment(userId: string): Promise<EnrolmentStart> {
-  const db = getDb();
+  return withAccountTransaction(userId, async (db) => {
+
   const rows = await db.select({ email: users.email, mfaEnabledAt: users.mfaEnabledAt }).from(users).where(eq(users.id, userId)).limit(1);
   const user = rows[0];
   if (!user) throw new AppError('NOT_FOUND', 'Account not found.');
@@ -49,10 +52,12 @@ export async function startMfaEnrolment(userId: string): Promise<EnrolmentStart>
     .where(eq(users.id, userId));
 
   return { secret, uri: totpUri(secret, user.email) };
+  });
 }
 
 export async function confirmMfaEnrolment(userId: string, token: string): Promise<{ recoveryCodes: string[] }> {
-  const db = getDb();
+  return withAccountTransaction(userId, async (db) => {
+
   const rows = await db
     .select({ secret: users.mfaSecretEncrypted, enabledAt: users.mfaEnabledAt })
     .from(users)
@@ -75,14 +80,17 @@ export async function confirmMfaEnrolment(userId: string, token: string): Promis
     await tx.insert(recoveryCodes).values(codes.map((code) => ({ id: newId(), userId, codeHash: hashRecoveryCode(code) })));
   });
 
+  await revokeAllSessions(userId);
   await writeAuditLog({ userId, action: 'account.mfa_enabled', entityType: 'user', entityId: userId });
 
   // Returned exactly once — they are not recoverable afterwards.
   return { recoveryCodes: codes };
+  });
 }
 
 export async function disableMfa(userId: string, token: string): Promise<void> {
-  const db = getDb();
+  return withAccountTransaction(userId, async (db) => {
+
   const rows = await db
     .select({ secret: users.mfaSecretEncrypted, enabledAt: users.mfaEnabledAt })
     .from(users)
@@ -106,7 +114,9 @@ export async function disableMfa(userId: string, token: string): Promise<void> {
     await tx.delete(recoveryCodes).where(eq(recoveryCodes.userId, userId));
   });
 
+  await revokeAllSessions(userId);
   await writeAuditLog({ userId, action: 'account.mfa_disabled', entityType: 'user', entityId: userId });
+  });
 }
 
 /**

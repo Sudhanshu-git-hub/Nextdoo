@@ -1,6 +1,7 @@
+import { readEffectivePlan } from '@nextdoo/db';
 import { and, eq, isNull } from 'drizzle-orm';
 import { AppError } from '@nextdoo/contracts';
-import { entitlements, subscriptions, users, workspaces, workspaceMembers } from '@nextdoo/db';
+import { users, workspaces, workspaceMembers, subscriptions } from '@nextdoo/db';
 import { getDb } from '../db';
 import { newId } from '../ids';
 import { writeAudit } from './events';
@@ -93,7 +94,7 @@ export async function findUserByEmail(email: string) {
     .select({ id: workspaces.id })
     .from(workspaces)
     .innerJoin(workspaceMembers, eq(workspaceMembers.workspaceId, workspaces.id))
-    .where(and(eq(workspaceMembers.userId, user.id), isNull(workspaces.deletedAt)))
+    .where(and(eq(workspaceMembers.userId, user.id), eq(workspaceMembers.role, 'OWNER'), eq(workspaces.ownerId, user.id), isNull(workspaces.deletedAt)))
     .limit(1);
 
   return { ...user, workspaceId: ws[0]?.id ?? '' };
@@ -106,16 +107,4 @@ export async function getWorkspace(workspaceId: string) {
 }
 
 /** Resolves the effective plan from verified billing state, never from the client. */
-export async function getPlan(userId: string): Promise<'FREE' | 'PRO' | 'TEAM' | 'ENTERPRISE'> {
-  const db = getDb();
-  const rows = await db
-    .select({ plan: subscriptions.plan, status: subscriptions.status })
-    .from(subscriptions)
-    .where(eq(subscriptions.userId, userId))
-    .limit(1);
-  const sub = rows[0];
-  if (!sub) return 'FREE';
-  // Only these states grant paid entitlements.
-  const entitled = ['TRIALING', 'ACTIVE', 'GRACE_PERIOD', 'PAST_DUE'];
-  return entitled.includes(sub.status) ? sub.plan : 'FREE';
-}
+export async function getPlan(userId: string) { return readEffectivePlan(getDb(), userId); }

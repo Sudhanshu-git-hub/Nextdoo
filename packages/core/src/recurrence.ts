@@ -47,33 +47,31 @@ export function localParts(instant: Date, timeZone: string) {
   };
 }
 
-/**
- * Resolves a local wall-clock time in `timeZone` to a UTC instant.
- * Uses a two-pass offset correction, which is stable across DST boundaries.
- */
-export function zonedTimeToUtc(
-  y: number,
-  m: number,
-  d: number,
-  hh: number,
-  mm: number,
-  timeZone: string,
-): Date {
-  const clampedDay = Math.min(d, daysInMonth(y, m));
-  let guess = Date.UTC(y, m - 1, clampedDay, hh, mm, 0);
-  for (let i = 0; i < 2; i += 1) {
-    const p = localParts(new Date(guess), timeZone);
-    const asUtc = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
-    const target = Date.UTC(y, m - 1, clampedDay, hh, mm, 0);
-    const drift = target - asUtc;
-    if (drift === 0) break;
-    guess += drift;
+/** Calendar arithmetic must not turn years 0..99 into 1900..1999. */
+function calendarTime(y: number, m: number, d: number, hh = 0, mm = 0): number {
+  const date = new Date(0); date.setUTCFullYear(y, m - 1, d); date.setUTCHours(hh, mm, 0, 0); return date.getTime();
+}
+/** Compatible DST policy: earlier instant in folds; shift forward by the gap. */
+export function zonedTimeToUtc(y: number, m: number, d: number, hh: number, mm: number, timeZone: string): Date {
+  const target = calendarTime(y, m, Math.min(d, daysInMonth(y, m)), hh, mm);
+  const offsets = new Set<number>();
+  for (const delta of [-48, -24, 0, 24, 48]) {
+    const instant = target + delta * 3600000, p = localParts(new Date(instant), timeZone);
+    offsets.add(calendarTime(p.year, p.month, p.day, p.hour, p.minute) - instant);
   }
-  return new Date(guess);
+  const candidates = [...offsets].map((offset) => {
+    const instant = target - offset, p = localParts(new Date(instant), timeZone);
+    return { instant, wall: calendarTime(p.year, p.month, p.day, p.hour, p.minute) };
+  }).sort((a, b) => a.instant - b.instant);
+  const exact = candidates.find((c) => c.wall === target);
+  if (exact) return new Date(exact.instant);
+  const later = candidates.filter((c) => c.wall > target).sort((a, b) => a.wall - b.wall)[0];
+  if (!later) throw new RangeError('Could not resolve local recurrence time');
+  return new Date(later.instant);
 }
 
 export function daysInMonth(year: number, month1: number): number {
-  return new Date(Date.UTC(year, month1, 0)).getUTCDate();
+  return new Date(calendarTime(year, month1 + 1, 0)).getUTCDate();
 }
 
 export interface Occurrence {
@@ -107,77 +105,34 @@ const DAY_MS = 86_400_000;
  */
 export function generateOccurrences(opts: GenerateOptions): Occurrence[] {
   const { ruleId, rule, seriesStart, after, horizon } = opts;
-  const maxCount = opts.maxCount ?? 50;
-  const existing = opts.existingKeys ?? new Set<string>();
-  const tz = rule.timeZone;
-  const out: Occurrence[] = [];
-
-  const anchor = localParts(seriesStart, tz);
-  const untilMs = rule.until ? new Date(rule.until).getTime() : Number.POSITIVE_INFINITY;
-  const limitMs = Math.min(horizon.getTime(), untilMs);
-
-  let emitted = 0;
-  // `count` caps the whole series, so we must count from the series start.
-  let seriesIndex = 0;
-
-  const push = (dueAt: Date): boolean => {
-    if (dueAt.getTime() <= after.getTime()) return true;
-    if (dueAt.getTime() > limitMs) return false;
-    const localDate = localDateKey(dueAt, tz);
+  const cap = Math.max(0, Math.min(opts.maxCount ?? 50, 50));
+  if (!cap || horizon < seriesStart) return [];
+  const tz = rule.timeZone, anchor = localParts(seriesStart, tz);
+  const firstDay = calendarTime(anchor.year, anchor.month, anchor.day);
+  const end = localParts(horizon, tz), afterLocal = localParts(after, tz);
+  const lastDay = calendarTime(end.year, end.month, end.day) + DAY_MS;
+  const scanFrom = calendarTime(afterLocal.year, afterLocal.month, afterLocal.day) - 2 * DAY_MS;
+  const until = rule.until ? new Date(rule.until).getTime() : Infinity;
+  const output: Occurrence[] = []; let ordinal = 0;
+  for (let day = firstDay, offset = 0; day <= lastDay; day += DAY_MS, offset++) {
+    const date = new Date(day), year = date.getUTCFullYear(), month = date.getUTCMonth() + 1, dom = date.getUTCDate();
+    const months = (year - anchor.year) * 12 + month - anchor.month;
+    const matches = rule.freq === 'DAILY' ? offset % rule.interval === 0
+      : rule.freq === 'WEEKLY' ? Math.floor((offset + anchor.weekday) / 7) % rule.interval === 0 && (rule.byWeekday ?? [anchor.weekday]).includes(date.getUTCDay())
+      : months % rule.interval === 0 && dom === Math.min(rule.byMonthDay ?? anchor.day, daysInMonth(year, month));
+    if (!matches) continue;
+    ordinal++;
+    if (rule.count && ordinal > rule.count) break;
+    // Count the entire segment, but avoid expensive zone conversion for old history.
+    if (day < scanFrom) continue;
+    const dueAt = day === firstDay ? new Date(seriesStart) : new Date(zonedTimeToUtc(year, month, dom, anchor.hour, anchor.minute, tz).getTime() + anchor.second * 1000 + seriesStart.getUTCMilliseconds());
+    if (dueAt < seriesStart) { ordinal--; continue; }
+    if (dueAt.getTime() > until || dueAt > horizon) break;
+    if (dueAt <= after) continue;
+    const localDate = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(dom).padStart(2, '0')}`;
     const occurrenceKey = `${ruleId}:${localDate}`;
-    if (!existing.has(occurrenceKey)) {
-      out.push({ occurrenceKey, dueAt, localDate });
-      emitted += 1;
-    }
-    return emitted < maxCount;
-  };
-
-  if (rule.freq === 'DAILY') {
-    for (let i = 0; ; i += 1) {
-      seriesIndex += 1;
-      if (rule.count && seriesIndex > rule.count) break;
-      const base = new Date(seriesStart.getTime() + i * rule.interval * DAY_MS);
-      const p = localParts(base, tz);
-      const due = zonedTimeToUtc(p.year, p.month, p.day, anchor.hour, anchor.minute, tz);
-      if (due.getTime() > limitMs) break;
-      if (!push(due)) break;
-      if (i > 5000) break;
-    }
-    return out;
+    if (!opts.existingKeys?.has(occurrenceKey)) output.push({ occurrenceKey, localDate, dueAt });
+    if (output.length >= cap) break;
   }
-
-  if (rule.freq === 'WEEKLY') {
-    const weekdays = rule.byWeekday?.length ? [...rule.byWeekday].sort((a, b) => a - b) : [anchor.weekday];
-    // Walk day by day; interval counts weeks since the anchor week.
-    const startOfAnchorWeek = Math.floor((seriesStart.getTime() - anchor.weekday * DAY_MS) / DAY_MS) * DAY_MS;
-    for (let dayOffset = 0; dayOffset < 366 * 3; dayOffset += 1) {
-      const cursor = new Date(seriesStart.getTime() + dayOffset * DAY_MS);
-      if (cursor.getTime() > limitMs + DAY_MS) break;
-      const p = localParts(cursor, tz);
-      if (!weekdays.includes(p.weekday)) continue;
-      const weeksSince = Math.floor((cursor.getTime() - startOfAnchorWeek) / (7 * DAY_MS));
-      if (weeksSince % rule.interval !== 0) continue;
-      seriesIndex += 1;
-      if (rule.count && seriesIndex > rule.count) break;
-      const due = zonedTimeToUtc(p.year, p.month, p.day, anchor.hour, anchor.minute, tz);
-      if (due.getTime() > limitMs) break;
-      if (!push(due)) break;
-    }
-    return out;
-  }
-
-  // MONTHLY
-  const targetDay = rule.byMonthDay ?? anchor.day;
-  for (let i = 0; i < 400; i += 1) {
-    const monthsAhead = i * rule.interval;
-    const y = anchor.year + Math.floor((anchor.month - 1 + monthsAhead) / 12);
-    const m = ((anchor.month - 1 + monthsAhead) % 12) + 1;
-    seriesIndex += 1;
-    if (rule.count && seriesIndex > rule.count) break;
-    // Clamp to the last day of short months (Jan 31 -> Feb 28/29).
-    const due = zonedTimeToUtc(y, m, Math.min(targetDay, daysInMonth(y, m)), anchor.hour, anchor.minute, tz);
-    if (due.getTime() > limitMs) break;
-    if (!push(due)) break;
-  }
-  return out;
+  return output;
 }

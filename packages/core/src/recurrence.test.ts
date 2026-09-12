@@ -182,3 +182,34 @@ describe('idempotency', () => {
     expect(occ).toHaveLength(10);
   });
 });
+
+describe('recurrence clock and calendar regressions', () => {
+  it('shifts a nonexistent local time forward by the gap', () => {
+    expect(zonedTimeToUtc(2026, 3, 8, 2, 30, 'America/New_York').toISOString()).toBe('2026-03-08T07:30:00.000Z');
+  });
+  it('chooses the first of repeated local times', () => {
+    expect(zonedTimeToUtc(2026, 11, 1, 1, 30, 'America/New_York').toISOString()).toBe('2026-11-01T05:30:00.000Z');
+  });
+  it('handles a half-hour gap without assuming a sixty-minute offset', () => {
+    expect(zonedTimeToUtc(2026, 10, 4, 2, 15, 'Australia/Lord_Howe').toISOString()).toBe('2026-10-03T15:45:00.000Z');
+  });
+  it('does not duplicate local dates when midnight crosses the fall-back', () => {
+    const start = zonedTimeToUtc(2026, 10, 31, 0, 15, 'America/New_York');
+    const rows = generateOccurrences({ ruleId: 'r', rule: rule({ timeZone: 'America/New_York', count: 4 }), seriesStart: start, after: new Date(start.getTime() - 1), horizon: new Date('2026-11-10T00:00:00Z') });
+    expect(rows.map((r) => r.localDate)).toEqual(['2026-10-31', '2026-11-01', '2026-11-02', '2026-11-03']);
+    expect(rows.map((r) => localParts(r.dueAt, 'America/New_York').hour)).toEqual([0, 0, 0, 0]);
+  });
+  it('never generates monthly dates before the series starts', () => {
+    const rows = generateOccurrences({ ruleId: 'r', rule: rule({ freq: 'MONTHLY', byMonthDay: 1, count: 2 }), seriesStart: new Date('2026-09-15T09:00:00Z'), after: new Date('2026-09-01T00:00:00Z'), horizon: new Date('2027-01-01T00:00:00Z') });
+    expect(rows.map((r) => r.localDate)).toEqual(['2026-10-01', '2026-11-01']);
+  });
+  it('does not stop an ongoing daily series after an arbitrary 5000-day loop limit', () => {
+    const rows = generateOccurrences({ ruleId: 'r', rule: rule(), seriesStart: new Date('2000-01-01T09:00:00Z'), after: new Date('2026-09-08T10:00:00Z'), horizon: new Date('2026-09-10T10:00:00Z') });
+    expect(rows.map((r) => r.localDate)).toEqual(['2026-09-09', '2026-09-10']);
+  });
+});
+it('counts the explicit first instant once, retaining seconds and milliseconds', () => {
+ const start = new Date('2026-09-09T09:00:30.125Z');
+ const rows = generateOccurrences({ ruleId: 'r', rule: rule({ count: 2 }), seriesStart: start, after: new Date(start.getTime() - 1), horizon: new Date('2026-09-20T00:00:00Z') });
+ expect(rows.map((r) => r.dueAt.toISOString())).toEqual(['2026-09-09T09:00:30.125Z', '2026-09-10T09:00:30.125Z']);
+});
