@@ -1,6 +1,6 @@
 import { deliverMail } from './mail-delivery';
 import { and, eq, isNotNull, isNull, lt, lte, sql as raw } from 'drizzle-orm';
-import { authTokens, idempotencyKeys, reminders, users, purgeAccount, deliverDueReminders, runRecurrenceGeneration, relayTrackingOutbox, reconcileTracking, runTrackingEvaluation, runTrackingBackfill, createDurableFileExportStore, expireExports, runExportGeneration, createDurableFileAttachmentStore, createClamavScanner, defaultClamavBin, runAttachmentScan, applyBillingDeadlines, reconcileBilling } from '@nextdoo/db';
+import { authTokens, idempotencyKeys, reminders, users, purgeAccount, deliverDueReminders, runRecurrenceGeneration, relayTrackingOutbox, reconcileTracking, runTrackingEvaluation, runTrackingBackfill, createDurableFileExportStore, expireExports, runExportGeneration, createDurableFileAttachmentStore, createClamavScanner, defaultClamavBin, runAttachmentScan, applyBillingDeadlines, reconcileBilling, runRetentionPurge } from '@nextdoo/db';
 import { buildBillingProviders } from '@nextdoo/billing';
 import { db, logger, type Job, type JobResult } from './runtime';
 
@@ -232,6 +232,88 @@ const requeueStuckReminders: Job = {
   },
 };
 
+/**
+ * PRD §12.4 `retention.purge` (Daily, max retry count 3, "Alert; never
+ * auto-skip").
+ *
+ * The sweep itself (runRetentionPurge) is idempotent and crash-safe, so the
+ * bounded retry loop below is safe: an attempt that fails part-way has
+ * already committed its completed units and simply leaves the rest eligible.
+ *
+ * "3 retries" follows the codebase convention (export.generate "2 retries"
+ * = initial attempt + 2): initial attempt + 3 retries with exponential
+ * backoff. If every attempt fails, the run dead-letters with a loud error
+ * alert and returns normally (the supervisor must not loop on a daily job);
+ * un-purged rows remain in the database — never auto-skip — and the next
+ * daily run retries them.
+ */
+export const RETENTION_PURGE_MAX_RETRIES = 3;
+export const RETENTION_PURGE_MAX_ATTEMPTS = 1 + RETENTION_PURGE_MAX_RETRIES;
+export const RETENTION_PURGE_BACKOFF_MS = [60_000, 5 * MINUTE, 15 * MINUTE];
+
+export interface RetentionPurgeRunner {
+  purge: () => ReturnType<typeof runRetentionPurge>;
+  sleep: (ms: number) => Promise<void>;
+  log: { info: (m: string, f?: Record<string, unknown>) => void; error: (m: string, f?: Record<string, unknown>) => void };
+}
+
+export async function runRetentionPurgeWithRetries(runner: RetentionPurgeRunner): Promise<JobResult> {
+  const errorTypeOf = (e: unknown) => (e instanceof Error ? e.name : 'unknown');
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= RETENTION_PURGE_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      const result = await runner.purge();
+      // Report the full accounting so no retention decision is silent.
+      runner.log.info('retention.purge.completed', {
+        attempt,
+        tasksPurged: result.tasksPurged,
+        tasksRetainedForExports: result.tasksRetainedForExports,
+        tasksRetainedForReferencingTasks: result.tasksRetainedForReferencingTasks,
+        syncTombstonesPurged: result.syncTombstonesPurged,
+        auditLogsPurged: result.auditLogsPurged,
+        securityAuditRetained: result.securityAuditRetained,
+        failedJobsPurged: result.failedJobsPurged,
+        attachmentFilesRemoved: result.attachmentFilesRemoved,
+        workspacesScanned: result.workspacesScanned,
+        accountOwnersScanned: result.accountOwnersScanned,
+        rowFailures: result.failures.length,
+      });
+      for (const failure of result.failures) {
+        runner.log.error('retention.purge.row_failed', { kind: failure.kind, id: failure.id, error: failure.error });
+      }
+      const processed =
+        result.tasksPurged + result.syncTombstonesPurged + result.auditLogsPurged +
+        result.failedJobsPurged.trackingJobs + result.failedJobsPurged.reminders +
+        result.failedJobsPurged.exports + result.failedJobsPurged.mailDeliveries;
+      return { processed, details: { ...result, failures: result.failures } };
+    } catch (error) {
+      lastError = error;
+      const retrying = attempt < RETENTION_PURGE_MAX_ATTEMPTS;
+      const retryInMs = retrying ? RETENTION_PURGE_BACKOFF_MS[attempt - 1]! : 0;
+      runner.log.error('retention.purge.attempt_failed', {
+        attempt, maxAttempts: RETENTION_PURGE_MAX_ATTEMPTS, errorType: errorTypeOf(error), retryInMs,
+      });
+      if (retrying) await runner.sleep(retryInMs);
+    }
+  }
+  // Dead letter: bounded retries exhausted. Alert loudly; never auto-skip —
+  // the rows stay in place for the next daily run.
+  runner.log.error('retention.purge.dead_lettered', { maxAttempts: RETENTION_PURGE_MAX_ATTEMPTS, errorType: errorTypeOf(lastError) });
+  return { processed: 0, details: { deadLettered: true, errorType: errorTypeOf(lastError) } };
+}
+
+const retentionPurge: Job = {
+  name: 'retention.purge',
+  intervalMs: 24 * HOUR,
+  async run(): Promise<JobResult> {
+    return runRetentionPurgeWithRetries({
+      purge: () => runRetentionPurge(db, { attachmentStore }),
+      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      log: logger,
+    });
+  },
+};
+
 const purgeAuthenticationAttempts: Job = {
   name: 'authentication_attempts.purge', intervalMs: 5 * MINUTE,
   async run() {
@@ -306,6 +388,7 @@ export const JOBS: Job[] = [
   sweepBillingDeadlines,
   reconcileBillingJob,
   purgeAccounts,
+  retentionPurge,
   purgeAuthTokens,
   purgeIdempotencyKeys,
 ];

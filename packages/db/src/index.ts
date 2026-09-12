@@ -2,6 +2,7 @@ export * from './schema';
 export * from './client';
 export { runMigrations } from './migrate';
 export { purgeAccount } from './purge';
+export { runRetentionPurge, RETENTION, SECURITY_AUDIT_ACTIONS, type RetentionPurgeResult, type RetentionPurgeFailure, type RetentionPurgeOptions } from './retention';
 export { sealSecret, openSecret } from './secrets';
 export { deliverDueReminders } from './reminder-delivery';
 
