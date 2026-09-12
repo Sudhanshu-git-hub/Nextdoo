@@ -949,3 +949,78 @@ cannot starve the others, and the bounded run catches up next run
 passed across runs; no UI code changed here) was confirmed benign. Final CI
 verified green on tip `c38ac41`: push run `34681167041` and pull-request
 run `34681169648`, full pipeline including the real-browser E2E suite.
+
+## M6 commercial readiness — increment 7: account-deletion end-to-end — 2026-09-12
+
+Closed the deletion lifecycle to PRD §6.1/§11.1/§13.5/§14.3. The MVP
+already shipped the UI (typed `DELETE` + password gate), the re-
+authenticated `POST /v1/account/deletion`, the 30-day grace
+(`deletion_requested_at`), sign-in restore, `purgeAccount` (transactional,
+FK-cascade + FK-less private-table cleanup + object-file removal), and
+`deletionExpired` blocking login/tokens/cancellation. Audited all of it
+line by line before touching anything, and preserved it.
+
+Three gaps fixed:
+1. `accounts.purge` (worker, 6 h) now meets the PRD §12.4 job contract:
+   `sweepDueAccounts` through `runAccountPurgeWithRetries` — initial
+   attempt + 3 bounded retries (60 s / 5 m / 15 m), loud
+   `accounts.purge.dead_lettered` on exhaustion, full accounting; per-
+   account failures are audited (`account.purge_failed`), never block
+   other accounts, and are picked up by the next pass.
+2. The destructive step is now audited: `account.purged` is written inside
+   the purge transaction (no FK to users, so it outlives the account);
+   both events join `SECURITY_AUDIT_ACTIONS` and keep the §13.5 one-year
+   floor for every plan.
+3. The web service `purgeDueAccounts` now isolates per-account failures
+   (it previously aborted the run, contradicting its own comment).
+
+No migration, no retention-policy change, no M6-i1…i6 behavior touched.
+Email suppression boundary = grace expiry (uniform "unknown account"
+before, live account during): the PRD does not mandate suppression while
+pending — recorded as an open policy item, not invented.
+
+Tests: 13 new web integration tests (re-auth success/failure, exact
+30-day boundary, cancel/restore before purge, repeated requests, session
+invalidation, reset/verification email at three lifecycle points, 15-
+table removal proof, protected audit + billing_events survival, export/
+attachment row + file cleanup, billing/entitlement cascade, tenant
+isolation with a genuine no-action FK poison, idempotent rerun, email
+release), 6 new worker integration tests (retry constants, backoff,
+dead-letter log sequence, real sweep, job wiring), 1 new Playwright spec
+(2 tests: visible schedule → forced sign-in → sign-in restore with the
+`?deletion=cancelled` notice + axe-clean deletion block; API scheduling
+with the 30-day window + measured session kill (401 < 5 s), post-purge
+uniform rejection, email release to a new account). `purge.integrity`'s
+audit assertion strengthened (prior rows intact + exactly one new
+`account.purged`).
+
+Full validation passed: 741/741 unit+integration tests, lint (0
+warnings), typecheck (web/worker/db), coverage thresholds (core 97.91%
+lines; overall 89.4% statements), production build, migration replay on a
+fresh database (21 migrations → real `purgeAccount` → `account.purged` +
+zero users), E2E in CI. See
+[M6_ACCOUNT_DELETION_MILESTONE.md](M6_ACCOUNT_DELETION_MILESTONE.md).
+
+Closure (final CI verification): one CI incident, root-caused before
+fixing. Push run `34683332831` (tip `404e65a`) was red only on the two
+new E2E tests — every other pipeline step green. Both were defects in the
+new spec, reproduced and root-caused locally against a real Chromium run:
+(1) axe was scoped to the whole pre-existing Account card, which carries
+pre-existing contrast violations outside this milestone — now scoped to
+the deletion block via a `data-testid="delete-account"` wrapper; (2)
+`getByRole('alert'/'status', { name })` can never match (those roles do
+not compute an accessible name from content) — locators now filter by
+text. The spec was additionally re-aligned to the real product flow:
+scheduling revokes every session, so the browser is sent to `/login`
+immediately (the asserted "scheduled banner" is unreachable in that
+flow); the 30-day window and the measured session kill moved to the
+API-driven test, and the reborn login honours the login-throttle
+Retry-After (a failed pre-purge attempt leaves a 1 s account backoff the
+same-email re-registration can race). No product behavior changed. Fixed
+in `e1f42df`. (The original fix commit `b12fef8` was local-only when the
+sandbox git metadata was rebuilt after a GitHub-auth outage; the
+working tree survived intact and `e1f42df` recreates the identical diff
+against `404e65a` — verified by diffstat and content markers.) Final CI
+verified green on tip `e1f42df`: push run `34691806082`, full pipeline
+including ClamAV verification and the real-browser E2E suite (zero
+failures).
