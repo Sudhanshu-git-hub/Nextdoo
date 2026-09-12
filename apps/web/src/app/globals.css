@@ -12,6 +12,7 @@
   --accent-strong: #4b8dfd;
   --ok: #57c98b;
   --warn: #f0b849;
+  --warn-text: #f0b849;
   --danger: #f2777a;
   --radius: 10px;
   --radius-sm: 6px;
@@ -28,6 +29,9 @@
        #1a5fd0 is 5.5:1. (PRD §8.8) */
     --accent: #1a5fd0; --accent-strong: #1348a8;
     --ok: #1a7f4b; --warn: #9a6700; --danger: #c62f36;
+    /* Warn TEXT needs 4.5:1 on --bg-elev-2 here: #9a6700 was 4.34:1 (sub-AA);
+       #8a5a00 is 5.28:1. (PRD §8.8) */
+    --warn-text: #8a5a00;
     --shadow: 0 4px 16px rgba(16,24,40,.08);
   }
 }
@@ -194,7 +198,7 @@ label { display: block; font-size: 13px; color: var(--text-dim); margin-bottom: 
   border: 1px solid var(--border-strong); background: var(--bg-elev-2); margin-bottom: 14px;
 }
 .banner-error { border-color: var(--danger); color: var(--danger); }
-.banner-warn { border-color: var(--warn); color: var(--warn); }
+.banner-warn { border-color: var(--warn); color: var(--warn-text); }
 .banner-info { border-color: var(--accent); }
 
 .empty { text-align: center; padding: 44px 20px; color: var(--text-dim); }

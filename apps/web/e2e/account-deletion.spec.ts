@@ -96,6 +96,12 @@ test('schedule with typed confirmation, then sign in again to restore the accoun
   const results = await new AxeBuilder({ page }).include('[data-testid="delete-account"]').withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze();
   expect(results.violations).toEqual([]);
 
+  // The whole Account card too (this unverified user shows the
+  // email-confirmation banner — the state that exposed the M6-i8
+  // contrast fix); no WCAG AA violations anywhere on the card.
+  const card = await new AxeBuilder({ page }).include('section[aria-labelledby="account-heading"]').withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze();
+  expect(card.violations).toEqual([]);
+
   // Scheduling revokes every session, so the visible outcome is a redirect
   // to sign-in — there is no authenticated page left on a scheduled account.
   await submit.click();
