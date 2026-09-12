@@ -883,3 +883,69 @@ are unchanged (`205133f`). Final CI verified green on tip `205133f`: push
 run `34645716502` and pull-request run `34645719988`, full pipeline
 including the 144-test real-browser E2E suite. The temporary diagnostic
 spec was deleted with the fix.
+
+## M6 commercial readiness — increment 6: retention & purge pipeline — 2026-09-12
+
+Bounded M6 slice per PRD §12.4 (job table: `retention.purge`, Daily, 3
+retries, "Alert; never auto-skip"), §13.5 (retention table), §18.1 (plan
+audit-log retention None/30 d/1 y/7 y) and §6.3 (Deleted → Permanently
+deleted, system retention job). Delivered:
+
+- `runRetentionPurge` (`packages/db/src/retention.ts`): idempotent,
+  crash-safe sweep in fixed unit order — deleted tasks at the exact
+  `deleted_at <= now − 30d` boundary with full cascade (attachments +
+  object-store files, reminders, timers, tags, dependencies, calendar
+  mappings, recurrence rules, tracking jobs, tombstones with
+  `purge_after <= now`); plan-based audit retention using the same
+  entitlement source as the read side (strict complement: visible while
+  `created_at >= now − R`, purged when `created_at < now − R`); one-year
+  floor for security-critical audit actions (explicit
+  `SECURITY_AUDIT_ACTIONS` allowlist); failed-job cleanup (terminal failed
+  tracking jobs, reminders, exports, mail deliveries > 30 d); per-row
+  failure isolation (poisoned rows reported with root cause, retried next
+  run, sweep never aborts); per-run bounded limits with tenant isolation.
+  Tasks with in-flight exports, tasks referenced by an active parent (no-
+  action FK), security-critical audit rows, and all records protected by
+  other PRD rules are retained and counted.
+- Worker job `retention.purge` (24 h) with initial attempt + 3 bounded
+  retries (60 s/5 m/15 m backoff); exhaustion dead-letters with a loud error
+  alert and leaves rows in place — never auto-skip; every purge decision is
+  accounted for in `retention.purge.completed`.
+
+No migration needed; M6-i1 read-side retention, `purgeAccount`, and
+`expireExports` untouched. Legal-hold / enterprise destructive retention is
+PRD-undefined and was NOT invented (open policy items recorded in the
+milestone doc).
+
+Tests: 12 new web integration tests (dedicated disposable DB per test, fixed
+clock: exact task boundary + cascade, every plan boundary day, security-floor
+boundary, tenant isolation, distinct-tenant scan cap + next-run catch-up,
+in-flight-export retention, no-action parent retention, per-row failure
+isolation, tombstone expiry, failed-job expiry, protected records,
+crash/restart + idempotent rerun), 5 new worker integration tests (job
+wiring, retry/backoff, dead-letter alert, accounting), 1 new Playwright E2E
+spec (31-d task restore 404 + row/tombstone gone; 29-d restore 200 ACTIVE;
+plan-scoped audit visibility with DB-level purge proof).
+
+Full validation passed: 722/722 unit+integration tests, lint (0 warnings),
+typecheck (web/worker/db), production build (Next.js, all pages), coverage
+thresholds (core 97.91% lines; collection scope unchanged), migration replay
+on a fresh database (21 migrations + new SQL verified), E2E in CI. See
+[M6_RETENTION_PURGE_MILESTONE.md](M6_RETENTION_PURGE_MILESTONE.md).
+
+Closure (final CI verification): two CI incidents, both root-caused before
+fixing. (1) The E2E audit assertion counted all rows targeting the seeded
+tasks, but real API operations (`task.created`/`task.deleted`/
+`task.restored`) also audit those targets with recent timestamps and
+legitimately survive PRO 30-day retention — the boundary assertions are
+scoped to the seeded `task.updated` action (`a3cd685`); no product change.
+(2) The seeded 40-day row survived the purge in the shared CI database: the
+audit candidate scan capped by raw rows (`ORDER BY workspace_id LIMIT 200`),
+so one tenant's rows could fill the entire slot budget and other tenants
+were never scanned (the read-side plan filter masked it in the API). Fixed
+to cap DISTINCT tenants with a dedicated regression test — a busy tenant
+cannot starve the others, and the bounded run catches up next run
+(`c38ac41`). A `task-virtualization.spec.ts` focus flake (passed/failed/
+passed across runs; no UI code changed here) was confirmed benign. Final CI
+verified green on tip `c38ac41`: push run `34681167041` and pull-request
+run `34681169648`, full pipeline including the real-browser E2E suite.
