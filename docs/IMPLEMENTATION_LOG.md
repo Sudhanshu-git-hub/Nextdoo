@@ -1024,3 +1024,47 @@ against `404e65a` — verified by diffstat and content markers.) Final CI
 verified green on tip `e1f42df`: push run `34691806082`, full pipeline
 including ClamAV verification and the real-browser E2E suite (zero
 failures).
+
+## M6 commercial readiness — increment 8: final closeout (policy decisions + accessibility) — 2026-09-12
+
+Closed M6. No product-feature change: (1) resolved and documented the
+four M6 policy questions M6-i7 left open — **30-day deletion grace is
+final** (PRD §6.1 says "defined retention period", no number), **email
+suppression begins when the grace window expires** (pending accounts are
+live and restorable; the PRD does not mandate suppression while
+pending), **password re-authentication alone is the final deletion gate**
+(PRD says "re-authentication" without strength; MFA is optional per
+user and never tied to operations — an MFA challenge at deletion is a
+recorded future hardening candidate), and **`DELETE /v1/account/deletion`
+is the final cancel contract** (the PRD's `POST …/cancel` sketch is
+superseded by the verified MVP REST shape; no alias added). Each
+decision is quoted against the PRD in
+[M6_CLOSEOUT_MILESTONE.md](M6_CLOSEOUT_MILESTONE.md); where the PRD is
+silent, the existing verified behavior was adopted as the final rule —
+nothing invented, nothing silently changed.
+
+(2) Fixed the Account card's last WCAG AA contrast violation (surfaced
+by M6-i7's E2E): the email-confirmation banner text used the light-theme
+`--warn` token at 4.34:1 on `--bg-elev-2` (needs 4.5:1 for 13.5px
+normal text, PRD §8.8). A single token change was impossible — `--warn`
+is also the `.offline-badge` background with `#101216` text, and no
+amber passes both — so a theme-aware `--warn-text` token (light
+`#8a5a00` = 5.28:1; dark unchanged) now styles `.banner-warn` text only,
+following the existing `--accent` sub-AA fix pattern. The account-
+deletion E2E now runs axe (WCAG AA tags) over the whole Account card in
+the violating state (unverified user, banner visible), in addition to
+the deletion-block check; verified 0 violations locally in both light
+and dark themes. Out-of-scope observations (offline-badge text ≈3.9:1;
+other `--warn` text usages that already pass on white) are documented,
+not touched.
+
+Full validation passed: 741/741 unit+integration tests, lint (0
+warnings), typecheck (web/worker/db), coverage thresholds (core 97.91%
+lines; overall 89.4% statements), production build, E2E in CI. See
+[M6_CLOSEOUT_MILESTONE.md](M6_CLOSEOUT_MILESTONE.md) and the
+consolidated [M6_COMPLETION_REPORT.md](M6_COMPLETION_REPORT.md).
+
+Closure (final CI verification): no incidents. Final CI verified green
+on tip: push run `34695107048` on the code fix (`b833652`), full
+pipeline including ClamAV verification and the real-browser E2E suite
+(zero failures), and the docs-only run on this commit.
