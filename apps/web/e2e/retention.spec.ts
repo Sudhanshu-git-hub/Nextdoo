@@ -96,12 +96,18 @@ test('after 30 days a deleted task is unrecoverable, and audit history follows t
   // Audit history follows the plan: the 5-day event (recoverable task) is
   // visible and still in the database; the 40-day event (long-gone task) is
   // both invisible and physically purged.
+  //
+  // The assertions are scoped to the seeded 'task.updated' action: the real
+  // API operations above also audit these targets (task.created / task.deleted
+  // / task.restored) with recent timestamps, which correctly survive a 30-day
+  // plan retention and are not what this boundary check measures.
   const audit = await (await page.request.get('/api/v1/audit-logs?category=task&limit=200')).json();
-  const rows = audit.data as Array<{ targetId: string | null }>;
-  expect(rows.filter((r) => r.targetId === stillRecoverable.id)).toHaveLength(1);
-  expect(rows.filter((r) => r.targetId === longGone.id)).toHaveLength(0);
-  const oldRows = await db.$client.unsafe(`select count(*) as n from audit_logs where target_id = '${longGone.id}'`);
+  const rows = audit.data as Array<{ targetId: string | null; action: string }>;
+  const seededFor = (taskId: string) => rows.filter((r) => r.targetId === taskId && r.action === 'task.updated');
+  expect(seededFor(stillRecoverable.id)).toHaveLength(1);
+  expect(seededFor(longGone.id)).toHaveLength(0);
+  const oldRows = await db.$client.unsafe(`select count(*) as n from audit_logs where target_id = '${longGone.id}' and action = 'task.updated'`);
   expect(Number(oldRows[0]?.n ?? 0)).toBe(0);
-  const recentRows = await db.$client.unsafe(`select count(*) as n from audit_logs where target_id = '${stillRecoverable.id}'`);
+  const recentRows = await db.$client.unsafe(`select count(*) as n from audit_logs where target_id = '${stillRecoverable.id}' and action = 'task.updated'`);
   expect(Number(recentRows[0]?.n ?? 0)).toBe(1);
 });
