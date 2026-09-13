@@ -1083,3 +1083,59 @@ failure was environmental, not a defect: local runs of the file
 assertion changed (a rerun of the failed push run was refused by
 GitHub). The final push run on the closing commit below is the
 authoritative green.
+
+## M7 — Google Calendar two-way sync — increment 1: provider boundary, sync engine, worker cycle, routes, UI — 2026-09-13
+
+First bounded M7 increment (PRD §16, §12.4, §14.3). Google is behind a new
+clean provider boundary: `@nextdoo/contracts` gains the `CalendarProvider`
+contract (PKCE S256 authorization, refresh-on-demand tokens with rotation,
+incremental sync-token imports with paging + cancelled→deleted, If-Match
+event writes with 404-recreate, push-channel watch, `CalendarAuthError` /
+`CalendarRateLimited` error types) and the new `packages/calendar` package
+holds the Google adapter (minimum scopes per mode, injectable transport —
+default global fetch) plus a deterministic fixture provider used by all
+tests. The sync engine (`packages/db/src/calendar-sync.ts`) reuses the task
+invariants for every task mutation (version bump, device-cursor sync change,
+transactional outbox event), never overwrites titles, turns both-side
+changes into CONFLICT with both values (PRD §16.4), unschedules on external
+deletion with a durable notification (AC-3), exports due-time tasks as
+events idempotently via the unique (connection, task) mapping (AC-1/AC-4),
+deletes events on task deletion (AC-2), and pauses with a reconnect prompt
+on auth failure (AC-5). The worker gains the 60 s `calendar.sync` job
+(export every cycle, 10-min import poll, channel renewal, retention sweep,
+pause-after-5-consecutive-failures per PRD §12.4). Web routes:
+google/start (mode-before-auth, PRD §16.2; 503 PROVIDER_UNAVAILABLE when
+unconfigured), google/callback (single-use hashed state), :id/reconnect
+(reconnect prompt + mode change), :id/sync, /calendar/events (tenant-scoped
+window), /calendar/webhook (push channel), conflicts list/resolve
+(keep-NEXTDOO / keep-calendar / unlink, audit-logged). Disconnect now
+implements PRD §16.5 (best-effort revoke + token wipe; mappings retained
+30 days, then purged by the worker). UI: Settings → Calendar (mode radio
+before connect, sync-now, reconnect banner, conflict cards, honest
+unconfigured banner) and read-only provider-event blocks in CalendarView.
+Migration 0021: `calendar_oauth_states` + `pause_reason`,
+`channel_expires_at`, `consecutive_failures`, event `etag`. Recurring
+events are imported as instances in the sync window (PRD §16.3 has no
+recurrence field). One disclosed pre-existing test update: the M4
+disconnect test asserted tokens were retained; PRD §16.5 requires token
+deletion, so the assertion now matches the PRD (no other assertion
+changed).
+
+Scope decisions, acceptance criteria, and the external blocker for live
+Google verification are recorded in
+[M7_GOOGLE_CALENDAR_SYNC_MILESTONE.md](M7_GOOGLE_CALENDAR_SYNC_MILESTONE.md).
+
+Validation (local): 781/781 unit+integration (was 741; +40 new), coverage
+thresholds pass (calendar package 90.2% stmts / 80.4% branches; overall
+88.8% statements), typecheck all packages, lint 0 warnings, production
+build clean, E2E 147 passed (only local exception: attachments.spec
+refuses to run without ClamAV, by design — CI has it).
+
+**Live Google verification: EXTERNALLY BLOCKED** — no
+`GOOGLE_CLIENT_ID/SECRET` in this environment and no egress to
+`accounts.google.com` / `oauth2.googleapis.com` / `www.googleapis.com`
+(verified connection failure; only github.com / codeload.github.com /
+registry.npmjs.org reachable). No Google API call was faked; the adapter is
+verified against a deterministic transport and the full behavior against
+the fixture provider. Unblock = credentials + egress + redirect-URI
+allow-list; the feature gates on presence and degrades to 503 until then.

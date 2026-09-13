@@ -6,3 +6,4 @@ export * from './entitlements';
 export * from './attachments';
 
 export * from './analytics';
+export * from './calendar-provider';

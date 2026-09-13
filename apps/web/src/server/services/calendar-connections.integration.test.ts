@@ -157,7 +157,11 @@ describe('calendar connections (integration)', () => {
     const [row] = await getDb().select().from(calendarConnections).where(eq(calendarConnections.id, google.id));
     expect(row!.status).toBe('DISCONNECTED');
     expect(row!.disconnectedAt).toBeInstanceOf(Date);
-    expect(row!.accessTokenEncrypted).toBeTruthy(); // retained, never deleted
+    // PRD §16.5 (M7): tokens are deleted on disconnect (revoke is
+    // best-effort where supported); the row and its mappings are retained
+    // as metadata for 30 days, then purged by the worker retention sweep.
+    expect(row!.accessTokenEncrypted).toBeNull();
+    expect(row!.refreshTokenEncrypted).toBeNull();
 
     // Re-connecting a disconnected provider must fit the plan again.
     const reconnected = await upsertVerifiedConnection(b.id, b.workspaceId, { provider: 'google', accessToken: 'fresh-token' });

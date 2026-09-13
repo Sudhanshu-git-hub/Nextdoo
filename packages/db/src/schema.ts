@@ -650,6 +650,12 @@ export const calendarConnections = pgTable(
     syncToken: text('sync_token'),
     lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
     status: varchar('status', { length: 20 }).notNull().default('ACTIVE'),
+    /** Set when paused (token expired/revoked, sync failures) — PRD §16.6. */
+    pauseReason: varchar('pause_reason', { length: 40 }),
+    /** Google push-channel expiry; renewed before lapsing (PRD §16.1). */
+    channelExpiresAt: timestamp('channel_expires_at', { withTimezone: true }),
+    /** Consecutive generic sync failures; pause+notify at 5 (PRD §12.4). */
+    consecutiveFailures: integer('consecutive_failures').notNull().default(0),
     version: integer('version').notNull().default(1),
     disconnectedAt: timestamp('disconnected_at', { withTimezone: true }),
     ...timestamps,
@@ -692,12 +698,28 @@ export const calendarEvents = pgTable(
     timeZone: varchar('time_zone', { length: 64 }),
     isAllDay: boolean('is_all_day').notNull().default(false),
     busy: boolean('busy').notNull().default(true),
+    /** Provider revision token (If-Match) for optimistic re-exports. */
+    etag: text('etag'),
     ...timestamps,
   },
   (t) => [
     uniqueIndex('calendar_events_unique').on(t.connectionId, t.externalId),
     index('calendar_events_ws_time_idx').on(t.workspaceId, t.startsAt),
   ],
+);
+
+/** In-flight OAuth authorization (single-use; the PKCE verifier seam). */
+export const calendarOauthStates = pgTable(
+  'calendar_oauth_states',
+  {
+    stateHash: varchar('state_hash', { length: 64 }).primaryKey(),
+    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+    mode: varchar('mode', { length: 20 }).notNull(),
+    codeVerifier: varchar('code_verifier', { length: 128 }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    ...timestamps,
+  },
 );
 
 export const subscriptions = pgTable(

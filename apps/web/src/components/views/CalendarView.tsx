@@ -8,6 +8,16 @@ import { api, ApiError, type Task } from '@/lib/api';
 
 type CalendarViewMode = 'day' | 'week' | 'month';
 
+interface ExternalEvent {
+  id: string;
+  title: string;
+  startsAt: string;
+  endsAt: string;
+  isAllDay: boolean;
+  busy: boolean;
+  source: string;
+}
+
 interface CalendarWindow {
   from: Date;
   to: Date;
@@ -29,6 +39,7 @@ export function CalendarView({ workspaceId }: { workspaceId: string }) {
   const [view, setView] = useState<CalendarViewMode>('week');
   const [anchor, setAnchor] = useState(() => new Date());
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [externalEvents, setExternalEvents] = useState<ExternalEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -92,10 +103,29 @@ export function CalendarView({ workspaceId }: { workspaceId: string }) {
     }
   }, [workspaceId, win.from, win.to]);
 
+  // Read-only provider events (PRD §16.3): shown as non-interactive context
+  // for the visible window. A missing calendar connection simply yields
+  // nothing; a failure must never break the task calendar.
+  const loadExternal = useCallback(async (signal: AbortSignal) => {
+    try {
+      const params = new URLSearchParams({ start: win.from.toISOString(), end: win.to.toISOString() });
+      const response = await api<{ events: ExternalEvent[] }>(`/calendar/events?${params.toString()}`, { signal });
+      setExternalEvents(response.events);
+    } catch {
+      setExternalEvents([]);
+    }
+  }, [win.from, win.to]);
+
   useEffect(() => {
     void load();
     return () => requestRef.current?.abort();
   }, [load]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadExternal(controller.signal);
+    return () => controller.abort();
+  }, [loadExternal]);
 
   async function moveTo(task: Task, day: Date) {
     const date = localParts(day, timeZone), original = task.dueAt ? localParts(new Date(task.dueAt), timeZone) : null;
@@ -146,6 +176,19 @@ export function CalendarView({ workspaceId }: { workspaceId: string }) {
     }
     return groups;
   }, [tasks, timeZone]);
+
+  const externalByDay = useMemo(() => {
+    const groups = new Map<string, ExternalEvent[]>();
+    for (const event of externalEvents) {
+      const key = localDateKey(new Date(event.startsAt), timeZone);
+      const list = groups.get(key);
+      if (list) list.push(event); else groups.set(key, [event]);
+    }
+    for (const list of groups.values()) {
+      list.sort((a, b) => a.startsAt.localeCompare(b.startsAt) || a.title.localeCompare(b.title));
+    }
+    return groups;
+  }, [externalEvents, timeZone]);
 
   const capacity = workdayMinutes(workspace.workdayStartMinute, workspace.workdayEndMinute);
   const overDay = (list: Task[]) => list.reduce((sum, t) => sum + (t.estimateMinutes ?? 0), 0) > capacity;
@@ -320,7 +363,21 @@ export function CalendarView({ workspaceId }: { workspaceId: string }) {
 
               {dayTasks.map((task) => chip(task, view === 'month'))}
 
-              {!loading && !dayTasks.length && !selected && (
+              {(externalByDay.get(localDateKey(day, timeZone)) ?? []).map((event) => (
+                <div key={event.id} className="cal-chip cal-external" aria-label={`Calendar event: ${event.title}`}>
+                  <span className="cal-ext-tag">cal</span>
+                  <span className={`cal-title${view === 'month' ? ' cal-compact' : ''}`} title={event.title}>
+                    {event.title}
+                  </span>
+                  {!event.isAllDay && (
+                    <span className="cal-time">
+                      {new Date(event.startsAt).toLocaleTimeString(undefined, { timeZone, hour: 'numeric', minute: '2-digit' })}
+                    </span>
+                  )}
+                </div>
+              ))}
+
+              {!loading && !dayTasks.length && !(externalByDay.get(localDateKey(day, timeZone)) ?? []).length && !selected && (
                 <p className="muted" style={{ fontSize: 12 }}>—</p>
               )}
             </div>

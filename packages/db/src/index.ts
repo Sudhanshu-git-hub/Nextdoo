@@ -5,6 +5,20 @@ export { purgeAccount } from './purge';
 export { runRetentionPurge, RETENTION, SECURITY_AUDIT_ACTIONS, type RetentionPurgeResult, type RetentionPurgeFailure, type RetentionPurgeOptions } from './retention';
 export { sealSecret, openSecret } from './secrets';
 export { deliverDueReminders } from './reminder-delivery';
+export {
+  applyTaskDueChange,
+  finalizeDisconnect,
+  pauseConnection,
+  renewCalendarChannel,
+  runCalendarExport,
+  runCalendarImport,
+  runCalendarSyncCycle,
+  sweepCalendarRetention,
+  CALENDAR_EXPORT_HORIZON_DAYS,
+  CALENDAR_SYNC_PAUSE_AFTER,
+  CALENDAR_MAPPING_RETENTION_DAYS,
+} from './calendar-sync';
+export type { CalendarCycleDeps, CalendarCycleResult, CalendarPauseReason, CalendarSyncOutcome, SyncContext } from './calendar-sync';
 
 export { serialiseTaskRecord } from './task-record';
 export { readEffectivePlan } from './effective-plan';

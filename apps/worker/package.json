@@ -9,18 +9,19 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@nextdoo/billing": "workspace:*",
+    "@nextdoo/calendar": "workspace:*",
     "@nextdoo/contracts": "workspace:*",
     "@nextdoo/core": "workspace:*",
     "@nextdoo/db": "workspace:*",
     "drizzle-orm": "0.45.2",
-    "postgres": "3.4.5",
     "nodemailer": "10.0.1",
-    "@nextdoo/billing": "workspace:*"
+    "postgres": "3.4.5"
   },
   "devDependencies": {
     "@types/node": "22.20.1",
-    "typescript": "5.7.2",
+    "@types/nodemailer": "8.0.1",
     "tsx": "4.23.13",
-    "@types/nodemailer": "8.0.1"
+    "typescript": "5.7.2"
   }
 }

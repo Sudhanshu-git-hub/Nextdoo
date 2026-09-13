@@ -7,6 +7,7 @@ import { api, ApiError } from '@/lib/api';
 import { WorkspaceSettings } from '@/components/WorkspaceSettings';
 import { MfaSettings } from '@/components/MfaSettings';
 import { SessionSettings } from '@/components/SessionSettings';
+import { CalendarSettings } from '@/components/CalendarSettings';
 import { AuditLog } from '@/components/AuditLog';
 import { DataExport } from '@/components/DataExport';
 
@@ -252,6 +253,8 @@ export function SettingsView({
         <MfaSettings />
 
         <SessionSettings />
+
+        <CalendarSettings />
 
         <section className="card" aria-labelledby="usage-heading">
           <h2 id="usage-heading">Usage</h2>

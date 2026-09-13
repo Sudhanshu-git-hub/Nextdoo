@@ -16,16 +16,17 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@nextdoo/billing": "workspace:*",
     "@nextdoo/contracts": "workspace:*",
     "@nextdoo/core": "workspace:*",
     "drizzle-orm": "0.45.2",
-    "postgres": "3.4.5",
-    "@nextdoo/billing": "workspace:*"
+    "postgres": "3.4.5"
   },
   "devDependencies": {
-    "typescript": "5.7.2",
+    "@nextdoo/calendar": "workspace:*",
+    "embedded-postgres": "18.4.0-beta.17",
     "tsx": "4.23.13",
-    "vitest": "4.1.11",
-    "embedded-postgres": "18.4.0-beta.17"
+    "typescript": "5.7.2",
+    "vitest": "4.1.11"
   }
 }

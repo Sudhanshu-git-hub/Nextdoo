@@ -148,6 +148,10 @@ label { display: block; font-size: 13px; color: var(--text-dim); margin-bottom: 
 .cal-over-mark { font-size: 10.5px; color: var(--warn); margin-top: 4px; }
 .cal-month .card { min-height: 92px; }
 .cal-row-error { font-size: 11px; color: var(--danger); margin: 4px 0 0; }
+.cal-external { opacity: 0.9; }
+.cal-external .cal-title { cursor: default; }
+.cal-external .cal-ext-tag { font-size: 10px; color: var(--text-dim); border: 1px solid var(--border, #d0d0d0); border-radius: 4px; padding: 0 4px; flex-shrink: 0; }
+.cal-external { border-top: 1px dashed var(--border, #d0d0d0); padding-top: 3px; }
 
 /* Rich task description preview (rendered from the safe Markdown subset). */
 .description-preview { border: 1px solid var(--border); background: var(--bg-elev-2); border-radius: var(--radius-sm); padding: 10px 12px; min-height: 44px; }

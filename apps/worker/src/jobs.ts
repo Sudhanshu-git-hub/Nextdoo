@@ -1,8 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { deliverMail } from './mail-delivery';
 import { and, eq, isNotNull, isNull, lt, lte, sql as raw } from 'drizzle-orm';
-import { authTokens, auditLogs, idempotencyKeys, reminders, users, purgeAccount, deliverDueReminders, runRecurrenceGeneration, relayTrackingOutbox, reconcileTracking, runTrackingEvaluation, runTrackingBackfill, createDurableFileExportStore, expireExports, runExportGeneration, createDurableFileAttachmentStore, createClamavScanner, defaultClamavBin, runAttachmentScan, applyBillingDeadlines, reconcileBilling, runRetentionPurge } from '@nextdoo/db';
+import { authTokens, auditLogs, idempotencyKeys, reminders, users, purgeAccount, deliverDueReminders, runRecurrenceGeneration, relayTrackingOutbox, reconcileTracking, runTrackingEvaluation, runTrackingBackfill, createDurableFileExportStore, expireExports, runExportGeneration, createDurableFileAttachmentStore, createClamavScanner, defaultClamavBin, runAttachmentScan, applyBillingDeadlines, reconcileBilling, runRetentionPurge, runCalendarSyncCycle, openSecret } from '@nextdoo/db';
 import { buildBillingProviders } from '@nextdoo/billing';
+import { createGoogleCalendar } from '@nextdoo/calendar';
+import type { CalendarProvider } from '@nextdoo/contracts';
 import { db, logger, type Job, type JobResult } from './runtime';
 
 /**
@@ -458,6 +460,66 @@ const reconcileBillingJob: Job = {
   },
 };
 
+/**
+ * PRD §12.4 `calendar.sync`: every 60s, export due-time tasks for ACTIVE
+ * READ_WRITE connections (the 60-second export guarantee, PRD §16.6 AC-1),
+ * import on the 10-minute incremental-poll cadence (push webhooks trigger
+ * immediate imports separately), renew push channels before lapse, and
+ * sweep expired OAuth states / 30-day post-disconnect retention (PRD §16.5).
+ *
+ * Unconfigured deployment (no Google credentials) → the provider factory
+ * yields null for every connection and the cycle is a cheap no-op.
+ * Auth failures pause the connection with a reconnect prompt (PRD §16.6);
+ * generic failures count per connection and pause+notify at 5 consecutive
+ * (PRD §12.4).
+ */
+const CALENDAR_TOKEN_PURPOSE = 'calendar_token';
+
+function calendarProviderFor(row: { id: string; provider: string; status: string; accessTokenEncrypted: string | null; refreshTokenEncrypted?: string | null; tokenExpiresAt?: Date | null; scopes?: string | null }): CalendarProvider | null {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  const authSecret = process.env.AUTH_SECRET;
+  if (row.provider !== 'google') return null;
+  if (!clientId || !clientSecret || !authSecret) return null;
+  const appUrl = process.env.APP_URL ?? 'http://localhost:3000';
+  const base = { clientId, clientSecret, redirectUri: `${appUrl}/api/v1/calendar/connections/google/callback` };
+  if (row.accessTokenEncrypted) {
+    try {
+      return createGoogleCalendar({
+        ...base,
+        initialTokens: {
+          accessToken: openSecret(row.accessTokenEncrypted, authSecret, CALENDAR_TOKEN_PURPOSE),
+          refreshToken: row.refreshTokenEncrypted ? openSecret(row.refreshTokenEncrypted, authSecret, CALENDAR_TOKEN_PURPOSE) : null,
+          expiresAt: row.tokenExpiresAt ? row.tokenExpiresAt.toISOString() : null,
+          scopes: row.scopes,
+        },
+      });
+    } catch {
+      // Tampered envelope: sync with no tokens so the engine pauses the
+      // connection with a reconnect prompt instead of syncing forever.
+    }
+  }
+  return createGoogleCalendar(base);
+}
+
+const syncCalendar: Job = {
+  name: 'calendar.sync',
+  intervalMs: 60_000,
+  async run(): Promise<JobResult> {
+    const appUrl = process.env.APP_URL ?? 'http://localhost:3000';
+    const result = await runCalendarSyncCycle(db, {
+      providerFor: calendarProviderFor,
+      webhookTarget: `${appUrl}/api/v1/calendar/webhook`,
+    });
+    if (result.paused) logger.warn('calendar.sync.paused', { ...result });
+    if (result.failed) logger.warn('calendar.sync.failed', { ...result });
+    if (result.retention.states || result.retention.mappings || result.retention.events) {
+      logger.info('calendar.retention_swept', result.retention);
+    }
+    return { processed: result.connections, details: { ...result } };
+  },
+};
+
 export const JOBS: Job[] = [
   { name: 'recurrence.generate', intervalMs: 60000, run: async () => { const result = await runRecurrenceGeneration(db); if (result.details.failed) logger.warn('recurrence.generation_failed', result.details); return result; } },
   purgeAuthenticationAttempts,
@@ -473,6 +535,7 @@ export const JOBS: Job[] = [
   scanAttachments,
   sweepBillingDeadlines,
   reconcileBillingJob,
+  syncCalendar,
   purgeAccounts,
   retentionPurge,
   purgeAuthTokens,
