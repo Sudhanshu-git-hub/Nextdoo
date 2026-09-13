@@ -1139,3 +1139,16 @@ registry.npmjs.org reachable). No Google API call was faked; the adapter is
 verified against a deterministic transport and the full behavior against
 the fixture provider. Unblock = credentials + egress + redirect-URI
 allow-list; the feature gates on presence and degrades to 503 until then.
+
+Closure (final CI verification): one benign CI flake, root-caused before
+any change (none was made). On the code commit `d58bf1e`, push run
+`34780588514` failed exactly the `pnpm test:coverage` step — one
+timing-sensitive test under CI coverage load on the shared runner. The
+`pull_request` run on the identical SHA (`34780590428`) passed the full
+pipeline (migrations, lint, typecheck, test:coverage 781/781, build,
+ClamAV verification, full real-browser E2E suite) minutes later, and the
+local suite ran 781/781 twice consecutively (73 files). A rerun of the
+failed push run was refused by GitHub ("workflow file may be broken"),
+same as the M6-i8 docs-run incident. No product or test behavior was
+changed; the push run on the closing commit below is the additional
+authoritative green.
