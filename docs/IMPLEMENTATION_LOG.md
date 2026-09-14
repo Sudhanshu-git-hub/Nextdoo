@@ -1269,3 +1269,27 @@ it) · vitest **797/797** (73 files; was 781) · coverage gate exit 0
 overall 88.89% statements) · typecheck all 5 packages · lint 0 · build
 clean. No existing test was weakened or deleted; all M7-i1 AC tests
 pass unchanged.
+
+## M7 — increment 3 (preflight): live Google verification + hardening — CLOSED-BLOCKED — 2026-09-14
+
+M7-i3 began with the directive's preflight: determine exactly what is
+required for live verification and whether this environment can
+provide it. Results (measured, recorded in the M7 milestone doc §7.3):
+(1) required config = `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` (not
+set here), scopes `calendar.readonly` / `calendar`, redirect URI
+`${APP_URL}/api/v1/calendar/connections/google/callback` on a public
+host, a Google Cloud OAuth client with that URI allow-listed, and a
+long-lived public HTTPS host for the `/api/v1/calendar/webhook` push
+target; (2) egress to `accounts.google.com`,
+`oauth2.googleapis.com` and `www.googleapis.com` is blocked
+(SSL_ERROR_SYSCALL, probed at preflight); (3) Google→app webhook
+reachability cannot be verified without credentials and a long-lived
+public host. **Verdict: STOP at preflight; externally blocked; no live
+flow attempted and no live result manufactured.** No hardening was
+implemented: the directive permits only hardening "directly exposed by
+live verification," and with live verification impossible nothing is
+directly exposed (channel-token and rate-limit-backoff candidates
+remain documented for the first unblocked increment). No code changed;
+M7-i1/i2 behavior untouched (797/797 + CI green at `511941f`
+remains the verified baseline). Consolidated M7 status: i1 CLOSED,
+i2 CLOSED, i3 CLOSED-BLOCKED.

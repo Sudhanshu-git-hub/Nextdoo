@@ -393,3 +393,86 @@ key format is verified against the documented `singleEvents=true`
 response shape (`id` / `recurringEventId` / `originalStartTime`) — the
 same fields the M7-i1 transport tests already pin — and no live call was
 made or faked.
+
+### 7.3 M7-i3 — live Google verification + production hardening (2026-09-14) — CLOSED-BLOCKED at preflight
+
+Per the M7-i3 directive, this increment begins with a preflight
+determining whether live verification is possible in this environment.
+**It is not. The milestone stops at preflight, externally blocked; no
+live flow was attempted, and no live result was manufactured.**
+
+**Preflight results (measured 2026-09-14):**
+
+1. **Required credentials/configuration (from code):**
+   - Env: `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` (optional in
+     `env.ts`; the feature gates on their presence and degrades to 503
+     `PROVIDER_UNAVAILABLE` without them —
+     `calendar-connections.ts:336`, `env.ts:93`).
+   - Scopes (adapter): READ_ONLY →
+     `https://www.googleapis.com/auth/calendar.readonly`; READ_WRITE →
+     `https://www.googleapis.com/auth/calendar` (`google.ts:47-48`).
+   - Redirect URI: `${APP_URL}/api/v1/calendar/connections/google/callback`
+     (`calendar-connections.ts:340`) — for live use, `APP_URL` must be
+     the production public host.
+   - Google Cloud: an OAuth consent screen (External, or restricted to
+     the test user) and a **Web application** OAuth client with exactly
+     that redirect URI allow-listed; a test Google account with
+     Calendar.
+   - **Verified absent:** no `GOOGLE_CLIENT_*` env vars are set in this
+     environment (checked at preflight time).
+2. **Egress to Google (probed at preflight, 5 s each):**
+   - `accounts.google.com` → blocked (SSL_ERROR_SYSCALL)
+   - `oauth2.googleapis.com` → blocked (SSL_ERROR_SYSCALL)
+   - `www.googleapis.com` → blocked (SSL_ERROR_SYSCALL)
+   Only `github.com`, `codeload.github.com`, `registry.npmjs.org` remain
+   reachable — same as M7-i1. OAuth authorize, token exchange/refresh,
+   and every Calendar API call are therefore impossible.
+3. **Google → application webhook reachability: cannot be verified.**
+   The push target is `POST /api/v1/calendar/webhook`
+   (channel token = connection id; unknown tokens are ignored with 200,
+   so a stale channel cannot error-loop). Verifying real push delivery
+   requires (a) live credentials to create a channel and (b) a
+   long-lived public HTTPS host for Google to POST to — this sandbox's
+   preview host is ephemeral, and no credentials exist to start the
+   flow. Polling fallback (the PRD §16.1 alternative) is implemented
+   and CI-verified against the deterministic transport; it is the path
+   that would work in this environment even with credentials and
+   egress, but without egress it cannot reach Google either.
+
+**Hardening: none implemented.** The M7-i3 directive restricts
+hardening to changes "clearly justified by the PRD/security model and
+directly exposed by live verification." With live verification
+impossible, nothing is directly exposed, so no hardening code was
+written (implementing the candidates now would violate the directive's
+"do not implement optional product enhancements merely because they
+are convenient"). The candidates from §6 remain documented for the
+first unblocked live increment: (a) a dedicated random
+push-channel-verification-token column (today the channel token is the
+connection id — a UUID, echoed back by Google and used only to scope
+the import to that connection; no cross-tenant effect, but not
+revocable/rotatable per-channel), and (b) rate-limit backoff
+scheduling (429/403 quota responses currently mark the pass failed;
+the worker's cadence naturally retries on the next cycle).
+
+**Unblock checklist (exact):** provision a Google OAuth client
+(id/secret, Web application) with
+`<public-host>/api/v1/calendar/connections/google/callback`
+allow-listed; set `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` and
+`APP_URL=<public-host>`; allow egress to the three Google hosts; make
+the public host long-lived and inbound-reachable for
+`/api/v1/calendar/webhook`. Then the bounded 16-point live
+verification pass from the M7-i3 directive (real OAuth, token
+exchange/refresh, mode/scopes, recurring-series import with distinct
+occurrence identity per M7-i2, occurrence update/cancel, series
+cancel, deleted-event mirror cleanup, two-way export, push delivery,
+polling fallback, reconnect after auth failure, rate-limit handling,
+disconnect/revoke cleanup, tenant isolation) can be executed with
+observed behavior recorded per flow.
+
+### Consolidated M7 status
+
+| Increment | Scope | Status |
+|---|---|---|
+| M7-i1 | Provider boundary, sync engine, worker, routes, UI | CLOSED, CI-verified (`d58bf1e`/`2cdd528`) |
+| M7-i2 | G1 per-occurrence identity + G2 deleted-event mirror cleanup | CLOSED, CI-verified (`511941f`) |
+| M7-i3 | Live Google verification + production hardening | **CLOSED-BLOCKED** at preflight (2026-09-14) — externally blocked: no credentials, no egress to the three Google hosts, no verifiable inbound webhook host. No live results claimed; no hardening written (nothing directly exposed by live verification). |
