@@ -1293,3 +1293,35 @@ remain documented for the first unblocked increment). No code changed;
 M7-i1/i2 behavior untouched (797/797 + CI green at `511941f`
 remains the verified baseline). Consolidated M7 status: i1 CLOSED,
 i2 CLOSED, i3 CLOSED-BLOCKED.
+
+## M8 — roadmap/scope audit — 2026-09-14
+
+Audit-only increment (no product code changed). Full re-read of PRD v1.1
+(22 sections), the completion ledger, all M1–M7 milestone documents, and
+the current implementation (route tree, worker job registry, schema,
+client libraries). Deliverable:
+[M8_ROADMAP_AUDIT.md](M8_ROADMAP_AUDIT.md) — a complete requirements
+matrix classifying every major PRD requirement as CLOSED+CI-verified /
+implemented-lacking-live-verification / partial / not implemented /
+explicitly deferred-Phase-2 / externally blocked, with PRD section,
+implementation location, delivering milestone/commit, validation
+evidence, and remaining gap per row.
+
+Headline findings: the core loop (capture → plan → execute → review) is
+complete and CI-verified; the material gaps are (a) **browser push
+notifications** (PRD §6.6 MVP channel — the only clearly-MVP product
+requirement that is unimplemented and not deferred), (b) advisory
+"improve" suggestions (§5.5; heuristic variant never built, AI variant
+deferred by directive), (c) minor route gaps (reminder-update,
+workspaces-list), (d) wellbeing settings panel (partial), (e)
+assurance/ops artifacts (ASVS mapping, SAST, pen test, SLO monitoring,
+restore tests, status page — release gates), and (f) the
+PRD-vs-directive divergence on **Windows desktop** (PRD Phase 1;
+deferred by standing directive — reinstatement needs an explicit
+decision). Externally blocked work inventoried separately: live Google
+(M7-i3), live billing (M6-i4), SMTP email, production reliability gates.
+
+**Recommendation: M8-i1 = browser push notification channel** (§6.6),
+bounded and fully CI-verifiable via a deterministic push-service stub;
+acceptance criteria defined in the audit doc §4.2. Not started this
+turn.
