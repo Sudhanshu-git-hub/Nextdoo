@@ -1,6 +1,12 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, eq, gte, inArray, isNull, lte, ne, sql } from 'drizzle-orm';
-import { CalendarAuthError, CalendarRateLimited, type CalendarProvider, type CalendarTokenSet } from '@nextdoo/contracts';
+import { and, asc, eq, gte, inArray, isNull, like, lte, ne, sql } from 'drizzle-orm';
+import {
+  CalendarAuthError,
+  CalendarRateLimited,
+  CALENDAR_INSTANCE_KEY_SEPARATOR,
+  type CalendarProvider,
+  type CalendarTokenSet,
+} from '@nextdoo/contracts';
 import type { Database } from './client';
 import {
   auditLogs,
@@ -224,11 +230,17 @@ async function applyDueChange(
   return { id: updated.id, version: updated.version };
 }
 
+/** Escape a literal for use inside a LIKE pattern (Postgres default escape). */
+function likeEscape(value: string): string {
+  return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
+
 /**
  * Import pass: normalize external changes into calendar_events, apply
  * mapped-record updates (two-way, PRD §16.1), detect both-side changes
  * into CONFLICT (PRD §16.4), and unschedule tasks whose external event
- * was deleted (PRD §16.6 AC-3).
+ * was deleted (PRD §16.6 AC-3). Externally deleted events/occurrences also
+ * have their mirror rows removed (M7-i2 G1/G2).
  */
 export async function runCalendarImport(ctx: SyncContext): Promise<CalendarSyncOutcome> {
   const outcome: CalendarSyncOutcome = { ...NOOP };
@@ -407,6 +419,26 @@ export async function runCalendarImport(ctx: SyncContext): Promise<CalendarSyncO
           }
         }
         await tx.delete(calendarMappings).where(eq(calendarMappings.id, mapping.id));
+      }
+
+      // 3b) Mirror cleanup (M7-i2 G1/G2): an externally deleted event or
+      // occurrence must stop rendering as an availability block. Every
+      // reported id gets an exact-key delete. A bare (series-level) id
+      // additionally removes every expanded instance of that series —
+      // instance keys are `<seriesId><SEP><slot>`, so `<id><SEP>%` matches
+      // exactly that series' instances and nothing else; an occurrence
+      // (composite) id is exact-only, so sibling occurrences survive.
+      // Connection-scoped (tenant isolation); deletes are idempotent.
+      for (const deletedId of changes.deletedExternalIds) {
+        await tx
+          .delete(calendarEvents)
+          .where(and(eq(calendarEvents.connectionId, conn.id), eq(calendarEvents.externalId, deletedId)));
+        if (!deletedId.includes(CALENDAR_INSTANCE_KEY_SEPARATOR)) {
+          const seriesPrefix = `${likeEscape(deletedId)}${CALENDAR_INSTANCE_KEY_SEPARATOR}%`;
+          await tx
+            .delete(calendarEvents)
+            .where(and(eq(calendarEvents.connectionId, conn.id), like(calendarEvents.externalId, seriesPrefix)));
+        }
       }
     }
 

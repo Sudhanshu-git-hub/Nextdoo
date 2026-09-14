@@ -1228,3 +1228,44 @@ attachments.spec fails loudly without ClamAV — by design, CI installs
 it), vitest 781/781 (73 files), coverage thresholds unchanged (calendar
 90.22/80.39/92.85/92.38), typecheck all 5 packages, lint 0, build
 clean. Product code unchanged; M7-i1 behavior untouched.
+
+## M7 — Google Calendar two-way sync — increment 2: import-correctness fix (G1+G2) — 2026-09-14
+
+Implemented the bounded M7-i2 increment scoped in the 2026-09-14
+planning review (M7_GOOGLE_CALENDAR_SYNC_MILESTONE.md §7/§7.2). No new
+features, no RRULE/series-level editing, no availability expansion, no
+live-provider changes.
+
+**G1 — per-occurrence identity.** New shared `deriveExternalId`
+(`packages/calendar/src/instance-key.ts`; single source of the key
+format, used by adapter + fixture): recurring instances key as
+`<recurringEventId>!<originalStartTime>` (`date` for all-day series);
+series-level and non-recurring items keep the bare `id`. `toDto` and
+the cancelled branch of `listChanges` both use it — an occurrence cancel
+reports the composite key, a series cancel the bare series id. The `!`
+convention is documented contract-level
+(`CALENDAR_INSTANCE_KEY_SEPARATOR`).
+**G2 — mirror cleanup.** Import §3b now deletes, per `deletedExternalId`
+(connection-scoped): the exact mirror row, and for a bare series id
+every `<seriesId>!%` instance row (LIKE-escaped prefix). Idempotent;
+pre-existing AC-3 mapping/unschedule/notify semantics untouched.
+
+Schema/index: **none** — `UNIQUE (connection_id, external_id)` +
+`varchar(300)` already admit composite keys.
+
+Tests: 16 new (8 unit in `google.test.ts`; 8 integration in
+`calendar-sync.integration.test.ts`) covering: two occurrences → two
+distinct rows (idempotent re-import), update isolation, occurrence
+cancel isolation, series cancel, per-occurrence mapping (update applied
+once / sibling ignored / cancel unschedules + sibling survives),
+deleted non-mapped mirror removal (idempotent), deleted MAPPED mirror
+removal (AC-3 intact), tenant isolation of series cleanup, cursor
+persistence.
+
+Validation (local): E2E 147 passed (only local exception:
+attachments.spec fails loudly without ClamAV — by design, CI installs
+it) · vitest **797/797** (73 files; was 781) · coverage gate exit 0
+(calendar package 91.33/83.47/93.33/93.75, was 90.22/80.39/92.85/92.38;
+overall 88.89% statements) · typecheck all 5 packages · lint 0 · build
+clean. No existing test was weakened or deleted; all M7-i1 AC tests
+pass unchanged.

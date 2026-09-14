@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
+import { deriveExternalId } from './instance-key';
 import {
   CalendarAuthError,
   CalendarRateLimited,
@@ -32,6 +33,11 @@ import {
  * - Recurring events are imported as instances inside the requested
  *   window (`singleEvents=true`); the normalized shape (PRD §16.3) carries
  *   no recurrence field, so per-instance storage is the MVP contract.
+ * - Per-occurrence identity (M7-i2): every instance of a series shares
+ *   Google's series `id`, so the adapter derives a deterministic
+ *   per-occurrence key `<recurringEventId>!<originalStartTime>`
+ *   (deriveExternalId); a cancelled occurrence reports that key, a
+ *   cancelled whole series reports the bare series id.
  */
 
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -246,7 +252,10 @@ export function createGoogleCalendar(options: GoogleOptions): CalendarProvider {
         );
         for (const item of res.items ?? []) {
           if (item.status === 'cancelled') {
-            deletedExternalIds.push(item.id!);
+            // Per-occurrence key for a cancelled occurrence, bare series id
+            // for a cancelled whole series (M7-i2; the engine expands the
+            // series id to all of its instance keys on mirror cleanup).
+            deletedExternalIds.push(deriveExternalId(item));
             continue;
           }
           events.push(toDto(item));
@@ -331,6 +340,10 @@ interface GoogleEvent {
   updated?: string;
   start?: { dateTime?: string; date?: string; timeZone?: string };
   end?: { dateTime?: string; date?: string; timeZone?: string };
+  /** Series id of a recurring series (equals `id` on series-level items). */
+  recurringEventId?: string;
+  /** Original slot of an expanded occurrence (stable across reschedules). */
+  originalStartTime?: { dateTime?: string; date?: string };
   [key: string]: unknown;
 }
 
@@ -347,7 +360,7 @@ export function toDto(item: GoogleEvent): CalendarEventDto {
   const endsAt = end.dateTime ?? (end.date ? `${end.date}T00:00:00.000Z` : '');
   if (!startsAt || !endsAt) throw new Error('Google event item has no usable start/end.');
   return {
-    externalId: id,
+    externalId: deriveExternalId(item),
     calendarId: 'primary',
     title: item.summary ?? '',
     startsAt,

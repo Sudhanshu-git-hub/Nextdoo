@@ -13,8 +13,29 @@
 
 export type CalendarSyncMode = 'READ_ONLY' | 'READ_WRITE';
 
+/**
+ * Separator between the series id and the occurrence slot in the
+ * `externalId` of an expanded recurring instance (M7-i2). The normalized
+ * shape (PRD §16.3) carries no recurrence field, so each occurrence of a
+ * recurring series is stored as its own event under the deterministic key
+ * `<recurringEventId><SEP><originalStartTime>` — `originalStartTime` is
+ * the occurrence's original slot (stable when the occurrence is
+ * rescheduled), never a free-form string. Non-recurring events and
+ * series-level items keep their bare id (no separator).
+ *
+ * Whole-series deletion convention: a provider reports a cancelled series
+ * as ONE deletion of the bare series id; consumers therefore treat a
+ * deletion of id `S` as removing every mirror row keyed exactly `S` plus
+ * every key starting with `S + SEP` (no other key can have that prefix).
+ */
+export const CALENDAR_INSTANCE_KEY_SEPARATOR = '!';
+
 /** Normalized external event (PRD §16.3). Instants, plus the source zone. */
 export interface CalendarEventDto {
+  /**
+   * Stable provider-side identity. Recurring instances use the per-occurrence
+   * key described on `CALENDAR_INSTANCE_KEY_SEPARATOR`.
+   */
   externalId: string;
   calendarId: string;
   title: string;
@@ -40,6 +61,12 @@ export interface CalendarEventDto {
 /** A change batch: upserts plus deletions observed since the sync token. */
 export interface CalendarChangeSet {
   events: CalendarEventDto[];
+  /**
+   * Ids of externally removed events/occurrences. An occurrence-level
+   * deletion carries the occurrence's per-occurrence key; a whole-series
+   * deletion carries the bare series id (see
+   * `CALENDAR_INSTANCE_KEY_SEPARATOR` for the removal convention).
+   */
   deletedExternalIds: string[];
   /** Opaque incremental token for the next import; null when unavailable. */
   nextSyncToken: string | null;

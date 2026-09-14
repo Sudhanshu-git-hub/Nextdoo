@@ -312,3 +312,84 @@ pattern). A second, PR-run-only failure was the known intermittent
 `task-virtualization` focus-pinning race (3/3 local passes; unchanged).
 No product or M7 code was touched; full local battery green (781/781,
 E2E 147, coverage/typecheck/lint/build).
+
+### 7.2 M7-i2 implementation (2026-09-14) — G1+G2 fix shipped
+
+The bounded increment scoped in §7 is implemented. No new features, no
+RRULE/series-level editing, no availability expansion, no
+live-provider-verification changes.
+
+**G1 — per-occurrence identity (adapter-internal; provider boundary intact).**
+New shared `deriveExternalId`
+(`packages/calendar/src/instance-key.ts`) is the single source of the
+key format, used by both the Google adapter and the fixture:
+- Recurring instance → `<recurringEventId>!<originalStartTime>`
+  (the `dateTime` form, or `date` for all-day series). `originalStartTime`
+  is the occurrence's ORIGINAL slot: rescheduling an occurrence keeps its
+  key (the row follows the occurrence; `start`/`end` update, the key
+  does not).
+- Series-level items (e.g. a cancelled whole series — one item, no
+  `originalStartTime`) and non-recurring items → the bare `id`.
+- `toDto` uses it for every imported event; the cancelled branch of
+  `listChanges` uses it for every cancelled item — so an occurrence
+  cancel reports the composite key, a series cancel the bare series id.
+- The convention is documented contract-level
+  (`CALENDAR_INSTANCE_KEY_SEPARATOR` in `@nextdoo/contracts`): deleting
+  the bare series id removes every key with the `<seriesId>!` prefix,
+  and no other key can have that prefix.
+
+**G1/G2 — engine mirror cleanup (`calendar-sync.ts`, import §3b).**
+For every `deletedExternalId` the import now deletes, connection-scoped
+(tenant isolation preserved): the exact-key mirror row (occurrence or
+plain event), and — for a bare series-level id only — every
+`<seriesId>!%` instance row (LIKE-escaped prefix). Deletes are
+idempotent. The pre-existing §3 mapping release + AC-3
+unschedule/notify semantics are unchanged. **No schema/index change**:
+`UNIQUE (connection_id, external_id)` + `varchar(300)` already admit
+composite keys.
+
+**Mapping semantics (mechanism unchanged, now per-occurrence).**
+Mappings are keyed by the exact `externalId` they were created with, so
+a task mapped to an occurrence reacts only to that occurrence's
+update/cancellation; sibling occurrences never bleed into it (the
+pre-fix collapse is gone). Exported events remain non-recurring (one
+timed event per task — no RRULE, per scope), so the normal
+export/mapping path is byte-identical to M7-i1.
+
+**Fixture (test-only) fidelity.** `pushSeries` stores one entry per
+occurrence under the derived keys; `deleteSeriesExternal` reports the
+`singleEvents=true` shape of a cancelled series (ONE bare series-level
+deletion, re-reported idempotently); `deleteEventExternal` of an
+instance key reports only that occurrence.
+
+**Acceptance evidence (deterministic, zero network):**
+1. Two occurrences of one series import as two distinct mirror rows;
+   re-import stays two rows (no collapse, no duplicate).
+2. Updating one occurrence (reschedule + rename) leaves the sibling
+   row untouched.
+3. Cancelling one occurrence removes only its mirror row; repeated
+   imports are no-ops (the provider re-reports the deletion).
+4. Cancelling the whole series removes every instance of that series
+   and nothing from other series.
+5. A task mapped to one occurrence reacts only to that occurrence:
+   its update is applied once, a sibling's update is ignored, and its
+   cancellation unschedules + notifies + releases the mapping while the
+   sibling mirror survives.
+6. Deleting a non-mapped event removes its stale mirror row
+   idempotently.
+7. Deleting a MAPPED event also removes its mirror row, with AC-3
+   semantics intact (unschedule + notify + mapping release).
+8. Series-level mirror cleanup is connection-scoped (two connections,
+   same series id: A's deletion never touches B's rows).
+9. Cursor: the engine persists the provider's checkpoint
+   (`syncToken`/`lastSyncedAt`) across imports.
+
+Evidence: 8 new integration tests
+(`calendar-sync.integration.test.ts`) + 8 new unit tests
+(`google.test.ts`: key derivation, `toDto`, `listChanges` cancelled
+shapes, fixture series behavior). Full battery green (see completion
+log). Live Google verification remains externally blocked (see §5); the
+key format is verified against the documented `singleEvents=true`
+response shape (`id` / `recurringEventId` / `originalStartTime`) — the
+same fields the M7-i1 transport tests already pin — and no live call was
+made or faked.

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import {
   CalendarAuthError,
   CalendarRateLimited,
+  CALENDAR_INSTANCE_KEY_SEPARATOR,
   type CalendarAuthRequest,
   type CalendarAuthResult,
   type CalendarChangeSet,
@@ -11,6 +12,7 @@ import {
   type CalendarSyncMode,
   type CalendarTokenSet,
 } from '@nextdoo/contracts';
+import { deriveExternalId } from './instance-key';
 
 /**
  * Deterministic in-memory calendar provider — the "local Google" used by
@@ -34,6 +36,8 @@ export interface FixtureEvent {
   etag?: string;
   /** Provider last-modified time (change detection, PRD §16.4). */
   updatedAt?: string;
+  /** For expanded recurring instances: the Google series id. */
+  recurringEventId?: string;
 }
 
 export interface FixtureProviderOptions {
@@ -66,6 +70,8 @@ export class FixtureCalendarProvider implements CalendarProvider {
   private rateLimitCalls: number;
   private syncToken = 'tok-0';
   private deliveredTokens = new Set(['tok-0']);
+  /** Series deleted as a whole (reported as one series-level deletion). */
+  private cancelledSeries = new Set<string>();
   private clock: () => Date;
   private accountEmail = 'fixture-user@test.local';
   private refreshCount = 0;
@@ -84,10 +90,57 @@ export class FixtureCalendarProvider implements CalendarProvider {
     this.syncToken = `tok-${this.store.size}`;
   }
 
+  /**
+   * Push a recurring series the way `events.list?singleEvents=true` would
+   * return it: one item per occurrence, all sharing the series id, each
+   * keyed by the per-occurrence identity (M7-i2). Returns the stored keys.
+   */
+  pushSeries(
+    seriesId: string,
+    instances: Array<{ originalStartTime: string; title?: string; startsAt: string; endsAt: string; timeZone?: string | null; isAllDay?: boolean; busy?: boolean }>,
+  ): string[] {
+    const keys: string[] = [];
+    for (const instance of instances) {
+      const key = deriveExternalId({
+        id: seriesId,
+        recurringEventId: seriesId,
+        originalStartTime: instance.isAllDay ? { date: instance.originalStartTime } : { dateTime: instance.originalStartTime },
+      });
+      this.store.set(key, {
+        externalId: key,
+        recurringEventId: seriesId,
+        title: instance.title ?? 'Recurring event',
+        startsAt: instance.startsAt,
+        endsAt: instance.endsAt,
+        timeZone: instance.timeZone ?? null,
+        isAllDay: instance.isAllDay ?? false,
+        busy: instance.busy ?? true,
+        etag: `etag-${key}`,
+      });
+      keys.push(key);
+    }
+    this.syncToken = `tok-${this.store.size}`;
+    return keys;
+  }
+
   /** Soft-delete on the provider side (visible to the next listChanges). */
   deleteEventExternal(externalId: string): void {
     const existing = this.store.get(externalId);
     if (existing) this.store.set(externalId, { ...existing, deleted: true });
+    this.syncToken = `tok-${Date.now()}`;
+  }
+
+  /**
+   * Delete a WHOLE recurring series on the provider side, the way Google
+   * reports it: one cancelled series-level item (the bare series id) — the
+   * individual occurrences are gone, not individually cancelled.
+   */
+  deleteSeriesExternal(seriesId: string): void {
+    this.cancelledSeries.add(seriesId);
+    const prefix = `${seriesId}${CALENDAR_INSTANCE_KEY_SEPARATOR}`;
+    for (const [id, event] of this.store) {
+      if (id.startsWith(prefix)) this.store.set(id, { ...event, deleted: true });
+    }
     this.syncToken = `tok-${Date.now()}`;
   }
 
@@ -163,8 +216,20 @@ export class FixtureCalendarProvider implements CalendarProvider {
     this.requireAuth();
     const events: CalendarEventDto[] = [];
     const deletedExternalIds: string[] = [];
+    const reportedSeries = new Set<string>();
     for (const [id, event] of this.store) {
       if (event.deleted) {
+        // A whole-series deletion is reported once, as the bare series id
+        // (the singleEvents=true shape of a cancelled series), not as one
+        // entry per occurrence.
+        const series = event.recurringEventId;
+        if (series && this.cancelledSeries.has(series)) {
+          if (!reportedSeries.has(series)) {
+            reportedSeries.add(series);
+            deletedExternalIds.push(series);
+          }
+          continue;
+        }
         deletedExternalIds.push(id);
         continue;
       }

@@ -459,4 +459,236 @@ describe('calendar sync engine + services (integration, fixture provider)', () =
     void taskA;
     svc.setCalendarProviderFactoryForTests(null);
   });
+
+  // ------------------------------------------------------------------
+  // M7-i2 — import correctness (G1 recurring-instance identity, G2
+  // deleted-event mirror cleanup). Same fixture-provider discipline as
+  // the M7-i1 suite: deterministic, zero network.
+  // ------------------------------------------------------------------
+
+  const seriesInstances = (prefix: string) => [
+    { originalStartTime: '2026-09-13T09:00:00.000Z', title: `${prefix} A`, startsAt: '2026-09-13T09:00:00.000Z', endsAt: '2026-09-13T09:30:00.000Z' },
+    { originalStartTime: '2026-09-14T09:00:00.000Z', title: `${prefix} B`, startsAt: '2026-09-14T09:00:00.000Z', endsAt: '2026-09-14T09:30:00.000Z' },
+  ];
+
+  maybe()('M7-i2 G1: instances of one series import as distinct mirror rows (idempotent, cursor persisted)', async () => {
+    const seed = await seedConnection({ name: 'g1import' });
+    const conn = await connectionIdOf(seed.userId);
+    const { runCalendarImport } = await import('@nextdoo/db');
+    const { getDb } = await import('../db');
+    const { calendarEvents } = await import('@nextdoo/db');
+
+    seed.provider.pushSeries('series-1', seriesInstances('Standup'));
+    const first = await runCalendarImport({ db: getDb(), connectionId: conn.id, provider: seed.provider });
+    expect(first.imported).toBe(2);
+    let rows = await getDb().select().from(calendarEvents).where(eq(calendarEvents.connectionId, conn.id));
+    expect(rows.map((r) => r.externalId).sort()).toEqual(['series-1!2026-09-13T09:00:00.000Z', 'series-1!2026-09-14T09:00:00.000Z']);
+    expect(rows.map((r) => r.title).sort()).toEqual(['Standup A', 'Standup B']);
+    // The engine persists the provider's checkpoint (the fixture reports
+    // 'tok-2-2' for a 2-entry store on both of the next two calls).
+    const after = await connectionIdOf(seed.userId);
+    expect(after.syncToken).toBe('tok-2-2');
+    expect(after.lastSyncedAt).not.toBeNull();
+
+    // Re-import: same two rows — no duplicate, no collapse into one.
+    const second = await runCalendarImport({ db: getDb(), connectionId: conn.id, provider: seed.provider });
+    expect(second.imported).toBe(2);
+    rows = await getDb().select().from(calendarEvents).where(eq(calendarEvents.connectionId, conn.id));
+    expect(rows).toHaveLength(2);
+    expect((await connectionIdOf(seed.userId)).syncToken).toBe('tok-2-2');
+  });
+
+  maybe()('M7-i2 G1: updating one occurrence leaves sibling occurrences untouched', async () => {
+    const seed = await seedConnection({ name: 'g1update' });
+    const conn = await connectionIdOf(seed.userId);
+    const { runCalendarImport } = await import('@nextdoo/db');
+    const { getDb } = await import('../db');
+    const { calendarEvents } = await import('@nextdoo/db');
+
+    seed.provider.pushSeries('series-1', seriesInstances('Standup'));
+    await runCalendarImport({ db: getDb(), connectionId: conn.id, provider: seed.provider });
+
+    // Google reschedules + renames only the first occurrence (same
+    // original slot → same per-occurrence key).
+    seed.provider.pushEvent({ externalId: 'series-1!2026-09-13T09:00:00.000Z', recurringEventId: 'series-1', title: 'Standup A (moved)', startsAt: '2026-09-13T15:00:00.000Z', endsAt: '2026-09-13T15:30:00.000Z', updatedAt: '2026-09-12T00:00:00.000Z' });
+    await runCalendarImport({ db: getDb(), connectionId: conn.id, provider: seed.provider });
+
+    const rows = await getDb().select().from(calendarEvents).where(eq(calendarEvents.connectionId, conn.id));
+    const a = rows.find((r) => r.externalId === 'series-1!2026-09-13T09:00:00.000Z');
+    const b = rows.find((r) => r.externalId === 'series-1!2026-09-14T09:00:00.000Z');
+    expect(a!.title).toBe('Standup A (moved)');
+    expect(a!.startsAt.toISOString()).toBe('2026-09-13T15:00:00.000Z');
+    // The sibling occurrence is byte-for-byte untouched.
+    expect(b!.title).toBe('Standup B');
+    expect(b!.startsAt.toISOString()).toBe('2026-09-14T09:00:00.000Z');
+  });
+
+  maybe()('M7-i2 G1: cancelling one occurrence removes only its mirror row (idempotently)', async () => {
+    const seed = await seedConnection({ name: 'g1cancel' });
+    const conn = await connectionIdOf(seed.userId);
+    const { runCalendarImport } = await import('@nextdoo/db');
+    const { getDb } = await import('../db');
+    const { calendarEvents } = await import('@nextdoo/db');
+
+    seed.provider.pushSeries('series-1', seriesInstances('Standup'));
+    await runCalendarImport({ db: getDb(), connectionId: conn.id, provider: seed.provider });
+
+    seed.provider.deleteEventExternal('series-1!2026-09-13T09:00:00.000Z');
+    const out = await runCalendarImport({ db: getDb(), connectionId: conn.id, provider: seed.provider });
+    expect(out.unscheduledTasks).toBe(0); // no mapping involved
+    let rows = await getDb().select().from(calendarEvents).where(eq(calendarEvents.connectionId, conn.id));
+    expect(rows.map((r) => r.externalId)).toEqual(['series-1!2026-09-14T09:00:00.000Z']); // sibling survives
+
+    // The provider keeps re-reporting the deletion; re-imports are no-ops.
+    await runCalendarImport({ db: getDb(), connectionId: conn.id, provider: seed.provider });
+    rows = await getDb().select().from(calendarEvents).where(eq(calendarEvents.connectionId, conn.id));
+    expect(rows.map((r) => r.externalId)).toEqual(['series-1!2026-09-14T09:00:00.000Z']);
+  });
+
+  maybe()('M7-i2 G1: cancelling the whole series removes every instance, not other series', async () => {
+    const seed = await seedConnection({ name: 'g1series' });
+    const conn = await connectionIdOf(seed.userId);
+    const { runCalendarImport } = await import('@nextdoo/db');
+    const { getDb } = await import('../db');
+    const { calendarEvents } = await import('@nextdoo/db');
+
+    seed.provider.pushSeries('series-1', seriesInstances('Standup'));
+    seed.provider.pushSeries('series-2', [seriesInstances('Lunch')[0]!]);
+    await runCalendarImport({ db: getDb(), connectionId: conn.id, provider: seed.provider });
+    let rows = await getDb().select().from(calendarEvents).where(eq(calendarEvents.connectionId, conn.id));
+    expect(rows).toHaveLength(3);
+
+    seed.provider.deleteSeriesExternal('series-1');
+    await runCalendarImport({ db: getDb(), connectionId: conn.id, provider: seed.provider });
+    rows = await getDb().select().from(calendarEvents).where(eq(calendarEvents.connectionId, conn.id));
+    expect(rows.map((r) => r.externalId)).toEqual(['series-2!2026-09-13T09:00:00.000Z']); // only the other series survives
+  });
+
+  maybe()('M7-i2 G2: deleting a non-mapped event removes its stale mirror row (idempotently)', async () => {
+    const seed = await seedConnection({ name: 'g2plain' });
+    const conn = await connectionIdOf(seed.userId);
+    const { runCalendarImport } = await import('@nextdoo/db');
+    const { getDb } = await import('../db');
+    const { calendarEvents } = await import('@nextdoo/db');
+
+    seed.provider.pushEvent({ externalId: 'ext-x', title: 'One-off', startsAt: '2026-09-13T10:00:00.000Z', endsAt: '2026-09-13T11:00:00.000Z' });
+    seed.provider.pushSeries('series-9', [seriesInstances('Keep')[0]!]);
+    await runCalendarImport({ db: getDb(), connectionId: conn.id, provider: seed.provider });
+    let rows = await getDb().select().from(calendarEvents).where(eq(calendarEvents.connectionId, conn.id));
+    expect(rows.map((r) => r.externalId).sort()).toEqual(['ext-x', 'series-9!2026-09-13T09:00:00.000Z']);
+
+    seed.provider.deleteEventExternal('ext-x');
+    await runCalendarImport({ db: getDb(), connectionId: conn.id, provider: seed.provider });
+    rows = await getDb().select().from(calendarEvents).where(eq(calendarEvents.connectionId, conn.id));
+    expect(rows.map((r) => r.externalId)).toEqual(['series-9!2026-09-13T09:00:00.000Z']); // stale block gone, sibling event intact
+
+    // Re-import: the re-reported deletion stays a no-op.
+    await runCalendarImport({ db: getDb(), connectionId: conn.id, provider: seed.provider });
+    rows = await getDb().select().from(calendarEvents).where(eq(calendarEvents.connectionId, conn.id));
+    expect(rows.map((r) => r.externalId)).toEqual(['series-9!2026-09-13T09:00:00.000Z']);
+  });
+
+  maybe()('M7-i2 G2: deleting a MAPPED event also removes its mirror row (AC-3 semantics intact)', async () => {
+    const seed = await seedConnection({ name: 'g2mapped' });
+    const conn = await connectionIdOf(seed.userId);
+    const task = await seedTask(seed.workspaceId, 'Mapped event', 9 * H);
+    seed.provider.pushEvent({ externalId: 'ext-mapped', title: 'Mapped', startsAt: task.dueAt!.toISOString(), endsAt: new Date(task.dueAt!.getTime() + H).toISOString(), updatedAt: '2026-09-05T00:00:00.000Z' });
+    await seedMapping(seed, task, 'ext-mapped');
+
+    const { runCalendarImport } = await import('@nextdoo/db');
+    const { getDb } = await import('../db');
+    const { tasks, notifications, calendarMappings, calendarEvents } = await import('@nextdoo/db');
+
+    await runCalendarImport({ db: getDb(), connectionId: conn.id, provider: seed.provider }); // mirror exists
+    expect((await getDb().select().from(calendarEvents).where(eq(calendarEvents.connectionId, conn.id))).map((r) => r.externalId)).toEqual(['ext-mapped']);
+
+    seed.provider.deleteEventExternal('ext-mapped');
+    const out = await runCalendarImport({ db: getDb(), connectionId: conn.id, provider: seed.provider });
+    expect(out.unscheduledTasks).toBe(1);
+    const [after] = await getDb().select().from(tasks).where(eq(tasks.id, task.id));
+    expect(after!.dueAt).toBeNull();
+    expect(await getDb().select().from(calendarMappings).where(eq(calendarMappings.connectionId, conn.id))).toHaveLength(0);
+    const notes = await getDb().select().from(notifications).where(eq(notifications.taskId, task.id));
+    expect(notes).toHaveLength(1);
+    // The stale availability block is gone too.
+    expect(await getDb().select().from(calendarEvents).where(eq(calendarEvents.connectionId, conn.id))).toHaveLength(0);
+  });
+
+  maybe()('M7-i2 G1: a task mapped to one occurrence reacts only to that occurrence', async () => {
+    const seed = await seedConnection({ name: 'g1mapped' });
+    const conn = await connectionIdOf(seed.userId);
+    const task = await seedTask(seed.workspaceId, 'Mapped occurrence', 10 * H);
+    const keyA = 'series-7!2026-09-13T09:00:00.000Z';
+    const keyB = 'series-7!2026-09-14T09:00:00.000Z';
+    seed.provider.pushSeries('series-7', seriesInstances('Occurrence'));
+    await seedMapping(seed, task, keyA, { externalUpdatedAt: new Date('2026-09-01T00:00:00.000Z') });
+
+    const { runCalendarImport } = await import('@nextdoo/db');
+    const { getDb } = await import('../db');
+    const { tasks, calendarEvents, calendarMappings } = await import('@nextdoo/db');
+    const taskRow = async () => {
+      const [row] = await getDb().select().from(tasks).where(eq(tasks.id, task.id));
+      return row!;
+    };
+
+    // Baseline: the fixture's default updatedAt predates the mapping's
+    // externalUpdatedAt → nothing is applied yet.
+    await runCalendarImport({ db: getDb(), connectionId: conn.id, provider: seed.provider });
+    expect((await taskRow()).dueAt!.toISOString()).toBe(task.dueAt!.toISOString());
+
+    // Google moves the MAPPED occurrence A (same original slot → same key):
+    // the task follows A's new time.
+    seed.provider.pushEvent({ externalId: keyA, recurringEventId: 'series-7', title: 'Occurrence A (moved)', startsAt: '2026-09-13T16:00:00.000Z', endsAt: '2026-09-13T16:30:00.000Z', updatedAt: '2026-09-02T00:00:00.000Z' });
+    const out1 = await runCalendarImport({ db: getDb(), connectionId: conn.id, provider: seed.provider });
+    expect(out1.externalApplied).toBe(1);
+    expect(out1.conflicts).toBe(0);
+    expect((await taskRow()).dueAt!.toISOString()).toBe('2026-09-13T16:00:00.000Z');
+
+    // Google moves the SIBLING occurrence B: the task must NOT follow.
+    seed.provider.pushEvent({ externalId: keyB, recurringEventId: 'series-7', title: 'Occurrence B (moved)', startsAt: '2026-09-14T18:00:00.000Z', endsAt: '2026-09-14T18:30:00.000Z', updatedAt: '2026-09-03T00:00:00.000Z' });
+    const out2 = await runCalendarImport({ db: getDb(), connectionId: conn.id, provider: seed.provider });
+    expect(out2.externalApplied).toBe(0);
+    expect(out2.conflicts).toBe(0);
+    expect((await taskRow()).dueAt!.toISOString()).toBe('2026-09-13T16:00:00.000Z'); // unchanged
+
+    // Cancelling the mapped occurrence unschedules the task; sibling B's
+    // mirror survives; the mapping is released.
+    seed.provider.deleteEventExternal(keyA);
+    const out3 = await runCalendarImport({ db: getDb(), connectionId: conn.id, provider: seed.provider });
+    expect(out3.unscheduledTasks).toBe(1);
+    expect((await taskRow()).dueAt).toBeNull();
+    const rows = await getDb().select().from(calendarEvents).where(eq(calendarEvents.connectionId, conn.id));
+    expect(rows.map((r) => r.externalId)).toEqual([keyB]);
+    expect(await getDb().select().from(calendarMappings).where(eq(calendarMappings.connectionId, conn.id))).toHaveLength(0);
+  });
+
+  maybe()('M7-i2: series-level mirror cleanup is connection-scoped (tenant isolation)', async () => {
+    const a = await seedConnection({ name: 'iso-a' });
+    const b = await seedConnection({ name: 'iso-b' });
+    const connA = await connectionIdOf(a.userId);
+    const connB = await connectionIdOf(b.userId);
+    // Both (simulated) providers hold the SAME series id.
+    a.provider.pushSeries('shared-series', seriesInstances('Shared'));
+    b.provider.pushSeries('shared-series', seriesInstances('Shared'));
+
+    const { runCalendarImport } = await import('@nextdoo/db');
+    const { getDb } = await import('../db');
+    const { calendarEvents } = await import('@nextdoo/db');
+    const rowsOf = (id: string) => getDb().select().from(calendarEvents).where(eq(calendarEvents.connectionId, id));
+
+    await runCalendarImport({ db: getDb(), connectionId: connA.id, provider: a.provider });
+    await runCalendarImport({ db: getDb(), connectionId: connB.id, provider: b.provider });
+    expect(await rowsOf(connA.id)).toHaveLength(2);
+    expect(await rowsOf(connB.id)).toHaveLength(2);
+
+    // The series is deleted on A's provider only.
+    a.provider.deleteSeriesExternal('shared-series');
+    await runCalendarImport({ db: getDb(), connectionId: connA.id, provider: a.provider });
+    expect(await rowsOf(connA.id)).toHaveLength(0);
+    expect(await rowsOf(connB.id)).toHaveLength(2); // B's rows untouched by A's import
+
+    // B's provider still has the series → B's import keeps B's rows.
+    await runCalendarImport({ db: getDb(), connectionId: connB.id, provider: b.provider });
+    expect(await rowsOf(connB.id)).toHaveLength(2);
+  });
 });
