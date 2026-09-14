@@ -1195,3 +1195,36 @@ code touched; local working tree verified byte-identical to `2cdd528`
 except the two doc files (after recovering a sandbox `.git` reset at the
 stale base commit via `git fetch` + `git reset --mixed origin/…` — no
 work lost, no force-push).
+
+## M7 — CI failure root-cause + E2E date-boundary test fix (disclosed) — 2026-09-14
+
+The `a4fc47e` docs push failed CI in BOTH runs (push `34817080973`, PR
+`34817086617`), failing exactly the Playwright step. Root-caused before
+any change (CI logs were egress-blocked; annotations + local
+reproduction used instead):
+
+1. **`project-analytics.spec.ts:94` — genuine reproducible test defect
+   (date boundary), fixed.** "a delayed older report cannot replace a
+   newer period selection" asserted the initial report's `plannedCount`
+   without anchoring the report date: the default window is *today's*
+   week, so the precondition silently required "today" to fall in the
+   week of the fixture's hard-coded 2026-09-08 tasks. It held through
+   Sun 2026-09-13 (CI green at `2cdd528`) and broke on Mon 2026-09-14
+   (default week 09-14..09-20 contains none of the seeded tasks → data
+   section does not render). Reproduced 3/3 locally; fix pins the
+   initial report to the fixture's fixed date exactly like the sibling
+   tests (one anchored `fill` + `Update report` before the first
+   assertion); the test's stale-response race semantics are unchanged.
+   All other e2e specs with hard-coded dates were audited — they anchor
+   dates explicitly; this was the only date-dependent precondition.
+2. **`task-virtualization.spec.ts:194` (PR run only) — known
+   intermittent focus-pinning race in a virtualized list (documented
+   since M2; previously flaked in local full runs).** Passed 3/3
+   locally this turn; left unchanged (locked-milestone test; CI
+   `--retries=2` covers the residual flake).
+
+Validation (local, same date): E2E 147 passed (only local exception:
+attachments.spec fails loudly without ClamAV — by design, CI installs
+it), vitest 781/781 (73 files), coverage thresholds unchanged (calendar
+90.22/80.39/92.85/92.38), typecheck all 5 packages, lint 0, build
+clean. Product code unchanged; M7-i1 behavior untouched.

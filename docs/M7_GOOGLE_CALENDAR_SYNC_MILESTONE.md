@@ -298,3 +298,17 @@ derivation is adapter-internal; the engine only receives already-keyed
 DTOs); no parallel sync path; recurrence rule preservation is NOT
 included (deferred per conclusion 1); live Google verification remains
 a separate, externally blocked increment (see §5).
+
+### 7.1 Addendum (2026-09-14) — CI failure during the planning increment
+
+The docs-only planning push (`a4fc47e`) failed CI in both runs at the
+Playwright step. Root cause (details in the completion ledger): a
+**date-boundary defect in `project-analytics.spec.ts:94`** (pre-existing
+test, not M7 code) whose precondition silently required "today" to fall
+in the week of its hard-coded 2026-09-08 fixture tasks — green through
+Sun 2026-09-13, broken from Mon 2026-09-14; reproduced 3/3 locally and
+fixed by anchoring the initial report to the fixture date (sibling-test
+pattern). A second, PR-run-only failure was the known intermittent
+`task-virtualization` focus-pinning race (3/3 local passes; unchanged).
+No product or M7 code was touched; full local battery green (781/781,
+E2E 147, coverage/typecheck/lint/build).

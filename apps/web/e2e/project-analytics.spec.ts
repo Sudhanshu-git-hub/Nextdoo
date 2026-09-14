@@ -91,6 +91,10 @@ test('failed report requests do not display old metrics and an explicit retry re
 
 test('a delayed older report cannot replace a newer period selection', async ({ page }) => {
  await fixture(page); const report = await open(page);
+ // Anchor the initial report to the fixture's fixed date (the default period is
+ // the week containing it) so this test does not depend on which week "today" is in.
+ await report.getByLabel('Report date', { exact: true }).fill(day);
+ await report.getByRole('button', { name: 'Update report', exact: true }).click();
  await expect(report.getByTestId('plannedCount')).toBeVisible();
  let announce!: () => void, release!: () => void;
  const captured = new Promise<void>((resolve) => { announce = resolve; });
