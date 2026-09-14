@@ -215,3 +215,86 @@ ship in the same increment: dedicated random channel-token column (instead
 of connection id), rate-limit backoff scheduling (currently skip-pass), and
 a `calendar.disconnect` purge of the external NEXTDOO events when a user
 explicitly asks (opt-in, never default — PRD §16.5).
+
+## 7. M7-i2 planning — review conclusions (2026-09-14, review-only turn; no product code changed)
+
+Review scope: PRD §16.2–§16.7 (+ §7 planning capability, Phase-2
+references), the M7-i1 implementation (adapter, engine, routes, UI),
+recurrence normalization and the `calendar_events` schema, and the
+ledger.
+
+### PRD conclusions
+
+1. **Recurrence fidelity (full rule preservation / series-level
+   editing) is NOT explicitly required for the MVP.** The PRD's only
+   recurrence statement is the word "recurrence" in §16.1's "Data
+   imported" list. §16.3 — the authoritative normalization contract —
+   carries no recurrence field, the §16.6 acceptance criteria test no
+   recurrence behavior, and "series-level editing" appears nowhere in
+   the PRD. The internal PRD tension (§16.1 list vs §16.3 shape) is
+   resolved by M7-i1's documented decision (expanded instances,
+   per-instance storage). Full RRULE preservation and series editing =
+   future enhancement, explicitly **deferred** (not Phase 2 — see 3).
+2. **Availability display is explicit as the purpose of the read-only
+   mode** (§16.2: "Read-only calendar access for availability
+   display"; §7 planning: "view calendar availability"). It is not an
+   independent §16.6 acceptance criterion. The surface itself (external
+   event import + read-only rendering in `CalendarView`, both modes) is
+   **already implemented in M7-i1**.
+3. **Neither requirement is explicitly Phase 2** — §16.7's Phase 2
+   entries are other providers (Outlook, Apple/CalDAV), not recurrence
+   or availability.
+4. **The written MVP acceptance criteria (§16.6, all five) are fully
+   satisfied** by M7-i1 (individually tested; 781/781 + full pipeline
+   CI green at `2cdd528`).
+5. **Hidden correctness gaps in the M7-i1 import path were found**
+   (code-verified during this review; not fixed in this turn):
+   - **G1 — recurring-instance identity.** With `singleEvents=true`
+     Google returns every instance of a series under the same `id`
+     (the series id); the adapter uses that as `external_id` under
+     `UNIQUE (connection_id, external_id)` (`recurringEventId` /
+     `originalStartTime` are used nowhere), so: all instances of a
+     series in the import window collapse into ONE mirror row (the
+     latest in start-time order wins); cancelling a single occurrence
+     is reported as the series id, deleting the whole series (mirror
+     row + unscheduled mapped task); and an update to any instance of a
+     series bleeds onto the one mapped task. This silently corrupts
+     the §16.2 availability display for recurring external events.
+   - **G2 — deleted external events leave stale mirror rows.**
+     `runCalendarImport` never deletes `calendar_events` rows for
+     `deletedExternalIds` (mirror deletion exists only on the export
+     path and the disconnect retention sweep), so an event deleted in
+     Google keeps rendering as an availability block for the whole
+     connection lifetime.
+
+### M7-i2 (bounded increment, scoped — implementation follows in the next increment)
+
+**Requirement (exact PRD anchor):** imported calendar data must be
+correct so that the §16.2 availability display and the §16.1 event
+import behave as specified: one mirror row per event instance (the
+documented per-instance MVP contract), occurrence-level deletions
+affect only that occurrence, series-level deletions remove all of the
+series' instances, and deleted events stop being displayed.
+
+**Acceptance criteria (all deterministic — fixture provider + injected
+transport; zero network; no live Google claims):**
+1. A recurring series with N instances in the import window produces N
+   distinct mirror rows. (Unit: the adapter derives a stable composite
+   instance key `seriesId!originalStart` from `recurringEventId` +
+   `originalStartTime`; non-recurring events keep their plain id;
+   cancelled instances report the same composite key.)
+2. Cancelling one instance removes exactly that mirror row; sibling
+   instances remain. Cancelling the whole series (series-level item)
+   removes all of the series' instance rows and applies the existing
+   AC-3 semantics (mapped task unscheduled + notified).
+3. Deleting a non-mapped external event removes its mirror row on the
+   next import (no stale availability blocks).
+4. No change to tenant isolation, sync cursors/idempotency, conflict
+   semantics, timezone normalization, or audit events (existing 781
+   tests stay green unchanged).
+
+**Constraints:** the `CalendarProvider` boundary is preserved (key
+derivation is adapter-internal; the engine only receives already-keyed
+DTOs); no parallel sync path; recurrence rule preservation is NOT
+included (deferred per conclusion 1); live Google verification remains
+a separate, externally blocked increment (see §5).

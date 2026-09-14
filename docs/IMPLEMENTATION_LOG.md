@@ -1152,3 +1152,46 @@ failed push run was refused by GitHub ("workflow file may be broken"),
 same as the M6-i8 docs-run incident. No product or test behavior was
 changed; the push run on the closing commit below is the additional
 authoritative green.
+
+## M7 — Google Calendar two-way sync — increment 2 (planning): import-correctness review — 2026-09-14
+
+Review-only increment (no product code changed). Scope: PRD §16.2–§16.7
+(+ §7 planning capability and Phase-2 references), the M7-i1
+implementation, the recurrence normalization decision, and the
+`calendar_events` schema.
+
+Conclusions (full detail in
+[M7_GOOGLE_CALENDAR_SYNC_MILESTONE.md](M7_GOOGLE_CALENDAR_SYNC_MILESTONE.md) §7):
+(1) **Recurrence fidelity** (full rule preservation / series-level
+editing) is **not explicitly required for the MVP** — the PRD's only
+recurrence statement is the word "recurrence" in §16.1's imported-data
+list; §16.3's normalization contract carries no recurrence field and the
+§16.6 acceptance criteria test none — so it is **deferred as a future
+enhancement**, not MVP scope. (2) **Availability display is explicit as
+the purpose of the read-only mode** (§16.2) and its surface (external
+event import + read-only rendering) was already delivered in M7-i1; it is
+not an independent §16.6 AC. (3) **Neither is explicitly Phase 2** —
+§16.7's Phase 2 entries are other providers (Outlook, Apple/CalDAV).
+(4) The **written MVP acceptance criteria (§16.6, all five) are fully
+satisfied** at `2cdd528`. (5) The review found **two hidden correctness
+gaps in the M7-i1 import path**: **G1** — recurring instances share
+Google's series `id`, which the adapter uses as `external_id` under
+`UNIQUE (connection_id, external_id)`, so instances of one series collapse
+into a single mirror row, an occurrence-level cancellation deletes the
+whole series (and unschedules the mapped task), and instance updates bleed
+across the series; **G2** — deleted external events leave stale mirror
+rows because the import path never deletes `calendar_events` rows for
+`deletedExternalIds`. Both corrupt the §16.2 availability display.
+**M7-i2 is therefore scoped as the bounded correctness fix for G1+G2**
+(deterministic acceptance criteria recorded in the milestone doc; no
+recurrence rule preservation, no parallel sync path, provider boundary
+preserved). Implementation follows in the next increment — deliberately
+not in this review-only turn. Live Google verification remains
+externally blocked (credentials + egress, see M7-i1 entry) and stays a
+separate later increment.
+
+Validation (this turn): documentation-only change; no product or test
+code touched; local working tree verified byte-identical to `2cdd528`
+except the two doc files (after recovering a sandbox `.git` reset at the
+stale base commit via `git fetch` + `git reset --mixed origin/…` — no
+work lost, no force-push).
