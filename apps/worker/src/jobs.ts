@@ -4,6 +4,8 @@ import { and, eq, isNotNull, isNull, lt, lte, sql as raw } from 'drizzle-orm';
 import { authTokens, auditLogs, idempotencyKeys, reminders, users, purgeAccount, deliverDueReminders, runRecurrenceGeneration, relayTrackingOutbox, reconcileTracking, runTrackingEvaluation, runTrackingBackfill, createDurableFileExportStore, expireExports, runExportGeneration, createDurableFileAttachmentStore, createClamavScanner, defaultClamavBin, runAttachmentScan, applyBillingDeadlines, reconcileBilling, runRetentionPurge, runCalendarSyncCycle, openSecret } from '@nextdoo/db';
 import { buildBillingProviders } from '@nextdoo/billing';
 import { createGoogleCalendar } from '@nextdoo/calendar';
+import { createWebPushTransport } from './push-transport';
+import { deliverPushDeliveries } from '@nextdoo/db';
 import type { CalendarProvider } from '@nextdoo/contracts';
 import { db, logger, type Job, type JobResult } from './runtime';
 
@@ -520,10 +522,30 @@ const syncCalendar: Job = {
   },
 };
 
+const pushTransport = createWebPushTransport();
+
+/**
+ * M8-i1 (PRD §6.6): durable browser push delivery. A no-op when VAPID is not
+ * configured (no keys -> null transport), mirroring mail delivery without
+ * SMTP. Bounded retries, lease hygiene and 410 subscription cleanup live in
+ * deliverPushDeliveries (packages/db).
+ */
+const deliverPush: Job = {
+  name: 'push.deliver',
+  intervalMs: 10_000,
+  async run(): Promise<JobResult> {
+    const result = await deliverPushDeliveries(db, 10, pushTransport);
+    if (result.failed || result.retrying) logger.warn('push.delivery_attention', { failed: result.failed, retrying: result.retrying });
+    if (result.gone) logger.info('push.subscriptions_gone', { gone: result.gone });
+    return { processed: result.processed, details: result };
+  },
+};
+
 export const JOBS: Job[] = [
   { name: 'recurrence.generate', intervalMs: 60000, run: async () => { const result = await runRecurrenceGeneration(db); if (result.details.failed) logger.warn('recurrence.generation_failed', result.details); return result; } },
   purgeAuthenticationAttempts,
   { name: 'mail.deliver', intervalMs: 10000, run: () => deliverMail(1) },
+  deliverPush,
   dispatchReminders,
   requeueStuckReminders,
   relayOutbox,

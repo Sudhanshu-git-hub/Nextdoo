@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import type { Database } from './client';
-import { notifications, reminders, tasks, users, workspaces, auditLogs } from './schema';
+import { notifications, pushDeliveries, pushSubscriptions, reminders, tasks, users, workspaces, auditLogs } from './schema';
 
 /** SENT for WEB means a durable in-app notification, never a claim of OS/web push. */
 export async function deliverDueReminders(db: Database, limit = 100, clock?: Date) {
@@ -23,14 +23,26 @@ export async function deliverDueReminders(db: Database, limit = 100, clock?: Dat
     const [r] = await tx.select().from(reminders).where(eq(reminders.id, candidate.id)).for('update');
     if (!r || r.status !== 'SCHEDULED' || r.version !== candidate.version || r.nextAttemptAt > now || r.scheduledAt > now) return null;
     let status: 'SENT' | 'EXPIRED' | 'FAILED' | 'CANCELED';
+    let failedReason: string | null = null;
     if (!task || task.workspaceId !== r.workspaceId || task.status !== 'ACTIVE' || task.deletedAt || !workspace || workspace.deletedAt || workspace.ownerId !== r.userId || !owner || owner.status !== 'ACTIVE' || owner.deletedAt || owner.deletionRequestedAt) status = 'CANCELED';
     else if (r.scheduledAt.getTime() < now.getTime() - 86400000) status = 'EXPIRED';
-    else if (r.channel !== 'WEB' || r.attempts >= 3) status = 'FAILED';
-    else {
-     await tx.insert(notifications).values({ id: randomUUID(), reminderId: r.id, userId: r.userId, workspaceId: r.workspaceId, taskId: r.taskId, type: 'reminder', title: task.title, body: 'Your scheduled reminder is ready.' }).onConflictDoNothing({ target: notifications.reminderId });
-     status = 'SENT';
+    else if ((r.channel !== 'WEB' && r.channel !== 'PUSH') || r.attempts >= 3) { failedReason = r.channel === 'WEB' || r.channel === 'PUSH' ? 'DELIVERY_FAILED' : 'DELIVERY_PROVIDER_NOT_CONFIGURED'; status = 'FAILED'; }
+    else if (r.channel === 'PUSH') {
+      // Browser push (PRD §6.6): one durable delivery per active subscription.
+      const subs = await tx.select().from(pushSubscriptions).where(eq(pushSubscriptions.userId, r.userId)).orderBy(asc(pushSubscriptions.id)).limit(50);
+      if (!subs.length) { failedReason = 'NO_PUSH_SUBSCRIPTIONS'; status = 'FAILED'; }
+      else {
+        const payload = JSON.stringify({ title: task!.title.slice(0, 100), body: 'Your scheduled reminder is ready.', taskId: task!.id, url: '/tasks' });
+        const expiresAt = new Date(now.getTime() + 86400000);
+        await tx.insert(pushDeliveries).values(subs.map((s) => ({ id: randomUUID(), reminderId: r.id, subscriptionId: s.id, userId: r.userId, workspaceId: r.workspaceId, taskId: task!.id, payload, status: 'PENDING', expiresAt }))).onConflictDoNothing({ target: [pushDeliveries.reminderId, pushDeliveries.subscriptionId] });
+        await tx.insert(notifications).values({ id: randomUUID(), reminderId: r.id, userId: r.userId, workspaceId: r.workspaceId, taskId: r.taskId, type: 'reminder', title: task!.title, body: 'Your scheduled reminder is ready.' }).onConflictDoNothing({ target: notifications.reminderId });
+        status = 'SENT';
+      }
+    } else {
+      await tx.insert(notifications).values({ id: randomUUID(), reminderId: r.id, userId: r.userId, workspaceId: r.workspaceId, taskId: r.taskId, type: 'reminder', title: task!.title, body: 'Your scheduled reminder is ready.' }).onConflictDoNothing({ target: notifications.reminderId });
+      status = 'SENT';
     }
-    await tx.update(reminders).set({ status, updatedAt: now, version: r.version + 1, sentAt: status === 'SENT' ? now : null, attempts: Math.max(r.attempts, Math.min(3, r.attempts + 1)), lastError: status === 'FAILED' ? (r.channel === 'WEB' ? 'DELIVERY_FAILED' : 'DELIVERY_PROVIDER_NOT_CONFIGURED') : null }).where(eq(reminders.id, r.id));
+    await tx.update(reminders).set({ status, updatedAt: now, version: r.version + 1, sentAt: status === 'SENT' ? now : null, attempts: Math.max(r.attempts, Math.min(3, r.attempts + 1)), lastError: status === 'FAILED' ? failedReason : null }).where(eq(reminders.id, r.id));
     await tx.insert(auditLogs).values({ id: randomUUID(), workspaceId: r.workspaceId, actorId: null, action: 'reminder.dispatch', targetType: 'reminder', targetId: r.id, metadata: { status, version: r.version + 1 } });
     return status;
    });

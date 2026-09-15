@@ -4,6 +4,7 @@ import { deliverDueReminders, reminders, tasks, workspaces } from '@nextdoo/db';
 import { getDb } from '../db';
 import { newId } from '../ids';
 import { logger } from '../observability';
+import { features } from '../env';
 import { withWorkspaceTransaction } from './transactions';
 import { writeAudit } from './events';
 export interface ReminderActor { userId: string; workspaceId: string; requestId?: string }
@@ -17,12 +18,17 @@ async function load(actor: ReminderActor, id: string, version?: number) {
  const [r] = await getDb().select().from(reminders).where(and(eq(reminders.id, id), eq(reminders.userId, actor.userId), eq(reminders.workspaceId, actor.workspaceId)));
  if (!r) throw notFound('reminder', id); if (version !== undefined && r.version !== version) throw versionConflict('reminder', id); return r;
 }
-export async function createReminder(actor: ReminderActor, raw: { taskId: string; scheduledAt?: string; minutesBeforeDue?: number; channel: 'WEB' | 'DESKTOP' | 'EMAIL'; taskVersion?: number }) {
+export async function createReminder(actor: ReminderActor, raw: { taskId: string; scheduledAt?: string; minutesBeforeDue?: number; channel: string; taskVersion?: number }) {
  const input = createReminderSchema.parse(raw);
  return withWorkspaceTransaction(actor.workspaceId, async (db) => {
   const task = await activeTask(actor, input.taskId);
   if (input.taskVersion !== undefined && task.version !== input.taskVersion) throw versionConflict('task', task.id);
-  if (input.channel !== 'WEB') throw new AppError('VALIDATION_FAILED', 'Only durable in-app reminders are enabled. External delivery is not configured.');
+  // WEB = durable in-app notification; PUSH = browser push (PRD §6.6, M8-i1).
+  // DESKTOP/EMAIL remain unavailable (no provider configured on this stack).
+  if (input.channel !== 'WEB' && input.channel !== 'PUSH') throw new AppError('VALIDATION_FAILED', 'Only in-app and browser-push reminders are enabled. Other channels are not configured.');
+  // A PUSH reminder on an unconfigured deployment can never deliver: fail at
+  // creation instead of accumulating a guaranteed failure (honest degrade).
+  if (input.channel === 'PUSH' && !features().browserPush) throw new AppError('PROVIDER_UNAVAILABLE', 'Browser push is not configured on this deployment.');
   if (input.minutesBeforeDue !== undefined && !task.dueAt) throw new AppError('VALIDATION_FAILED', 'A relative reminder needs the task to have a due date.');
   const scheduledAt = input.scheduledAt ? new Date(input.scheduledAt) : new Date(task.dueAt!.getTime() - input.minutesBeforeDue! * 60000);
   const [r] = await db.insert(reminders).values({ id: newId(), workspaceId: actor.workspaceId, userId: actor.userId, taskId: task.id, channel: input.channel, scheduledAt, minutesBeforeDue: input.minutesBeforeDue ?? null }).returning();
@@ -35,7 +41,7 @@ export async function snoozeReminder(actor: ReminderActor, id: string, minutes: 
  return withWorkspaceTransaction(actor.workspaceId, async (db) => {
   const r = await load(actor, id, version); await activeTask(actor, r.taskId);
   if (r.supersededById || !['SCHEDULED','SENT','FAILED'].includes(r.status)) throw new AppError('VALIDATION_FAILED', 'This reminder cannot be snoozed. Refresh its history.');
-  if (r.channel !== 'WEB') throw new AppError('VALIDATION_FAILED', 'External reminder delivery is not enabled.');
+  if (r.channel !== 'WEB' && r.channel !== 'PUSH') throw new AppError('VALIDATION_FAILED', 'External reminder delivery is not enabled.');
   const newIdValue = newId(), now = new Date();
   const [next] = await db.insert(reminders).values({ id: newIdValue, workspaceId: actor.workspaceId, userId: actor.userId, taskId: r.taskId, channel: r.channel, scheduledAt: new Date(now.getTime() + minutes * 60000) }).returning();
   const [source] = await db.update(reminders).set({ supersededById: newIdValue, status: r.status === 'SENT' ? 'SENT' : 'CANCELED', version: r.version + 1, updatedAt: now }).where(and(eq(reminders.id, id), eq(reminders.version, r.version))).returning();

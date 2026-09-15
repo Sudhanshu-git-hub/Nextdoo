@@ -1325,3 +1325,38 @@ decision). Externally blocked work inventoried separately: live Google
 bounded and fully CI-verifiable via a deterministic push-service stub;
 acceptance criteria defined in the audit doc §4.2. Not started this
 turn.
+
+## M8-i1 — browser push notification channel — 2026-09-14
+
+Implemented the bounded channel from
+[M8_ROADMAP_AUDIT.md](M8_ROADMAP_AUDIT.md) §4.2 (PRD §6.6/§9.3/§12.4/
+§13.2/§14.8): VAPID subscription lifecycle (authed, user-scoped, deduped on
+`(user, endpoint)`, validated, rate-limited), push as a durable channel in
+the **existing** reminder dispatch path (no parallel engine: scheduling,
+CANCELED/EXPIRED gating, versions, audit and the notification center are
+unchanged), a real service worker (`public/sw.js`) with explicit opt-in and
+clean degradation, and 410/gone handling (registration removed, siblings
+keep delivering). New schema: `push_subscriptions` + `push_deliveries`
+(lease-based, `UNIQUE(reminder_id, subscription_id)` no-double-delivery
+key, 5-attempt backoff, 24 h payload expiry with scrubbing); delivery
+engine in `@nextdoo/db` with a dependency-injected transport — the worker
+injects `web-push`, tests inject a deterministic stub. Registration is
+gated on VAPID configuration (503 unconfigured; no undeliverable
+accumulation; no stub fallback). Terminal outcomes surface via the existing
+reminder history (`last_error`), and account purge scrubs keys + payloads.
+Deliverable doc: [M8_i1_BROWSER_PUSH_MILESTONE.md](M8_i1_BROWSER_PUSH_MILESTONE.md)
+(files/routes/schema, AC evidence table, degradation matrix, production
+external dependencies).
+
+Validation (local): vitest **815/815** (18 new push integration tests, 2
+files; one non-reproducing clock-drift flake in a first run fixed by
+widening a test margin 1 s → 60 s and re-verified), E2E **151/151**
+(4 new real-browser push specs: SW registration + public key, opt-in →
+real API → dispatch → SENT + opt-out, unsupported-browser degradation,
+authz/ownership/validation; the browser↔push-service handshake and the
+headless notification-permission grant are doubled at the browser boundary
+and labeled in the spec header — **no real provider delivery is
+claimed**), coverage 88.88 % stmts (baseline 88.89 %), typecheck/lint/
+build clean. The attachments E2E suite's ClamAV refusal is pre-existing and
+by design. M8 status: **M8-i1 complete locally; CI verification pending**
+on GitHub token reconnection (sandbox token expired mid-session, 401).

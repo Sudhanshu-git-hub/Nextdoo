@@ -1,7 +1,7 @@
 import { and, eq, inArray, lte, or } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import type { Database } from './client';
-import { attachments, auditLogs, exports as exportsTable, idempotencyKeys, outbox, users, workspaces } from './schema';
+import { attachments, auditLogs, exports as exportsTable, idempotencyKeys, outbox, pushDeliveries, pushSubscriptions, users, workspaces } from './schema';
 import type { ExportArtifactStore } from './export-storage';
 import type { AttachmentObjectStore } from './attachment-storage';
 
@@ -44,6 +44,10 @@ export async function purgeAccount(
     // or undelivered account messages behind after the domain rows are purged.
     await tx.delete(idempotencyKeys).where(eq(idempotencyKeys.userId, userId));
     await tx.delete(outbox).where(or(eq(outbox.actorId, userId), ids.length ? inArray(outbox.workspaceId, ids) : undefined));
+    // Push registrations + undelivered push messages (PRD §11.1): scrub the
+    // Web Push keys and any pending payloads together with the account.
+    await tx.delete(pushDeliveries).where(eq(pushDeliveries.userId, userId));
+    await tx.delete(pushSubscriptions).where(eq(pushSubscriptions.userId, userId));
     // Compliance evidence for the destructive step itself (PRD §11.1: deletion
     // is auditable). audit_logs has no FK to users, so the row outlives the
     // account it describes — exactly what a regulator or the owner's heirs

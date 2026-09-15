@@ -38,7 +38,7 @@ export const projectStatusEnum = pgEnum('project_status', ['ACTIVE', 'ARCHIVED']
 export const reminderStatusEnum = pgEnum('reminder_status', [
   'SCHEDULED', 'PROCESSING', 'SENT', 'FAILED', 'CANCELED', 'EXPIRED',
 ]);
-export const reminderChannelEnum = pgEnum('reminder_channel', ['WEB', 'DESKTOP', 'EMAIL']);
+export const reminderChannelEnum = pgEnum('reminder_channel', ['WEB', 'DESKTOP', 'EMAIL', 'PUSH']);
 export const timerStatusEnum = pgEnum('timer_status', ['RUNNING', 'PAUSED', 'STOPPED', 'OVERLAPPED']);
 export const trackingEventTypeEnum = pgEnum('tracking_event_type', [
   'TASK_CREATED', 'TASK_PLANNED', 'TASK_STARTED', 'TASK_PAUSED', 'TASK_COMPLETED',
@@ -854,6 +854,53 @@ export const deviceRegistrations = pgTable(
     ...timestamps,
   },
   (t) => [uniqueIndex('device_registrations_unique').on(t.userId, t.deviceId)],
+);
+
+// M8-i1 (PRD §6.6/§9.3/§13.2): browser push subscriptions (Web Push).
+// One row per (user, endpoint); a user may have several (multiple devices).
+export const pushSubscriptions = pgTable(
+  'push_subscriptions',
+  {
+    id: uuid('id').primaryKey(),
+    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    endpoint: varchar('endpoint', { length: 2048 }).notNull(),
+    p256dh: varchar('p256dh', { length: 255 }).notNull(),
+    auth: varchar('auth', { length: 255 }).notNull(),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex('push_subscriptions_user_endpoint_key').on(t.userId, t.endpoint),
+    index('push_subscriptions_user_idx').on(t.userId),
+  ],
+);
+
+// Durable push delivery queue (one row per reminder+subscription) — the
+// no-double-delivery key for the push channel. Mirrors mail_deliveries.
+export const pushDeliveries = pgTable(
+  'push_deliveries',
+  {
+    id: uuid('id').primaryKey(),
+    reminderId: uuid('reminder_id').notNull().references(() => reminders.id, { onDelete: 'cascade' }),
+    subscriptionId: uuid('subscription_id').notNull(),
+    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    workspaceId: uuid('workspace_id').references(() => workspaces.id, { onDelete: 'cascade' }),
+    taskId: uuid('task_id'),
+    payload: text('payload').notNull(),
+    status: varchar('status', { length: 12 }).notNull().default('PENDING'),
+    attempts: integer('attempts').notNull().default(0),
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
+    leaseToken: uuid('lease_token'),
+    leaseUntil: timestamp('lease_until', { withTimezone: true }),
+    sentAt: timestamp('sent_at', { withTimezone: true }),
+    lastError: varchar('last_error', { length: 100 }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex('push_deliveries_reminder_subscription_key').on(t.reminderId, t.subscriptionId),
+    index('push_deliveries_claim_idx').on(t.status, t.nextAttemptAt, t.id),
+    index('push_deliveries_user_idx').on(t.userId),
+  ],
 );
 
 // ----------------------------------------------------------------- relations

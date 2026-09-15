@@ -35,6 +35,13 @@ const envSchema = z.object({
   S3_BUCKET: z.string().optional(),
   S3_ACCESS_KEY_ID: z.string().optional(),
   S3_SECRET_ACCESS_KEY: z.string().optional(),
+  /**
+   * Browser push (Web Push, PRD §6.6). VAPID key pair, base64url. The feature
+   * is gated on BOTH being present; otherwise the public-key endpoint answers
+   * 503 PROVIDER_UNAVAILABLE and push delivery is a no-op (no stub fallback).
+   */
+  VAPID_PUBLIC_KEY: z.string().optional(),
+  VAPID_PRIVATE_KEY: z.string().optional(),
   /** Attachment file data root (default: ./var/attachments; durable local store). */
   ATTACHMENT_STORAGE_DIR: z.string().optional(),
   /** ClamAV `clamscan` binary for attachment malware scanning (default: clamscan). */
@@ -71,6 +78,8 @@ export function getEnv(): Env {
     S3_BUCKET: process.env.S3_BUCKET,
     S3_ACCESS_KEY_ID: process.env.S3_ACCESS_KEY_ID,
     S3_SECRET_ACCESS_KEY: process.env.S3_SECRET_ACCESS_KEY,
+    VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY,
+    VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY,
     ATTACHMENT_STORAGE_DIR: process.env.ATTACHMENT_STORAGE_DIR,
     ATTACHMENT_SCAN_BIN: process.env.ATTACHMENT_SCAN_BIN,
     SMTP_URL: process.env.SMTP_URL,
@@ -91,6 +100,9 @@ export function features() {
   const env = getEnv();
   return {
     googleCalendar: Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET),
+    // Browser push needs both VAPID keys (public for subscription, private for
+    // signing); with either missing the UI degrades and delivery is a no-op.
+    browserPush: Boolean(env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY),
     // A provider is "available" only with a complete configuration (see env
     // schema): API key + webhook secret + plan mapping for all three plans.
     billing: Boolean(

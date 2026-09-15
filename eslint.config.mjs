@@ -3,7 +3,7 @@ import tseslint from 'typescript-eslint';
 import unusedImports from 'eslint-plugin-unused-imports';
 
 export default tseslint.config(
-  { ignores: ['**/node_modules/**', '**/.next/**', '**/.turbo/**', '**/coverage/**', '**/playwright-report/**', '**/test-results/**', '**/.data/**', '**/.pgdata/**', '**/next-env.d.ts'] },
+  { ignores: ['**/node_modules/**', '**/.next/**', '**/.turbo/**', '**/coverage/**', '**/playwright-report/**', '**/test-results/**', '**/.data/**', '**/.pgdata/**', '**/next-env.d.ts', 'apps/web/public/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

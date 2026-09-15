@@ -5,6 +5,8 @@ export { purgeAccount } from './purge';
 export { runRetentionPurge, RETENTION, SECURITY_AUDIT_ACTIONS, type RetentionPurgeResult, type RetentionPurgeFailure, type RetentionPurgeOptions } from './retention';
 export { sealSecret, openSecret } from './secrets';
 export { deliverDueReminders } from './reminder-delivery';
+export { registerPushSubscription, listPushSubscriptions, removePushSubscription } from './push-subscriptions';
+export { deliverPushDeliveries, type PushTransport } from './push-delivery';
 export {
   applyTaskDueChange,
   finalizeDisconnect,

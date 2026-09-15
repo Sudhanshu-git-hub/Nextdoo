@@ -483,3 +483,30 @@ export const workspaceSettingsSchema = z.object(workspaceFields).strict().refine
 export const updateWorkspaceSchema = z.object(workspaceFields).partial().extend({ version: z.number().int().min(1) }).strict().refine((v) => Object.keys(v).length > 1, { message: 'Choose at least one setting to change' });
 export type WorkspaceSettings = z.infer<typeof workspaceSettingsSchema>;
 export type UpdateWorkspaceInput = z.infer<typeof updateWorkspaceSchema>;
+
+/**
+ * M8-i1 (PRD §6.6/§9.3): browser push subscription registration.
+ * Only the fields Web Push delivery requires are accepted and stored.
+ * Keys are base64url (RFC 7515 §2.1) as produced by browsers.
+ */
+const base64Url = (min: number, max: number) =>
+  z
+    .string()
+    .regex(/^[A-Za-z0-9_-]+$/, 'Must be base64url')
+    .min(min)
+    .max(max);
+
+export const pushSubscriptionSchema = z
+  .object({
+    endpoint: z.string().url().min(1).max(2048),
+    /** PushSubscription.toJSON() shape: a high-res timestamp, or null. */
+    expirationTime: z.number().nullable().optional(),
+    keys: z
+      .object({
+        p256dh: base64Url(40, 255),
+        auth: base64Url(16, 64),
+      })
+      .strict(),
+  })
+  .strict();
+export type PushSubscriptionInput = z.infer<typeof pushSubscriptionSchema>;
