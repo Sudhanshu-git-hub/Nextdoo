@@ -1369,3 +1369,24 @@ production build, real-browser `playwright test --retries=2` — all green).
 Consolidated M8 status: audit CLOSED (`83fce2f`), M8-i1 CLOSED; M8-i2
 (advisory "improve" suggestions, §5.5 heuristic variant) is the recommended
 next increment — not started per directive.
+
+## M8-i2 — advisory "improve" suggestions — 2026-09-15 (review only)
+
+Planning/review increment (no product code changed). Full re-read of PRD
+§5.5/§8.3/§8.5/§7.3/§7.8/§7.9/§14.3/§14.8/§17, the M8 audit (J8/N3), and
+the existing analytics/tracking/capacity/recurrence implementation
+(includes the already-delivered "What this suggests" insights card,
+`tagVariances`, `mostRescheduled`, overloaded-day data, `DayCapacity`,
+`tracking_results` components, and the `disableScores` preference pattern).
+Deliverable: [M8_i2_ADVISORY_SUGGESTIONS_REVIEW.md](M8_i2_ADVISORY_SUGGESTIONS_REVIEW.md)
+— the five §5.5 suggestion themes decoded to a closed, deterministic,
+pure-rule design (heuristic; AI/LLM explicitly deferred per §17.1 and the
+standing directive), the PRD-named `POST /v1/ai/suggestions` endpoint with
+a deterministic default provider, strictly advisory semantics (one
+confirmable S1 estimate mutation; S2 can never initiate a move per §8.3),
+15 acceptance criteria derived directly from the PRD, negative/security/
+privacy cases, test strategy, and a bounded implementation plan (~6 files
+new, ~5 touched, 0 new tables, 0 workers, 0 external services). Includes
+the §7.9 overload-warnings toggle (J6 sub-gap) as an AC-14 dependency
+because S2 is an overload warning. Implementation NOT started, per
+directive.
