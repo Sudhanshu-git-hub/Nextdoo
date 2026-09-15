@@ -44,7 +44,7 @@ export type ExecutionOutcome = (typeof EXECUTION_OUTCOME)[number];
 export const REMINDER_STATUS = ['SCHEDULED', 'PROCESSING', 'SENT', 'FAILED', 'CANCELED', 'EXPIRED'] as const;
 export type ReminderStatus = (typeof REMINDER_STATUS)[number];
 
-export const REMINDER_CHANNEL = ['WEB', 'DESKTOP', 'EMAIL'] as const;
+export const REMINDER_CHANNEL = ['WEB', 'DESKTOP', 'EMAIL', 'PUSH'] as const;
 export type ReminderChannel = (typeof REMINDER_CHANNEL)[number];
 
 export const TIMER_STATUS = ['RUNNING', 'PAUSED', 'STOPPED', 'OVERLAPPED'] as const;

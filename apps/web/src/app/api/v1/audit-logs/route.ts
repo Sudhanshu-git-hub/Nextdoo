@@ -1,5 +1,7 @@
+import { limitsFor } from '@nextdoo/contracts';
 import { z } from 'zod';
 import { authedRoute, parseQuery } from '@/server/http';
+import { getPlan } from '@/server/services/accounts';
 import { listAuditLogs } from '@/server/services/data-rights';
 
 export const runtime = 'nodejs';
@@ -16,9 +18,14 @@ const querySchema = z.object({
   category: z.enum(['account', 'task']).optional(),
 });
 
-/** Security-relevant history for the signed-in user (PRD §12.4). */
+/**
+ * Security-relevant history for the signed-in user (PRD §12.4), bounded by the
+ * plan's audit-log retention (PRD §18.1: Free None, Pro 30 days, Team 1 year,
+ * Enterprise 7 years).
+ */
 export const GET = authedRoute({ routeName: 'audit.list' }, async (request, ctx) => {
   const { limit, category } = parseQuery(request, querySchema);
   const prefix = category ? CATEGORY_PREFIXES[category] : undefined;
-  return { data: await listAuditLogs(ctx.auth.userId, ctx.auth.workspaceId, limit, prefix) };
+  const retentionDays = limitsFor(await getPlan(ctx.auth.userId)).auditLogRetentionDays;
+  return { data: await listAuditLogs(ctx.auth.userId, ctx.auth.workspaceId, limit, prefix, retentionDays) };
 });

@@ -1,179 +1,341 @@
-# Development guide
+# Development and verification
 
-How to run NEXTDOO locally, what exists today, and the conventions that keep the
-codebase coherent. The [PRD](./PRD.md) remains the source of truth for behaviour.
+The recovered implementation is not a release-complete MVP. `docs/PRD.md` on
+main is the product authority. This guide describes actual behavior, not planned integrations.
 
-## Requirements
+## Toolchain and local services
 
-| Tool       | Version | Notes                                       |
-| ---------- | ------- | ------------------------------------------- |
-| Node.js    | 22.x    | Uses native `node:` APIs and ESM throughout |
-| pnpm       | 9.15.4  | `corepack enable` installs the pinned version |
-| PostgreSQL | 16+     | A local instance is bundled; see below      |
-
-## First run
+- Node 22.22+ (CI: 22.22.3), pnpm **9.15.4**.
+- PostgreSQL 16+; CI uses PostgreSQL 16, the embedded local distribution uses 18.4.
+- Next.js 15 App Router hosts both the web UI and `/api/v1` route handlers.
+- Shared contracts/core/DB packages expose TypeScript source. Worker runs with tsx.
 
 ```bash
-pnpm install
+corepack enable
+pnpm install --frozen-lockfile
 
-# Boots an embedded PostgreSQL on port 55432 with a persistent .pgdata directory.
-# Leave this running in its own terminal.
-pnpm dev:services
+# Terminal 1: isolated UTF-8 test database; don't reuse valuable/production data.
+PGPORT=55433 PGDATABASE=nextdoo_test PGDATA_DIR="$PWD/.data/test-postgres" pnpm dev:services
 
-# Apply migrations (hand-authored SQL, applied in filename order).
+# Terminal 2: export explicitly; pnpm/tsx do not load .env files automatically.
+export DATABASE_URL=postgres://postgres:postgres@localhost:55433/nextdoo_test
+export AUTH_SECRET=test-only-secret-at-least-32-characters
+export APP_URL=http://localhost:3000
 pnpm db:migrate
-
-cp .env.example apps/web/.env.local   # then set AUTH_SECRET
+pnpm db:migrate  # safe rerun
 pnpm dev
 ```
 
-The app is served at <http://localhost:3000>. Create an account at `/register`;
-registration provisions a personal workspace and a FREE subscription in one
-transaction.
+For a separate development database, omit `PGPORT/PGDATABASE`: defaults are
+55432/nextdoo. Existing initialized clusters are reused, never reinitialized.
+Initialization failures now fail rather than being swallowed. Keep the service
+process running until testing ends. Never run test fixtures against production.
+
+## Quality gates
+
+```bash
+pnpm lint              # ESLint recommended JS/TS correctness + unused imports/variables, zero warnings
+pnpm typecheck         # all five packages
+pnpm test:unit         # pure core and tooling; no database required
+pnpm test              # all tests; integration collection FAILS without a configured, migrated DB
+pnpm test:coverage     # V8 text, HTML, JSON summary and LCOV in coverage/
+pnpm build             # production web build; other packages currently execute TypeScript source
+pnpm --filter @nextdoo/web exec playwright install --with-deps chromium
+pnpm test:e2e          # production build + real database + real Chromium; owns server on port 3100
+pnpm audit --audit-level high
+pnpm verify            # lint → typecheck → coverage/tests → build → E2E
+```
+
+Core coverage thresholds: **85% statements, branches, functions and lines**,
+including all non-test core files. Server-service coverage is also reported,
+including untouched/uncovered files; it is not disguised as complete route coverage.
+
+Playwright discovers only `apps/web/e2e/`, never Vitest's integration files. Tests
+use unique accounts, one worker and no automatic retries. Account/data flows use the real server;
+the cache-isolation case deliberately aborts task requests to exercise fallback.
+A test failure cannot become a pass through retries. The suite starts its own
+production server and refuses to reuse a developer's running server. CI rejects
+focused tests, provisions PostgreSQL and uploads coverage/trace artifacts.
+
+If browser CDN access is unavailable locally, `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`
+can point to an already installed real Chromium. Do not disable browser security
+or replace tests with mocked responses to claim E2E success. The fallback binary
+is an environment dependency, not part of NEXTDOO or its lockfile.
+
+## Migrations
+
+**Hand-authored SQL is authoritative.** Never edit an applied migration.
+
+```bash
+pnpm db:generate meaningful_change_name
+# Review/edit the newly numbered SQL file, then:
+pnpm db:migrate
+```
+
+`db:generate` now explicitly scaffolds the next SQL migration; it **does not infer
+schema differences**. It validates the name, uses exclusive file creation and
+fails nonzero on invalid arguments or filesystem errors. The obsolete Drizzle Kit
+command was removed: it emitted an ESM exception with exit 0 and could not safely
+diff the hand-authored baseline. Drizzle remains the ORM. `drizzle.config.ts` is
+retained as a schema-reference configuration, not an executable generator.
+Keep `packages/db/src/schema.ts` and new SQL migrations aligned and test both
+fresh installation and upgrade. Backups/restore and deployment rollback are still
+separate, outstanding operational gates.
 
 ## Environment
 
-Configuration is validated once at boot by `apps/web/src/server/env.ts`. A
-missing required value crashes startup rather than degrading silently.
+Required for database-backed web flows: `DATABASE_URL`, `AUTH_SECRET` (32+ chars).
+`APP_URL` controls absolute links. `.env.example` documents development settings.
+Next can read `apps/web/.env.local`; the worker and tests require exported values.
+Turbo explicitly passes the declared application configuration to package tasks.
+Do not put production secrets in checked-in env files.
 
-| Variable       | Required | Purpose                                        |
-| -------------- | -------- | ---------------------------------------------- |
-| `DATABASE_URL` | yes      | PostgreSQL connection string                    |
-| `AUTH_SECRET`  | yes      | 32+ chars; derives session and encryption keys  |
-| `APP_URL`      | no       | Absolute base URL, defaults to localhost:3000   |
-| `REDIS_URL`    | no       | Durable queue; falls back to an in-process adapter |
-| `SMTP_URL`     | no       | Outbound email; when unset, mail is logged instead of sent |
-| `GOOGLE_*`     | no       | Calendar sync; the feature is hidden when unset |
-| `STRIPE_*`     | no       | Billing; entitlements fall back to FREE         |
-| `S3_*`         | no       | Attachment storage                              |
+Optional names (`REDIS_URL`, `SMTP_URL`, `GOOGLE_*`, `STRIPE_*`, `S3_*`) are **not
+proof of integrations**. Currently:
 
-Optional integrations are genuinely optional: `features()` derives availability
-from configuration so the UI can degrade honestly instead of failing at runtime.
+- Login account/IP backoff and export quotas are durable in PostgreSQL; other
+  route throttles remain in-process. Redis is not wired.
+- Worker scheduling uses intervals, but SMTP messages have durable PostgreSQL
+  leases/retry/expiry. This is not a complete BullMQ/general event-consumer system.
+- Configured SMTP queues encrypted auth email for a real worker transport. Without
+  SMTP, development/test may log local links; production fails explicitly.
+- WEB reminders atomically write an in-app notification. EMAIL/DESKTOP reminder
+  channels fail honestly; unhandled outbox events remain unpublished. Neither
+  external notification delivery nor inbox UI is established by these rows.
+- Google Calendar, Stripe checkout/webhooks, S3 upload/scanning and AI providers
+  are not implemented. Static plan limits are not a billing integration.
 
-## Commands
+## Actual product coverage and limitations
 
-```bash
-pnpm dev              # Next.js dev server
-pnpm dev:worker       # background jobs (reminders, purges, outbox relay)
-pnpm build            # production build of every package
-pnpm typecheck        # tsc --noEmit across the workspace
-pnpm test             # unit + integration tests
-pnpm db:migrate       # apply pending SQL migrations
-```
+Online account provisioning, basic task APIs, normal completion, a weekly task
+calendar, focus UI and summary analytics exist. Pure domain and selected database
+rules have tests. The 2026-09-08 recovered baseline had **191 tests**, not 188.
+Use test output for the current count; new regressions are added incrementally.
 
-## Testing
+Still incomplete: rich task/project/board flows, persisted recurrence generation,
+real notifications, full analytics/corrections/wellbeing controls, offline capture
+and reconciliation, conflict UX, attachments, async expiring exports, Windows
+client, integrations and production operations. IndexedDB helpers exist but core
+capture/edit does not yet enqueue offline work. JSON export is synchronous and is
+not the PRD's signed, expiring CSV/JSON export job.
 
-```bash
-pnpm test                                   # everything
-npx vitest run packages/core                # pure domain logic, no I/O
-npx vitest run apps/web                     # integration, needs a database
-```
+`pnpm dev:worker` runs the current worker; supply DATABASE_URL explicitly. Do not
+run it against customer data until retention and dispatch behavior is qualified.
+See `docs/IMPLEMENTATION_LOG.md` for approved security repairs, evidence and remaining scope.
 
-Integration tests **skip rather than fail** when no database is reachable, so a
-fresh checkout is green without `pnpm dev:services`. They probe the connection at
-module scope because Vitest chooses `it.skip` during collection, before hooks run.
 
-Current coverage: 188 tests — 155 unit (scoring, recurrence, NL parsing, sync
-merge rules, task state machine, TOTP) and 33 integration against real
-PostgreSQL (optimistic locking, tenant isolation, append-only history, sync
-replay and conflicts, MFA, password reset, export and account deletion).
+## Repair verification (2026-09-08)
 
-The TOTP suite runs the published RFC 4226 and RFC 6238 test vectors, so the
-implementation is checked against the specification rather than against itself.
+The accepted prior report is `REPAIR_REPORT.md`; the latest A–H inventory, results
+and stop point are in `AUDIT_REMEDIATION_REPORT.md`. Fresh SQL migrations 0000–0009
+plus replay, 278 tests and 11 E2E/API scenarios passed locally. Apply forward
+migrations before starting services. The sync sequence trigger serializes writes
+through commit; production throughput remains unmeasured. Legacy pause history and
+previously discarded seconds cannot be fabricated. Unsupported recurrence capture preserves original input with an explicit error.
+The later online workflow milestone now supports confirmed tags/existing projects
+and task editing; see `ONLINE_WORKFLOW_PHASE.md` for its bounded acceptance.
 
-## Layout
+These results do not establish production readiness. Remote PG16 CI, breached-
+password checking, managed secrets/key rotation, load, accessibility, backup restore,
+legal retention and staged provider delivery remain gates. The full offline client,
+external event consumers and larger PRD features remain incomplete.
 
-```
-apps/web            Next.js App Router: UI, API routes, server services
-apps/worker         background jobs: reminder dispatch, purges, outbox relay
-packages/contracts  zod schemas, error taxonomy, entitlements — shared by all
-packages/core       pure domain logic, no I/O, exhaustively unit tested
-packages/db         Drizzle schema, migrations, client
-```
+### Audit-remediation delivery configuration
 
-Dependencies point inward: `core` knows nothing about HTTP or the database, and
-`contracts` knows nothing about anything. That is what keeps the domain rules
-testable without a running stack.
+Auth email now has a real SMTP worker adapter. Supply the same `AUTH_SECRET` to web
+and worker (mail ciphertext uses a distinct HKDF purpose), `SMTP_URL` to both, and
+`MAIL_FROM` to web. Apply all forward migrations before running either. Never put actual
+credentials in source control or chat. Production SMTP requires TLS and normal
+certificate validation; provision sender/domain authentication separately.
 
-## Conventions
+`mail.deliver` claims one message per tick, with durable leases, expiry, retry and
+terminal failure. The queue payload is encrypted and scrubbed after delivery or
+expiry. SMTP acknowledgement is not proof of inbox arrival; crash-after-ACK can
+redeliver the same Message-ID. Provision a shutdown grace period longer than the
+bounded SMTP connection/greeting/socket timeouts. Inspect `mail_deliveries` status,
+`last_error`, due time and attempts for failures; do not print decrypted reset links.
+Missing production SMTP fails explicitly; deletion/credential changes are not
+rolled back just because their subsequent notification is unavailable.
 
-**Migrations are hand-authored SQL** in `packages/db/migrations`, applied in
-filename order and recorded in `_migrations`. `drizzle-kit generate` is not used —
-it fails against this ESM schema — so `schema.ts` and the SQL must be kept in
-step by hand. Never edit an applied migration; add a new one.
+WEB reminder SENT currently means a durable **in-app notification row**, not web
+push. EMAIL/DESKTOP reminder delivery is unsupported and marked FAILED. General
+outbox consumers are still absent: rows remain unpublished with
+`NO_CONSUMER_REGISTERED` and the worker warns. Do not enable external consumers or
+claim reliable product notification delivery until their integration gates pass.
 
-**Every mutation is versioned.** Updates carry the client's `version` and the
-UPDATE re-checks it in the WHERE clause, so a lost update becomes a 409 rather
-than silent data loss.
+### Migration safety
 
-**Tracking events are append-only**, enforced by a database trigger, not
-convention. Scores are content-addressed on their inputs and superseded rather
-than overwritten, so any number on the analytics page can be traced to the events
-that produced it.
+The forward-only runner serializes deployments with a PostgreSQL session lock and
+checksums applied SQL. Do not edit or delete previously applied migrations; add a
+new forward migration. For pre-checksum installations, `legacy-checksums.json`
+contains the audited 0000–0008 baseline. A mismatch requires investigation, not
+editing the ledger/manifest until the warning disappears. Keep the entire migrations
+directory (including that manifest) in deployment artifacts. Test DB accounts need
+CREATE DATABASE permission for the isolated concurrent-migration regression suite.
 
-**Errors are RFC 7807 problem+json** with a stable `code` and a `request_id` that
-matches the structured log line. Logs redact secrets and task content.
 
-**Idempotency**: mutating routes accept an `Idempotency-Key` header and replay the
-stored response within 24 hours. Sync mutations are deduped by `mutationId`.
+## Online workflow milestone
 
-## Local email
+See `ONLINE_WORKFLOW_PHASE.md`: confirmed tag/project capture, version-safe task
+editing, navigable project task lists, and continuation controls for Today/Inbox/
+Projects/Focus. At that milestone, verification was 285 tests and 16 E2E/API scenarios; editor
+keyboard and scoped axe checks pass. Existing API conventions are preserved by
+explicit user choice. Full task-management, cursor lifetime/virtualization, offline
+and production-release gates are not implied by this milestone.
 
-No SMTP provider is configured in development, so `sendMail` logs the message
-instead of sending it — including the verification or reset link, which is the
-only way to complete those flows locally:
+## Project lifecycle continuation
 
-```
-{"level":"info","message":"mail.stub","kind":"reset-password","url":"http://localhost:3000/reset-password?token=..."}
-```
+`PROJECT_LIFECYCLE_MILESTONE.md` describes the preceding online-workflow delivery:
+project metadata, non-destructive archive/restore, versioned/idempotent API writes,
+and plan-safe restoration. At that milestone, full validation was 290 tests, 19 E2E/API scenarios,
+all gates and zero dependency findings. Project settings have scoped keyboard/axe
+coverage; production and full-PRD qualification remain incomplete.
 
-Tokens are stored only as SHA-256, so the log is genuinely the sole source of
-the raw value. Setting `SMTP_URL` switches to real delivery.
 
-## Background jobs
+## Project sections and board continuation
 
-The worker is a separate process so slow background work cannot affect request
-latency. Every job is idempotent and claims rows with `FOR UPDATE ... SKIP
-LOCKED`, so running several workers is safe.
+`PROJECT_BOARD_MILESTONE.md` describes section creation/renaming, exact fractional
+single-section-row reorder, and loaded-page List/Board views with drag-and-drop and
+keyboard task moves. Existing task editing also supports cross-project movement.
+Section changes are versioned/idempotent, tenant scoped, and atomically synced,
+outboxed and audited; archived projects reject section writes. Default sections
+created with new projects now participate in those same transactional records.
 
-| Job                      | Interval | Purpose                                       |
-| ------------------------ | -------- | --------------------------------------------- |
-| `reminders.dispatch`     | 30s      | Sends due reminders; expires those >24h stale  |
-| `reminders.requeue_stuck`| 5m       | Recovers reminders orphaned by a crashed worker |
-| `outbox.relay`           | 10s      | Publishes transactional outbox events          |
-| `accounts.purge`         | 6h       | Deletes accounts past their 30-day grace period |
-| `auth_tokens.purge`      | 12h      | Removes expired verification and reset tokens  |
-| `idempotency.purge`      | 6h       | Clears replay records past their window        |
+At that milestone, full validation was **301 tests across 33 files, 25 E2E/API scenarios**, all
+existing gates green, zero dependency findings. Board and editor keyboard/axe
+checks are scoped, not full WCAG qualification. See the report for exact API
+contracts, density limits, bounded paging and remaining production/PRD gaps.
+Deploy the API before the board UI; this is not mixed-version/offline qualification.
 
-## Adding an endpoint
 
-1. Define the request schema in `packages/contracts/src/schemas.ts`.
-2. Put the behaviour in a service under `apps/web/src/server/services/`, taking an
-   actor `{ userId, workspaceId }` and authorising at the resource boundary.
-3. Wrap the route with `authedRoute` — it supplies validation, rate limiting,
-   idempotency, problem+json and structured logging.
-4. Emit a tracking event for anything that reflects user intent, and an audit log
-   entry for anything security-relevant.
-5. Cover the rule in `packages/core` if it is pure, or an integration test if it
-   touches the database.
+## Project execution analytics continuation
 
-## Troubleshooting
+`PROJECT_ANALYTICS_MILESTONE.md` describes aggregate project reports for UTC days
+and rolling seven-day windows. Reports reuse existing current-project/due-date
+cohorts and stored scores, with explicit measurement coverage and no fabricated
+missing scores. New reads use a read-only repeatable-read snapshot; global and
+project summaries now preserve sub-minute recorded time.
 
-**`numeric field overflow`** — a `position` column narrower than the epoch
-milliseconds written into it. Fixed by migration `0001`; mentioned here because
-the symptom is opaque.
+At that milestone, full validation was **310 tests in 35 files, 29 browser/API scenarios**, all
+existing gates green and zero dependency findings. The report defines temporal
+semantics and remaining analytics/production gaps; this is not historical project
+attribution, local-time reporting, full score-settings delivery or MVP completion.
 
-**`Module not found: ./x.js`** — the Next.js bundler does not rewrite `.js`
-specifiers to `.ts` sources. Import workspace-relative modules without the
-extension.
 
-**`column "status" is of type X but expression is of type text`** — a raw SQL
-`CASE` producing string literals needs an explicit `::enum_name` cast.
+## Phase 1 core tasks: subtasks and dependencies
 
-**`The "string" argument must be of type string ... Received an instance of
-Date`** — the `postgres` driver cannot bind a `Date` inside a raw `sql` fragment.
-Use Drizzle's comparison helpers (`gt`, `lte`), or pass `.toISOString()` with an
-explicit `::timestamptz` cast.
+See `TASK_RELATIONSHIPS_MILESTONE.md` for parent/prerequisite editing, task navigation,
+cycle prevention, paged relation lists and conflict-safe controls in the task editor.
+Apply **0010_non_cascading_task_parent.sql** before enabling this UI: referenced
+parents can no longer silently cascade-delete live children on permanent deletion.
+Whole-account purge remains tested. Existing migrations are immutable.
 
-**Port 55432 already in use** — a previous `pnpm dev:services` is still running.
-Its data lives in `.pgdata/` and is safe to reuse.
+At that milestone, full validation was **322 tests in 36 files, 34 browser/API scenarios**, all
+existing gates green and zero dependency findings. Task cursors now preserve database
+microseconds. Dependency commands remain online-only and are explicitly rejected
+by generic sync; this is not completion of offline relationships or all core tasks.
+At that milestone, task lifecycle/recovery UI, filtering/sorting and bulk operations remained next work; see the continuations below.
+
+
+## Phase 1 task archive, deletion and recovery
+
+`TASK_LIFECYCLE_MILESTONE.md` documents task-editor lifecycle controls and the
+workspace-wide Completed/Archived/Trash views linked from Inbox and project tasks.
+New controls send versions and retain retry identity; legacy bodyless delete/restore
+remain compatible. Only explicit deleted-status queries expose recoverable Trash
+content, and the 30-day cutoff remains enforced server-side.
+
+At that milestone, full validation was **329 tests across 37 files and 39 browser/API scenarios**,
+all existing gates green, zero dependency findings. No new migration was added.
+Deploy the API before the UI; older servers cannot provide its lifecycle concurrency
+protection. Filtering/sorting follows below; safe bulk operations remain next.
+
+
+## Task filtering and sorting continuation
+
+`TASK_FILTERING_MILESTONE.md` documents the online-only `/tasks` browser and
+compatible optional `sortBy`, `sortOrder`, `priority` and `hasDueDate` query fields.
+The new view combines existing filters, applies browser-local inclusive due days,
+and sorts with exact database keys and nulls last. Inbox/Today remain unchanged.
+
+At that milestone, full validation was **349 tests across 38 files and 44 browser/API scenarios**,
+all existing gates green and zero dependency findings. No migration/dependency was
+added. The new real-DB regression file is `services/task-query.integration.test.ts`;
+the browser suite is `e2e/task-query.spec.ts`.
+
+Deploy API support before the UI. New cursors bind workspace/filter/order and allow
+changing page size; legacy newest-first cursors remain an unbound compatibility
+exception. Cursors are unsigned, not authorization, and mutable sorts are live
+rather than snapshot pagination. Mixed-version cursor routing and production-scale
+query-plan/load qualification are not established. Atomic bulk operations follow below, separate from that read-only query increment.
+
+
+## Atomic bulk and Phase 1 closeout continuation
+
+`TASK_BULK_MILESTONE.md` documents `POST /api/v1/tasks/bulk` and the online selection
+controls in Browse tasks. User-confirmed all-or-nothing semantics use the existing
+workspace transaction and idempotency ledger, not partial-result sync behavior.
+Selections are bounded to 100 explicit IDs/versions; reschedule must provide a new
+date or explicit null. Deploy API support before enabling the controls.
+
+Current full validation: **363 tests across 39 files and 50 browser/API scenarios**,
+all existing gates green, zero dependency findings. No migrations or dependencies
+added. New regression files: `services/task-bulk.integration.test.ts` (14 tests)
+and `e2e/task-bulk.spec.ts` (6 scenarios).
+
+The user's request to finish Phase 1 is tracked in `PHASE1_COMPLETION_PLAN.md`.
+It records still-missing features, acceptance evidence, sequencing, product choices
+and real provider/Windows/operational prerequisites. The bulk milestone does not
+complete Phase 1, and mock-only integrations must not be presented as accepted.
+
+
+### Durable in-app reminders
+
+Run the web app **and** `pnpm dev:worker` against the same migrated database. The
+worker checks reminder delivery every 30 seconds; the web process does not dispatch
+on GET. In the app, use a task's **Reminders** link or open **Notifications**.
+Refresh the center to retrieve new deliveries. `WEB` / `SENT` means a durable
+in-app receipt, not a native browser popup or email. External reminder channels
+remain disabled even if authentication email SMTP is configured.
+
+Transient delivery failures have a three-attempt budget (one-/two-minute retry
+delays) and expose a generic error in history. After fixing the cause, an owner may
+explicitly snooze a failed eligible reminder to create a new delivery identity;
+never manually reset a sent source or delete receipt history to force replay.
+See `docs/NOTIFICATION_DELIVERY_MILESTONE.md` for migration, retry and privacy details.
+
+
+### Durable tracking and freshness
+
+Apply migrations **0013 and 0014**, then run both the compatible web application
+and `pnpm dev:worker` against the same database. The worker registers separate
+`outbox.relay`, `tracking.reconcile` and `tracking.evaluate` jobs (at boot and every
+10 seconds). PostgreSQL holds durable revisions, consumer receipts, attempt counts
+and two-minute claim leases; no web-process in-memory queue is required.
+
+Use a task's **Tracking** link or **Analytics → Tracking status and evidence**.
+Workspace/project summaries and task status poll every five seconds while visible.
+The task detail distinguishes current, pending, retrying and exhausted tracking;
+old numerical results are explicitly marked stale. Evidence/history pages retain
+loaded rows on failed continuation. Request a new evaluation with a reason after
+fixing an exhausted calculation, rather than deleting results/events or manually
+resetting a claim. Lost acknowledgements replay the same request identity.
+
+The initial attempt plus five retries use 1/2/4/8/15-minute backoff. Crashes consume
+a persisted attempt and are recovered after lease expiry; stale tokens cannot
+publish over newer work. Batch/statement/stream bounds are documented in
+`TRACKING_DURABILITY_MILESTONE.md` and are not a measured end-to-end freshness SLA.
+Exhaustion emits `tracking.evaluate.exhausted` with a support reference. Configure
+real monitoring/on-call routing separately; an emitted log is not proof of alert
+receipt. Unimplemented outbox subscribers remain unacknowledged.
+
+The full test suite now includes a real worker crash/restart acceptance test. Run
+it **only against an isolated test PostgreSQL service** using a role allowed to
+create and drop its uniquely named disposable test database (`CREATEDB`, as in CI).
+This privilege is for testing, not a requirement for the production application
+role. The test migrates and replays that database independently and cleans it up.
+
+Current local full acceptance: **422 tests / 46 files and 75 browser/API scenarios**,
+all gates green and zero dependency findings. The report distinguishes this slice
+from full corrections/range backfill, workspace-local review, wellbeing/retention
+policies and the remaining operational/provider qualifications.

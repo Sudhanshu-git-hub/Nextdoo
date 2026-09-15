@@ -176,7 +176,6 @@ export function MfaSettings() {
           </p>
 
           {qrDataUrl && (
-            /* eslint-disable-next-line @next/next/no-img-element */
             <img
               src={qrDataUrl}
               alt="QR code for two-factor setup. If you cannot scan it, use the setup key below."

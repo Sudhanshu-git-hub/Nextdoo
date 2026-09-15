@@ -13,6 +13,10 @@ if (!DATABASE_URL) {
   throw new Error('DATABASE_URL is required to start the worker.');
 }
 
+if (process.env.SMTP_URL && (!process.env.AUTH_SECRET || process.env.AUTH_SECRET.length < 32)) {
+  throw new Error('AUTH_SECRET (32+ characters) is required for encrypted mail delivery.');
+}
+
 // A small pool: jobs are sequential and long-lived connections are wasteful.
 const connection = createDb(DATABASE_URL, { max: 4 });
 
@@ -49,6 +53,7 @@ export interface JobResult {
 
 let stopping = false;
 const timers: ReturnType<typeof setInterval>[] = [];
+const inFlight = new Set<Promise<void>>();
 
 /**
  * Runs a job, catching everything.
@@ -76,7 +81,7 @@ async function runGuarded(job: Job, running: Set<string>): Promise<void> {
     logger.error('job.failed', {
       job: job.name,
       durationMs: Date.now() - startedAt,
-      error: error instanceof Error ? error.message : 'unknown',
+      errorType: error instanceof Error ? error.name : 'unknown',
     });
   } finally {
     running.delete(job.name);
@@ -88,8 +93,13 @@ export function schedule(jobs: Job[]): void {
 
   for (const job of jobs) {
     // Run once at boot so a restart does not delay overdue work by a full interval.
-    void runGuarded(job, running);
-    const timer = setInterval(() => void runGuarded(job, running), job.intervalMs);
+    const launch = () => {
+      const run = runGuarded(job, running);
+      inFlight.add(run);
+      void run.finally(() => inFlight.delete(run));
+    };
+    launch();
+    const timer = setInterval(launch, job.intervalMs);
     // Do not hold the event loop open purely for a timer.
     timer.unref?.();
     timers.push(timer);
@@ -105,6 +115,7 @@ export async function shutdown(signal: string): Promise<void> {
   logger.info('worker.stopping', { signal });
 
   for (const timer of timers) clearInterval(timer);
+  await Promise.allSettled([...inFlight]);
   try {
     await sql.end({ timeout: 5 });
   } catch {
