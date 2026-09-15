@@ -1358,5 +1358,14 @@ headless notification-permission grant are doubled at the browser boundary
 and labeled in the spec header — **no real provider delivery is
 claimed**), coverage 88.88 % stmts (baseline 88.89 %), typecheck/lint/
 build clean. The attachments E2E suite's ClamAV refusal is pre-existing and
-by design. M8 status: **M8-i1 complete locally; CI verification pending**
-on GitHub token reconnection (sandbox token expired mid-session, 401).
+by design (local only; CI installs ClamAV and verifies EICAR detection, so
+the attachments suite runs there).
+
+**CLOSED — CI-verified.** Final commit `162ce31` (on `83fce2f`) on
+`arena/01a085b7-nextdoo`; CI runs: push **34937801466** SUCCESS and PR
+**34937804538** SUCCESS (job `verify`: ClamAV install + EICAR check,
+`db:migrate` ×2 idempotency, lint, typecheck, full `test:coverage`,
+production build, real-browser `playwright test --retries=2` — all green).
+Consolidated M8 status: audit CLOSED (`83fce2f`), M8-i1 CLOSED; M8-i2
+(advisory "improve" suggestions, §5.5 heuristic variant) is the recommended
+next increment — not started per directive.

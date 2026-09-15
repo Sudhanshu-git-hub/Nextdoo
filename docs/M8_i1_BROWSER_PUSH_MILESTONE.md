@@ -1,6 +1,6 @@
 # M8-i1 Milestone — Browser Push Notification Channel
 
-**Status:** COMPLETE (local battery green; CI verification pending — see §9)
+**Status:** CLOSED — CI-verified (commit `162ce31`, runs 34937801466 push / 34937804538 PR, both SUCCESS)
 **Scope source:** `docs/M8_ROADMAP_AUDIT.md` §4.2 (bounded channel, no Phase-2 promotion)
 **PRD anchors:** §6.6 (channels, delivery status), §9.3 (channel abstraction), §11.1 (integrity), §12.4 (retry/idempotency), §13.2 (registrations), §14.8 (rate limits)
 
@@ -221,7 +221,13 @@ is exercised deterministically with the injected stub transport.
 
 ## 9. CI
 
-Local battery green. GitHub push/CI verification is **pending**: the sandbox's
-GitHub token expired mid-session (401 on all API + git fetch/push); the
-recovered local tree is committed on `arena/01a085b7-nextdoo` and will be
-pushed + CI-verified as soon as the GitHub connection is re-established.
+Final commit **`162ce31`** (parent `83fce2f`) on
+`arena/01a085b7-nextdoo`. Both CI runs on the "Quality and integrity"
+workflow: **push run 34937801466 — SUCCESS**, **PR run 34937804538 —
+SUCCESS**. The `verify` job steps, all green: pnpm install (frozen
+lockfile), Chromium install, **ClamAV install + EICAR detection check**,
+`pnpm audit --audit-level high`, `pnpm db:migrate` ×2 (idempotency),
+`pnpm lint`, `pnpm typecheck`, `pnpm test:coverage` (full suite + coverage
+gate), `pnpm build`, `playwright test --retries=2` (full real-browser E2E,
+including the attachments suite, which runs on CI because ClamAV is
+present). No failed-E2E annotations.
