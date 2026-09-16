@@ -1498,3 +1498,64 @@ CLOSED (`be02566`). Per directive, STOP after M8-i2 — M8-i3 (or any
 other increment, including the remaining §7.9 wellbeing controls and the
 model-backed suggestion variant) is NOT started; next increment
 recommendation is recorded in the milestone doc.
+
+## M8-i3 — wellbeing preference controls (PRD §7.9) — 2026-09-16
+
+Implemented the bounded design from
+[M8_i3_WELLBEING_CONTROLS_REVIEW.md](M8_i3_WELLBEING_CONTROLS_REVIEW.md)
+(§7.9/§7.2/§7.8/§7.3/§14.3, PD-03/PD-04, TR-07): the six
+independently-disableable wellbeing preferences are now the complete
+user-reachable §7.9 settings surface. Deliverable:
+[M8_i3_WELLBEING_CONTROLS_MILESTONE.md](M8_i3_WELLBEING_CONTROLS_MILESTONE.md)
+(six-key contract + default provenance, score-control behavior,
+forward-gate semantics, personal-trend guarantee, defect disclosure).
+
+What shipped:
+
+- **Six-key contract** (`@nextdoo/contracts` `preferences.ts`):
+  `disableScores`, `disableStreaks`, `disableCelebrations`,
+  `disableSounds`, `disableComparativeMetrics`,
+  `disableOverloadWarnings` — `WellbeingPreferences`,
+  `WELLBEING_PREFERENCE_DEFAULTS` (PRD-derived: scores shown, streaks on,
+  celebrations off, comparisons closed; implementation decisions: sounds
+  enabled, overload warnings shown — PRD silent), strict non-empty
+  booleans-only patch schema.
+- **Only new user-visible control: `disableScores`** (Settings "Hide numeric
+  scores"). TR-07 reflection on all covered surfaces: tracking detail empty
+  shape, summary strips per-day `score` + top-level `averageScore`,
+  Analytics shows the hidden-scores note instead of the Execution score stat
+  and Score column; untoggle restores from the same stored results.
+  `tracking_results`, score calculation, corrections, recalculation and
+  export are untouched (row-for-row verified).
+- **Four forward gates** (`disableStreaks`/`disableCelebrations`/
+  `disableSounds`/`disableComparativeMetrics`): persisted, returned,
+  audited — zero visible behavior change; no streak/celebration/sound/
+  comparative features invented; `disableComparativeMetrics` verified inert
+  to the user's own trend reporting at both values (MVP comparison
+  prohibition unchanged).
+- **Disclosed defect fix** (only closed-milestone code touched): the M8-i2
+  tracking-summary route shipped the top-level `averageScore` in the JSON
+  even with scores disabled (spread leaked it; the strip conditional was a
+  no-op). Fixed by mirroring the locked project-analytics destructuring
+  pattern; its locked `not.toHaveProperty('averageScore')` test remains the
+  shape authority.
+- **No** new tables, migrations, workers, endpoints, or external services;
+  M8-i2 auth/origin/rate-limit/idempotency/audit plumbing preserved;
+  overload-warning behavior exactly M8-i2.
+
+Verification (local, then CI): targeted 12/12 (7 service + 5 route);
+full `pnpm test:coverage` **79 files all pass**, thresholds met;
+typecheck + lint clean; production build clean; E2E `--retries=2` **162
+passed** (the only non-passes are the five ClamAV-dependent
+`attachments.spec.ts` tests — sandbox has no `clamscan`; CI installs
+ClamAV and ran them for real). Pushed at `9fe6514`; CI runs
+**35081512996** (push) and **35081517416** (pull_request) **SUCCESS**
+(full pipeline incl. ClamAV EICAR check, `db:migrate` ×2, lint, typecheck,
+`test:coverage`, build, real-browser E2E).
+
+Consolidated M8 status: audit CLOSED (`83fce2f`), M8-i1 CLOSED
+(`1c224b4`), M8-i2 review CLOSED (`a224bc9`), M8-i2 implementation
+CLOSED (`be02566`), M8-i3 review CLOSED (`5c8eede`), M8-i3
+implementation CLOSED (`9fe6514`). Per directive, STOP after M8-i3 —
+M8-i4 (next: Google Calendar two-way sync reliability hardening, or a
+§7.9 "sounds" surface review) is NOT started.
