@@ -1390,3 +1390,111 @@ new, ~5 touched, 0 new tables, 0 workers, 0 external services). Includes
 the §7.9 overload-warnings toggle (J6 sub-gap) as an AC-14 dependency
 because S2 is an overload warning. Implementation NOT started, per
 directive.
+
+## M8-i2 — advisory "improve" suggestions (implementation) — 2026-09-16
+
+Implemented the bounded design from
+[M8_i2_ADVISORY_SUGGESTIONS_REVIEW.md](M8_i2_ADVISORY_SUGGESTIONS_REVIEW.md)
+(PRD §5.5/§8.3/§8.5/§7.3/§7.8/§7.9/§14.3/§14.8/§17.1): deterministic
+heuristic suggestions only — no LLM/API model calls, no new external
+service, no new tables, no workers. Deliverable:
+[M8_i2_ADVISORY_SUGGESTIONS_MILESTONE.md](M8_i2_ADVISORY_SUGGESTIONS_MILESTONE.md)
+(full rule table with thresholds/rounding/caps, actions model, §7.9
+toggle semantics, security/privacy/determinism evidence).
+
+What shipped:
+
+- **Contracts** (`@nextdoo/contracts`): typed, versioned `Suggestion`
+  (id/type/ruleVersion/message/target/action/evidence),
+  `SUGGESTION_RULE_VERSION = 1`, closed five-type enum, discriminated
+  action union (exactly one confirmable action kind: `raise_estimate`),
+  `WellbeingPreferences` + strict patch schema.
+- **Pure rules** (`suggestion-rules.ts`, no DB/clock/randomness):
+  S1 larger estimates (tag else project cohort, ≥2 measured, mean
+  overrun ≥+10%, `estimate × (1+variance/100)` rounded to 5 min, cap 2),
+  S2 overloaded days (planned > workday guideline, most-overloaded first,
+  cap 2, view-only navigation), S3 earlier recurring planning (≥3
+  measured occurrences, median lateness ≥30 min or adherence <80 %,
+  earlier time = next due − rounded-to-15-min median, cap 2,
+  navigation), S4 break large tasks (ACTIVE, estimate or measured actual
+  ≥240 min, no subtasks, cap 3, navigation), S5 review rescheduled
+  (rescheduleCount ≥3, cap 3, navigation). Total cap 11 (deterministic
+  tail trim), 200-char word-boundary message clamp, stable ordering,
+  Unmeasured never treated as a number.
+- **Service** (`suggestions.ts`): strictly read-only
+  (SELECTs only — zero-row mutation proven by before/after full-table
+  counts in integration tests), workspace-scoped, reuses the analytics
+  summary cohort (same corrections-filtered population as the page),
+  `EXCLUDED_FROM_ANALYTICS` corrections hide inputs, §7.9 toggle
+  suppresses S2 only. Deterministic for identical state (two-call
+  equality tested at unit/integration/E2E level).
+- **Endpoint** `POST /api/v1/ai/suggestions`: authed, workspace-scoped,
+  idempotent read, standard rate limit, strict body
+  (`period` day/week + optional local `dateKey`); 401/400 cases tested.
+- **§7.9 toggle**: new `GET`/`PATCH /api/v1/preferences` (authed,
+  idempotent, strict booleans-only) over per-user `user_preferences`
+  rows — the same pattern as the existing `disableScores` reader
+  (AC-14). Audit `account.preferences_updated` names changed fields.
+  TodayView (§8.3) swaps the overload banner for a neutral planned-load
+  line; the server stops generating S2; all other themes unaffected.
+  The `/v1/me` profile contract is **untouched** (its exact response
+  shape stays pinned by the existing account/session tests — an earlier
+  draft of this milestone had extended `/me` with a `preferences` field,
+  which the locked `sessions` E2E correctly rejected; the toggle moved
+  to the dedicated endpoint instead).
+- **UI**: `SuggestionsCard` in Analytics (§8.5) — advisory wording
+  ("Advisory only — nothing changes until you confirm…"), S1 confirm
+  button (the only confirmable action; applies the estimate raise through
+  the normal versioned task PATCH), S2 calendar navigation, S3
+  recurrence navigation, S4/S5 task openers; Settings → Wellbeing card
+  ("Hide overload warnings"); Today banner toggle behavior. Axe
+  wcag2a/wcag2aa clean on the card.
+
+Test evidence (local): 32 rule unit tests (per-rule triggers,
+non-triggers, insufficient-data/Unmeasured, rounding, caps, total cap,
+determinism/ordering, message clamp, tone); 9 suggestions integration
+tests (five themes, determinism, zero-row mutation, corrections-hidden,
+workspace isolation, S2-only toggle, S1 confirmation path via the normal
+update, malformed/leak/fail-closed); 3 preferences integration tests
+(defaults/persistence/no-op, audit, owner-scoping); 6 E2E
+(401 unauthenticated; malformed bodies → 400; all five themes visible in
+Analytics with advisory wording + S1 explicit confirmation raising the
+estimate exactly once; Today banner + §7.9 toggle (neutral line, S2 gone
+server-side, S4 unaffected); cross-workspace isolation via a second
+request context; axe). Full vitest **859/859** (78 files; baseline 815 +
+47 new − 3 relocated), typecheck ✓, lint 0 warnings ✓, coverage gate ✓
+(exit 0), production build ✓, E2E suggestions 6/6 (×3 consecutive) and
+full E2E regression green modulo the sandbox-only items: attachments
+ClamAV refusal (pre-existing local limitation — CI installs ClamAV and
+verifies EICAR) and two load-flake tests (`sessions:98`,
+`task-virtualization:183`) that pass in isolation, plus a late-suite
+worker cutoff in this resource-constrained sandbox (the affected tail
+tests pass when run directly).
+
+**Pre-existing test-isolation defect fixed (disclosed, no product code,
+no guarantee weakened):** reminder rows leaked into the shared test
+database by `task-bulk` and `lifecycle.integrity` (SCHEDULED rows become
+dispatchable later under load, e.g. after the 5 s advisory-lock timeout
+backoff), inflating the global dispatch counters asserted by the push
+suites (`sent` 6 vs 1 / 2 vs 1 in full-suite runs only). Fix: those two
+suites now delete their own workspaces' reminders in `afterAll`, and
+`push-notifications` / `push-unconfigured` assert their own reminder's
+single `reminder.dispatch` audit row (status SENT) plus a loose
+`sent >= 1` sanity, replacing only the environment-fragile global
+equality; every originally scoped assertion (delivery rows, notification
+rows, unique-key rejection, SENT status) is retained. All four are
+locked-milestone test files; verified by repeated multi-file combos and
+the full suite.
+
+**CLOSED — CI-verified.** Commit `be02566` on `arena/01a085b7-nextdoo`
+(on `a224bc9`); CI runs **35055139843** and **35055136113** SUCCESS
+(job `verify`: ClamAV install + EICAR check, `db:migrate` ×2 idempotency,
+lint, typecheck, full `test:coverage`, production build, real-browser
+`playwright test --retries=2` — all green).
+
+Consolidated M8 status: audit CLOSED (`83fce2f`), M8-i1 CLOSED
+(`1c224b4`), M8-i2 review CLOSED (`a224bc9`), M8-i2 implementation
+CLOSED (`be02566`). Per directive, STOP after M8-i2 — M8-i3 (or any
+other increment, including the remaining §7.9 wellbeing controls and the
+model-backed suggestion variant) is NOT started; next increment
+recommendation is recorded in the milestone doc.
