@@ -240,3 +240,14 @@ M8_i2_ADVISORY_SUGGESTIONS_REVIEW.md AC-14 · M8_i2_ADVISORY_SUGGESTIONS_MILESTO
 `tracking.ts`/`project-analytics.ts`/`tracking-history.ts` stripping,
 AnalyticsView/TrackingPanel/ProjectAnalytics conditional rendering,
 `preferences.integration.test.ts`, `remaining-boundaries` export test).
+
+## 13. CI note for this review commit (docs only)
+
+First push of this document (`0cd370a`): PR run **35059872475 SUCCESS**; push run
+**35059876268** failed **only** in the E2E step — pre-existing flaky test
+`task-virtualization.spec.ts:183` ("virtualized list keeps focus pinned and passes
+axe"; focus-restore race under runner load — the same test also flaked in a local
+full-suite run and passes in isolation). The commit is a single new markdown file
+(verified `git show --stat`), so a product regression is impossible, and the sibling
+run on the identical SHA is fully green. No product code was changed in response;
+this addendum re-triggers CI for a clean record at the final tip.
