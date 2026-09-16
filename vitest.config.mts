@@ -3,9 +3,14 @@ import { fileURLToPath } from 'node:url';
 
 export default defineConfig({
   resolve: {
-    alias: Object.fromEntries(['contracts', 'core', 'db', 'billing', 'calendar'].map((name) => [
-      `@nextdoo/${name}`, fileURLToPath(new URL(`./packages/${name}/src/index.ts`, import.meta.url)),
-    ])),
+    alias: Object.fromEntries([
+      ...['contracts', 'core', 'db', 'billing', 'calendar'].map((name) => [
+        `@nextdoo/${name}`, fileURLToPath(new URL(`./packages/${name}/src/index.ts`, import.meta.url)),
+      ]),
+      // Web app source alias, so vitest can import real /v1 route handlers
+      // (which use `@/...` imports) for HTTP-level integration tests.
+      ['@', fileURLToPath(new URL('./apps/web/src', import.meta.url))],
+    ]),
   },
   test: {
     environment: 'node',

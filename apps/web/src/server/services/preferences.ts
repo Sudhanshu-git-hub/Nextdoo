@@ -1,14 +1,20 @@
 /**
  * PRD §7.9 Wellbeing Controls — per-user display preferences service.
  *
- * Same pattern as the existing server-side `disableScores` reader
- * (per-user `user_preferences` key/value rows): reads default to false
- * (everything shown) and writes are explicit upserts. Preferences only
- * change what is shown to the user — they never touch tracked data or
- * task plans, and no other user's rows are ever read or written.
+ * The six §7.9 settings live as per-user `user_preferences` key/value rows
+ * (same pattern as the M8-i2 overload-warning key): reads apply the
+ * PRD-derived defaults for absent keys, writes are explicit upserts, and
+ * every real change writes one audit record. Preferences only change what
+ * is shown to the user — they never touch tracked data or task plans, and
+ * no other user's rows are ever read or written.
  */
 import { and, eq, inArray } from 'drizzle-orm';
-import { WELLBEING_PREFERENCE_KEYS, type WellbeingPreferenceKey, type WellbeingPreferences } from '@nextdoo/contracts';
+import {
+  WELLBEING_PREFERENCE_DEFAULTS,
+  WELLBEING_PREFERENCE_KEYS,
+  type WellbeingPreferenceKey,
+  type WellbeingPreferences,
+} from '@nextdoo/contracts';
 import { userPreferences } from '@nextdoo/db';
 import { getDb } from '../db';
 import { writeAuditLog } from './events';
@@ -19,7 +25,7 @@ export async function getWellbeingPreferences(userId: string): Promise<Wellbeing
     .select({ key: userPreferences.key, value: userPreferences.value })
     .from(userPreferences)
     .where(and(eq(userPreferences.userId, userId), inArray(userPreferences.key, [...WELLBEING_PREFERENCE_KEYS])));
-  const prefs: WellbeingPreferences = { disableOverloadWarnings: false };
+  const prefs: WellbeingPreferences = { ...WELLBEING_PREFERENCE_DEFAULTS };
   for (const row of rows) {
     if (row.key in prefs) prefs[row.key as WellbeingPreferenceKey] = row.value === true;
   }

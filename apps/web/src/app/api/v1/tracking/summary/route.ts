@@ -17,10 +17,11 @@ export const GET = authedRoute({ routeName: 'tracking.summary', rateLimitPerMinu
   // PRD §18.1: Free historical analytics are bounded to 30 days.
   await assertHistoryWindow(ctx.auth.userId, query.workspaceId, query.date ?? null);
   // `date` is a local calendar date in the workspace zone (or today).
-  const summary = await getSummary(query.workspaceId, query.period, query.date ?? null);
+  const { averageScore, ...summary } = await getSummary(query.workspaceId, query.period, query.date ?? null);
   const enabled = await scoresEnabled(ctx.auth.userId);
   // Scores off: strip the score figures everywhere (PRD §7.2), including the
-  // per-day trend. `undefined` values drop out of the JSON response.
+  // per-day trend and the top-level average. `undefined`/absent values drop
+  // out of the JSON response (same pattern as project analytics).
   const days: ScoreOptionalDay[] = summary.days.map(({ score, ...rest }) => ({ ...rest, score: enabled ? score : undefined }));
-  return { ...summary, days, scoresEnabled: enabled, ...(enabled ? { averageScore: summary.averageScore } : {}) };
+  return { ...summary, days, scoresEnabled: enabled, ...(enabled ? { averageScore } : {}) };
 });

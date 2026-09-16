@@ -332,6 +332,19 @@ export function SettingsView({
           ) : (
             <>
               <div className="field">
+                <label htmlFor="disableScores" style={{ display: 'inline' }}>
+                  <input
+                    id="disableScores"
+                    type="checkbox"
+                    checked={prefs.disableScores}
+                    disabled={prefsBusy}
+                    onChange={(e) => void setPreference('disableScores', e.target.checked)}
+                    style={{ width: 'auto', minHeight: 'auto', marginRight: 8 }}
+                  />
+                  Hide numeric scores
+                </label>
+              </div>
+              <div className="field">
                 <label htmlFor="disableOverloadWarnings" style={{ display: 'inline' }}>
                   <input
                     id="disableOverloadWarnings"
