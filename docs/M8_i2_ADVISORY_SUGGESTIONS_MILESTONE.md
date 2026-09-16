@@ -127,7 +127,11 @@ another user's/task's information).
   isolation; axe wcag2a/wcag2aa on the card).
 - Full local battery (this milestone): typecheck ✓, lint (0 warnings) ✓,
   vitest full suite **859/859** ✓ (815 previous + 44 new), coverage ✓,
-  production build ✓, E2E ✓. CI: see IMPLEMENTATION_LOG (commit SHA).
+  production build ✓, E2E ✓. CI (commit `be02566`): runs **35055139843**
+  (push) and **35055136113** (PR) — both SUCCESS (full `verify` job:
+  ClamAV + EICAR, `db:migrate` ×2, lint, typecheck, `test:coverage`,
+  production build, real-browser E2E). Closure commit `dc848ea` (docs
+  only) CI-verified as well (runs 35055848283/35055844738, SUCCESS).
 
 ### Pre-existing test-isolation defect fixed (disclosed)
 
