@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { expect, it, vi } from 'vitest';
+import { expect, it, test, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { tasks, trackingEvents, syncChanges, outbox, auditLogs, reminders, trackingResults } from '@nextdoo/db';
 import { bulkTaskSchema } from '@nextdoo/contracts';
@@ -11,9 +11,18 @@ import { bulkTasks } from './task-bulk';
 import { createReminder } from './reminders';
 import * as events from './events';
 await requireTestDatabase();
+const createdWorkspaces = new Set<string>();
+// The shared test database is read by every file's global reminder
+// dispatcher: due SCHEDULED rows left behind here would be dispatched (and
+// counted) by later files' deliverDueReminders calls (observed cross-file
+// flake, 2026-09-15 — the push-notifications "without doubling" counter).
+test.afterAll(async () => {
+ for (const workspaceId of createdWorkspaces) await getDb().delete(reminders).where(eq(reminders.workspaceId, workspaceId));
+});
 async function fixture() {
  const user = await registerUser({ email: `bulk-${randomUUID()}@test.local`, passwordHash: 'test', name: null, timeZone: 'UTC' });
  const actor = { userId: user.id, workspaceId: user.workspaceId };
+ createdWorkspaces.add(actor.workspaceId);
  const rows = [];
  for (const title of ['First', 'Second']) rows.push(await createTask(actor, { workspaceId: actor.workspaceId, title, priority: 'HIGH', tagIds: [], dueAt: '2026-09-12T12:00:00Z' }));
  return { actor, rows, input: { workspaceId: actor.workspaceId, tasks: rows.map(({ id, version }) => ({ id, version })) } };

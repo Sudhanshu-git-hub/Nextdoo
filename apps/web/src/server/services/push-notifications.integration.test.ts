@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { beforeEach, expect, it } from 'vitest';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import {
+  auditLogs,
   deliverDueReminders,
   deliverPushDeliveries,
   notifications,
@@ -108,8 +109,15 @@ it('dispatches a PUSH reminder durably per subscription with one in-app record, 
   const r = await createReminder(actor, { taskId: task.id, scheduledAt: new Date(Date.now() - 60000).toISOString(), channel: 'PUSH' });
 
   const [first, second] = await Promise.all([deliverDueReminders(getDb()), deliverDueReminders(getDb())]);
-  // Concurrent dispatch must not double-queue: the reminder dispatches once.
-  expect(first.sent + second.sent).toBe(1);
+  // Concurrent dispatch must not double-queue: THIS reminder dispatches
+  // exactly once. Scoped via the dispatch audit (not the global sent counter),
+  // because the shared test database may legitimately hold other files' due
+  // reminders that the global dispatcher also delivers under concurrent load
+  // (observed cross-file flake, 2026-09-15).
+  const dispatched = await getDb().select().from(auditLogs).where(and(eq(auditLogs.action, 'reminder.dispatch'), eq(auditLogs.targetId, r!.id)));
+  expect(dispatched).toHaveLength(1);
+  expect(dispatched[0]!.metadata).toMatchObject({ status: 'SENT' });
+  expect(first.sent + second.sent).toBeGreaterThanOrEqual(1);
   const reminder = (await getDb().select().from(reminders).where(eq(reminders.id, r!.id)))[0]!;
   expect(reminder.status).toBe('SENT');
   const rows = await deliveriesFor(r!.id);

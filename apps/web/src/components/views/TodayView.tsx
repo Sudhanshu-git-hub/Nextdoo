@@ -5,6 +5,7 @@ import { useWorkspace } from '@/components/WorkspaceContext';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTaskPages } from '@/lib/use-task-pages';
 import { api } from '@/lib/api';
+import type { WellbeingPreferences } from '@nextdoo/contracts';
 
 /** PRD §8.3 — server-computed day capacity (full-collection workload). */
 interface DayCapacityData {
@@ -34,6 +35,21 @@ export function TodayView({ workspaceId }: { workspaceId: string }) {
   const page = useTaskPages(workspaceId, filters, true);
   const { tasks, loading, stale, reload: load } = page;
   const [capacity, setCapacity] = useState<DayCapacityData | null>(null);
+  // §7.9: the user can hide overload warnings; the banner becomes a neutral
+  // planned-load line (and S2 suggestions stop being generated).
+  const [overloadWarningsEnabled, setOverloadWarningsEnabled] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    api<WellbeingPreferences>('/preferences')
+      .then((prefs) => {
+        if (!cancelled) setOverloadWarningsEnabled(!prefs.disableOverloadWarnings);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const loadCapacity = useCallback(async () => {
     try {
@@ -86,10 +102,17 @@ export function TodayView({ workspaceId }: { workspaceId: string }) {
 
       <QuickCapture workspaceId={workspaceId} onCreated={reload} />
 
-      {capacity?.status === 'OVERLOADED' && (
-        <div className="banner banner-warn" role="status">
+      {capacity?.status === 'OVERLOADED' && overloadWarningsEnabled && (
+        <div className="banner banner-warn" role="status" data-testid="today-overload-suggestion">
           You have planned {formatMinutes(capacity.workloadMinutes)} of work in tasks due today. Your configured workday is {formatMinutes(capacity.workdayMinutes)}
           {capacity.overByMinutes ? ` — ${formatMinutes(capacity.overByMinutes)} over` : ''}. This is a planning guideline, not a guarantee of available time; consider moving something.
+          This is a suggestion only — no tasks are moved.
+        </div>
+      )}
+
+      {capacity?.status === 'OVERLOADED' && !overloadWarningsEnabled && (
+        <div className="banner" role="status" data-testid="today-overload-neutral">
+          You have planned {formatMinutes(capacity.workloadMinutes)} of work in tasks due today.
         </div>
       )}
 

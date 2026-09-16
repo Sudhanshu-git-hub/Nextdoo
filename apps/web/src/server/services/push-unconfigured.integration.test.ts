@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
-import { deliverDueReminders, notifications, pushDeliveries, pushSubscriptions, reminders } from '@nextdoo/db';
+import { and, eq } from 'drizzle-orm';
+import { auditLogs, deliverDueReminders, notifications, pushDeliveries, pushSubscriptions, reminders } from '@nextdoo/db';
 import { requireTestDatabase } from '../../../../../tests/database';
 import { getDb } from '../db';
 import { registerUser } from './accounts';
@@ -57,7 +57,13 @@ it('keeps WEB reminders and the notification center fully functional while push 
   const actor = { userId: u.id, workspaceId: u.workspaceId };
   const task = await createTask(actor, { workspaceId: actor.workspaceId, title: 'WEB still works', dueAt: new Date(Date.now() + 86400000).toISOString(), priority: 'NONE', tagIds: [] });
   const r = await createReminder(actor, { taskId: task.id, scheduledAt: new Date(Date.now() - 60000).toISOString(), channel: 'WEB' });
-  expect(await deliverDueReminders(getDb())).toMatchObject({ sent: 1 });
+  const result = await deliverDueReminders(getDb());
+  // Scoped to THIS reminder: the shared test database may hold other files'
+  // due reminders that the global dispatcher delivers concurrently under load
+  // (observed cross-file flake, 2026-09-15).
+  expect(result.sent).toBeGreaterThanOrEqual(1);
+  const dispatched = await getDb().select().from(auditLogs).where(and(eq(auditLogs.action, 'reminder.dispatch'), eq(auditLogs.targetId, r!.id)));
+  expect(dispatched).toHaveLength(1);
   expect((await getDb().select().from(reminders).where(eq(reminders.id, r!.id)))[0]!.status).toBe('SENT');
   expect(await getDb().select().from(notifications).where(eq(notifications.reminderId, r!.id))).toHaveLength(1);
   expect(await getDb().select().from(pushDeliveries).where(eq(pushDeliveries.reminderId, r!.id))).toHaveLength(0);

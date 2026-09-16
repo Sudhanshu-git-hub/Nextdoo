@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import type { EntitlementLimits, Plan } from '@nextdoo/contracts';
+import type { EntitlementLimits, Plan, WellbeingPreferences } from '@nextdoo/contracts';
 import { api, ApiError } from '@/lib/api';
 import { WorkspaceSettings } from '@/components/WorkspaceSettings';
 import { MfaSettings } from '@/components/MfaSettings';
@@ -43,6 +43,9 @@ export function SettingsView({
   const [profileBusy, setProfileBusy] = useState(false);
   const [profileNotice, setProfileNotice] = useState<string | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
+  const [prefs, setPrefs] = useState<WellbeingPreferences | null>(null);
+  const [prefsBusy, setPrefsBusy] = useState(false);
+  const [prefsError, setPrefsError] = useState<string | null>(null);
 
   const [deletion, setDeletion] = useState<DeletionStatus | null>(null);
   const [confirmText, setConfirmText] = useState('');
@@ -69,6 +72,31 @@ export function SettingsView({
   }, []);
 
   useEffect(() => { void loadDeletion(); }, [loadDeletion]);
+
+  // §7.9 wellbeing toggle — fetched fresh so the card reflects saved state.
+  useEffect(() => {
+    let cancelled = false;
+    api<WellbeingPreferences>('/preferences')
+      .then((current) => { if (!cancelled) setPrefs(current); })
+      .catch(() => {});
+    return () => { cancelled = true; }
+  }, []);
+
+  async function setPreference(key: keyof WellbeingPreferences, value: boolean) {
+    if (!prefs || prefsBusy) return;
+    setPrefsBusy(true);
+    setPrefsError(null);
+    const previous = prefs[key];
+    setPrefs({ ...prefs, [key]: value });
+    try {
+      await api('/preferences', { method: 'PATCH', body: JSON.stringify({ [key]: value }) });
+    } catch (caught) {
+      setPrefs({ ...prefs, [key]: previous });
+      setPrefsError(caught instanceof ApiError ? caught.problem.detail : 'Could not save that setting.');
+    } finally {
+      setPrefsBusy(false);
+    }
+  }
 
   // Signing in during the grace window cancels a scheduled deletion; the login
   // redirect flags it so the change is not silent.
@@ -295,6 +323,35 @@ export function SettingsView({
           <p className="muted">
             Your system preferences are respected by default; these override them for this browser.
           </p>
+        </section>
+
+        <section className="card" aria-labelledby="wellbeing-heading">
+          <h2 id="wellbeing-heading">Wellbeing</h2>
+          {prefs === null ? (
+            <p className="muted" role="status">Loading your settings…</p>
+          ) : (
+            <>
+              <div className="field">
+                <label htmlFor="disableOverloadWarnings" style={{ display: 'inline' }}>
+                  <input
+                    id="disableOverloadWarnings"
+                    type="checkbox"
+                    checked={prefs.disableOverloadWarnings}
+                    disabled={prefsBusy}
+                    onChange={(e) => void setPreference('disableOverloadWarnings', e.target.checked)}
+                    style={{ width: 'auto', minHeight: 'auto', marginRight: 8 }}
+                  />
+                  Hide overload warnings
+                </label>
+              </div>
+              {prefsError && (
+                <p role="alert">{prefsError}</p>
+              )}
+              <p className="muted">
+                These only change what is shown to you — tracked data and task plans are never changed by a setting.
+              </p>
+            </>
+          )}
         </section>
 
         <section className="card" aria-labelledby="data-heading">

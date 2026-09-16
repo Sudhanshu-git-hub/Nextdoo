@@ -8,6 +8,7 @@ import type { ExecutionSummary } from '@nextdoo/contracts';
 import { TrackingPanel } from '@/components/TrackingPanel';
 import { TrackingFreshnessNotice } from '@/components/TrackingFreshnessNotice';
 import { ReviewNote } from '@/components/ReviewNote';
+import { SuggestionsCard } from '@/components/SuggestionsCard';
 type Summary = Omit<ExecutionSummary, 'averageScore'> & { averageScore?: number | null; scoresEnabled: boolean };
 
 /** An instant whose wall time in `timeZone` is noon on the local date key. */
@@ -182,6 +183,7 @@ export function AnalyticsView({ workspaceId, taskId }: { workspaceId: string; ta
           </div>
 
           <DayTable summary={summary} />
+          <SuggestionsCard period={period} />
           {summary.period === 'week' && <WeeklyTrends summary={summary} />}
         </>
       )}

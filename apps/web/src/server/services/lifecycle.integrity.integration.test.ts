@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { expect, it } from 'vitest';
+import { expect, it, test } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { createTaskSchema } from '@nextdoo/contracts';
 import { reminders, tasks, subscriptions, recurrenceRules, taskOccurrences } from '@nextdoo/db';
@@ -9,9 +9,17 @@ import { getPlan, registerUser } from './accounts';
 import { createTask, deleteTask, loadTask, restoreTask, updateTask } from './tasks';
 import { createReminder, dispatchDueReminders } from './reminders';
 await requireTestDatabase();
+const createdWorkspaces = new Set<string>();
+// Clean up the reminders this file creates so the shared test database never
+// hands them to another file's global deliverDueReminders call (cross-file
+// flake, 2026-09-15: the push "without doubling" sent-counter).
+test.afterAll(async () => {
+  for (const workspaceId of createdWorkspaces) await getDb().delete(reminders).where(eq(reminders.workspaceId, workspaceId));
+});
 async function fixture() {
   const u = await registerUser({ email: `lifecycle-${randomUUID()}@test.local`, name: null, passwordHash: 'test-not-login', timeZone: 'UTC' });
   const actor = { userId: u.id, workspaceId: u.workspaceId };
+  createdWorkspaces.add(actor.workspaceId);
   const input = createTaskSchema.parse({ workspaceId: u.workspaceId, title: 'Lifecycle integrity', dueAt: '2026-09-09T12:00:00.000Z' });
   return { actor, input, task: await createTask(actor, input) };
 }
