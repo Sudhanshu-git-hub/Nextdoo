@@ -1645,5 +1645,16 @@ clean; E2E **161 passed** with the only non-passes being the
 ClamAV-dependent `attachments.spec.ts` suite (sandbox has no `clamscan`;
 CI installs ClamAV and runs it for real) and one transient 30 s
 `waitForResponse` timeout in `wellbeing.spec.ts` axe (runner-load flake —
-re-run in isolation: **5/5 passed in 9 s**). Pushed; CI runs recorded in
-the follow-up docs commit.
+re-run in isolation: **5/5 passed in 9 s**). Pushed at `5b3c4e9`; CI runs
+**35426643548** (push) and **35426645868** (pull_request) **SUCCESS**
+(full pipeline: ClamAV EICAR check, `db:migrate` ×2 — including the new
+`0023` — lint, typecheck, `test:coverage`, build, real-browser E2E with
+the ClamAV suite running for real).
+
+Consolidated M8 status: audit CLOSED (`83fce2f`), M8-i1 CLOSED
+(`1c224b4`), M8-i2 review CLOSED (`a224bc9`), M8-i2 implementation
+CLOSED (`be02566`), M8-i3 review CLOSED (`5c8eede`), M8-i3
+implementation CLOSED (`9fe6514`), M8-i4 review CLOSED (`267a80c`),
+M8-i4 implementation CLOSED (`5b3c4e9`). Per directive, STOP after
+M8-i4 — M8-i5 (or any other increment) is NOT started; the next
+recommended increment is recorded in the milestone doc / review §8.
