@@ -1694,3 +1694,47 @@ Consolidated M8 status: audit CLOSED (`83fce2f`), M8-i1 CLOSED
 M8-i4 CLOSED (`5b3c4e9` + `90e6992`), M8-i5 **BLOCKED at preflight**
 (no commits beyond this doc/ledger entry). Per directive, STOP after
 the preflight — no M8-i5 implementation.
+
+## M8-i6 — Google Calendar webhook redelivery dedupe — 2026-09-20 (review only)
+
+Per the M8-i6 directive this is a **planning/review turn only**: build the
+remaining class-3 hardening matrix and recommend the next bounded
+increment. No product code was changed; M8-i4 (`5b3c4e9` + `90e6992`) and
+M8-i5 (CLOSED-BLOCKED, `bc4fd90`) are untouched and not reopened; no live
+Google verification was retried. Deliverable:
+[M8_i6_GOOGLE_CALENDAR_WEBHOOK_DEDUPE_REVIEW.md](M8_i6_GOOGLE_CALENDAR_WEBHOOK_DEDUPE_REVIEW.md)
+(full PRD + audit + M8-i4 review/milestone + M8-i5 preflight re-read; code
+survey of the webhook path, rate-limit middleware, sync engine,
+disconnect/retention sweep, fixture seams, and all calendar test suites).
+
+Matrix (calendar class-3 candidates): **C1/T2 webhook redelivery dedupe
+(`X-Goog-Message-Id`) — class 3, RECOMMENDED for M8-i6** (§11.1 names
+"event-ID dedupe"; concrete waste/replay-control defect; zero external
+dependencies; deterministic via the fixture provider's call counter; no
+overlap — M8-i4 explicitly excluded T2). Deferred: C2/T6b webhook bucket
+fairness (closed M8-i4 deferral; no PRD anchor for the inbound webhook; no
+incident), C3/T3 channel-token column (directive: no live evidence or
+explicit PRD/security requirement; audit L4 deferral), C4/T7 opt-in export
+cleanup (feature, not hardening — Phase 2), C5 orphaned-export
+reconciliation (rare; needs a provider payload change; closed M8-i4
+trade-off), C6 proactive token bucket/batching (M8-i4: no observable
+protection at MVP scale; reactive backoff already delivered as T4), C7
+channel-state handling (current behavior is a safe superset; no defect).
+Externally blocked: C8/T8–T11 (16-point live pass etc. — M8-i5
+CLOSED-BLOCKED status stands). Non-calendar items (ASVS/SAST CI, restore
+test, k6, N2/N5/G3, X2/X3/X4) listed as not class-3 calendar hardening.
+
+Recommended M8-i6 scope (not started): migration `0024` +
+`calendar_webhook_messages` table + route reads the optional
+`X-Goog-Message-Id` header + `handleCalendarWebhook` dedupe (insert-first,
+compensating delete on import failure, no dedupe row for inert paths,
+absent header = legacy behavior) + `sweepCalendarRetention` 24 h purge.
+No endpoints, no API shape changes, no worker job-registry changes. 10
+deterministic acceptance criteria + test strategy recorded in the review
+doc. Per directive, STOP after this review — no M8-i6 implementation.
+
+Consolidated M8 status: audit CLOSED (`83fce2f`), M8-i1 CLOSED
+(`1c224b4`), M8-i2 CLOSED (`be02566`), M8-i3 CLOSED (`9fe6514`), M8-i4
+CLOSED (`5b3c4e9` + `90e6992`), M8-i5 **BLOCKED at preflight**
+(`bc4fd90`), M8-i6 **REVIEW COMPLETE** (this entry; implementation NOT
+started).
