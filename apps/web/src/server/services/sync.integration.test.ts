@@ -11,16 +11,9 @@ const DATABASE_URL = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@l
 const DEVICE_A = '44444444-4444-4444-8444-444444444401';
 const DEVICE_B = '44444444-4444-4444-8444-444444444402';
 
-async function probe(): Promise<boolean> {
-  try {
-    const { default: postgres } = await import('postgres');
-    const sql = postgres(DATABASE_URL, { max: 1, connect_timeout: 3 });
-    await sql`select 1`;
-    await sql.end();
-    return true;
-  } catch {
-    return false;
-  }
+async function probe(): Promise<true> {
+  const { requireTestDatabase } = await import('../../../../../tests/database');
+  return requireTestDatabase();
 }
 
 const available = await probe();

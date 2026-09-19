@@ -1,8 +1,22 @@
 'use client';
+import { localDayBounds, localDateKey } from '@nextdoo/core/calendar';
+import { useWorkspace } from '@/components/WorkspaceContext';
 
-import { useCallback, useEffect, useState } from 'react';
-import { api, ApiError, type Task } from '@/lib/api';
-import { cacheTasks, flushQueue, getDeviceId, readCachedTasks } from '@/lib/offline-queue';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTaskPages } from '@/lib/use-task-pages';
+import { api } from '@/lib/api';
+import type { WellbeingPreferences } from '@nextdoo/contracts';
+
+/** PRD §8.3 — server-computed day capacity (full-collection workload). */
+interface DayCapacityData {
+  workdayMinutes: number;
+  workloadMinutes: number;
+  capacityMinutes: number | null;
+  overByMinutes: number | null;
+  status: 'OK' | 'OVERLOADED' | 'CAPACITY_UNKNOWN';
+  providerConnected: boolean;
+}
+import { TaskPagination } from '@/components/TaskPagination';
 import { QuickCapture } from '@/components/QuickCapture';
 import { TaskList } from '@/components/TaskList';
 
@@ -13,54 +27,60 @@ import { TaskList } from '@/components/TaskList';
  * is how a planner starts lying to its user.
  */
 export function TodayView({ workspaceId }: { workspaceId: string }) {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [stale, setStale] = useState(false);
-
-  const load = useCallback(async () => {
-    setError(null);
-    try {
-      const endOfToday = new Date();
-      endOfToday.setHours(23, 59, 59, 999);
-      const response = await api<{ data: Task[] }>(
-        `/tasks?workspaceId=${workspaceId}&status=ACTIVE&dueBefore=${encodeURIComponent(endOfToday.toISOString())}&limit=100`,
-      );
-      setTasks(response.data);
-      setStale(false);
-      void cacheTasks(response.data);
-    } catch (caught) {
-      // Fall back to the local cache so the view still works offline.
-      const cached = await readCachedTasks<Task>();
-      if (cached.length) {
-        setTasks(cached.filter((t) => t.status === 'ACTIVE'));
-        setStale(true);
-      } else {
-        setError(caught instanceof ApiError ? caught.problem.detail : 'Could not load your tasks.');
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [workspaceId]);
+  const { timeZone } = useWorkspace();
+  const filters = useMemo(() => {
+    const { end } = localDayBounds(new Date(), timeZone);
+    return `status=ACTIVE&dueBefore=${encodeURIComponent(end.toISOString())}`;
+  }, [timeZone]);
+  const page = useTaskPages(workspaceId, filters, true);
+  const { tasks, loading, stale, reload: load } = page;
+  const [capacity, setCapacity] = useState<DayCapacityData | null>(null);
+  // §7.9: the user can hide overload warnings; the banner becomes a neutral
+  // planned-load line (and S2 suggestions stop being generated).
+  const [overloadWarningsEnabled, setOverloadWarningsEnabled] = useState(true);
 
   useEffect(() => {
-    void load();
-  }, [load]);
-
-  // Drain the offline queue whenever connectivity returns.
-  useEffect(() => {
-    const onOnline = async () => {
-      await flushQueue(workspaceId, getDeviceId());
-      void load();
+    let cancelled = false;
+    api<WellbeingPreferences>('/preferences')
+      .then((prefs) => {
+        if (!cancelled) setOverloadWarningsEnabled(!prefs.disableOverloadWarnings);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
     };
-    window.addEventListener('online', onOnline);
-    return () => window.removeEventListener('online', onOnline);
-  }, [workspaceId, load]);
+  }, []);
+
+  const loadCapacity = useCallback(async () => {
+    try {
+      const date = localDateKey(new Date(), timeZone);
+      setCapacity(await api<DayCapacityData>(`/calendar/capacity?workspaceId=${workspaceId}&date=${date}`));
+    } catch {
+      // Best-effort planning aid: a failed capacity fetch never blocks the list.
+      setCapacity(null);
+    }
+  }, [workspaceId, timeZone]);
+
+  useEffect(() => {
+    void loadCapacity();
+  }, [loadCapacity]);
+
+  const reload = useCallback(() => {
+    void load();
+    void loadCapacity();
+  }, [load, loadCapacity]);
+  // The app-global reconcile loop (OfflineBadge in the shell) drains the
+  // queue; refresh this view whenever it has applied mutations or pulled
+  // changes, so the list reflects the server instead of a stale cache.
+  useEffect(() => {
+    const onSynced = () => { void reload(); };
+    window.addEventListener('nextdoo-synced', onSynced);
+    return () => window.removeEventListener('nextdoo-synced', onSynced);
+  }, [reload]);
 
   const now = new Date();
-  const overdue = tasks.filter((t) => t.dueAt && new Date(t.dueAt) < startOfToday());
-  const today = tasks.filter((t) => !t.dueAt || new Date(t.dueAt) >= startOfToday());
-  const plannedMinutes = tasks.reduce((sum, t) => sum + (t.estimateMinutes ?? 0), 0);
+  const overdue = tasks.filter((t) => t.dueAt && new Date(t.dueAt) < localDayBounds(now, timeZone).start);
+  const today = tasks.filter((t) => !t.dueAt || new Date(t.dueAt) >= localDayBounds(now, timeZone).start);
 
   return (
     <>
@@ -68,24 +88,38 @@ export function TodayView({ workspaceId }: { workspaceId: string }) {
         <div>
           <h1>Today</h1>
           <p className="subtitle">
-            {now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
-            {plannedMinutes > 0 && ` · ${formatMinutes(plannedMinutes)} planned`}
+            {now.toLocaleDateString(undefined, { timeZone, weekday: 'long', month: 'long', day: 'numeric' })}
+            {capacity && capacity.workloadMinutes > 0 && ` · ${formatMinutes(capacity.workloadMinutes)} planned today`}
           </p>
         </div>
       </div>
 
       {stale && (
         <div className="banner banner-warn" role="status">
-          Showing your last saved copy — you appear to be offline. Changes will sync when you reconnect.
+          Showing your last saved copy — you appear to be offline. This is a read-only cached view; reload when connected.
         </div>
       )}
 
-      <QuickCapture workspaceId={workspaceId} onCreated={load} />
+      <QuickCapture workspaceId={workspaceId} onCreated={reload} />
 
-      {plannedMinutes > 480 && (
+      {capacity?.status === 'OVERLOADED' && overloadWarningsEnabled && (
+        <div className="banner banner-warn" role="status" data-testid="today-overload-suggestion">
+          You have planned {formatMinutes(capacity.workloadMinutes)} of work in tasks due today. Your configured workday is {formatMinutes(capacity.workdayMinutes)}
+          {capacity.overByMinutes ? ` — ${formatMinutes(capacity.overByMinutes)} over` : ''}. This is a planning guideline, not a guarantee of available time; consider moving something.
+          This is a suggestion only — no tasks are moved.
+        </div>
+      )}
+
+      {capacity?.status === 'OVERLOADED' && !overloadWarningsEnabled && (
+        <div className="banner" role="status" data-testid="today-overload-neutral">
+          You have planned {formatMinutes(capacity.workloadMinutes)} of work in tasks due today.
+        </div>
+      )}
+
+      {capacity?.status === 'CAPACITY_UNKNOWN' && (
         <div className="banner banner-warn" role="status">
-          You have planned {formatMinutes(plannedMinutes)} of work today. That is more than a typical working day —
-          consider moving something.
+          A calendar is connected but its sync data hasn&#39;t caught up (calendar sync delayed), so available work capacity can&#39;t be confirmed yet.
+          You have planned {formatMinutes(capacity.workloadMinutes)} in tasks due today.
         </div>
       )}
 
@@ -97,10 +131,10 @@ export function TodayView({ workspaceId }: { workspaceId: string }) {
           <TaskList
             tasks={overdue}
             loading={false}
-            error={null}
+            error={page.tasks.length ? null : page.error}
             emptyTitle=""
             emptyBody=""
-            onChanged={load}
+            onChanged={reload}
           />
         </section>
       )}
@@ -109,22 +143,19 @@ export function TodayView({ workspaceId }: { workspaceId: string }) {
         <h2 id="today-heading">Due today</h2>
         <TaskList
           tasks={today}
-          loading={loading}
-          error={error}
+          loading={loading && !tasks.length}
+          error={page.tasks.length ? null : page.error}
           emptyTitle="Nothing scheduled for today"
           emptyBody="Add a task above, or check the Inbox for unscheduled work waiting for a date."
-          onChanged={load}
+          onChanged={reload}
         />
       </section>
+      <TaskPagination {...page} error={page.tasks.length ? page.error : null} count={tasks.length} onMore={page.loadMore} onRetry={tasks.length ? page.loadMore : load} />
     </>
   );
 }
 
-function startOfToday(): Date {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
+
 
 function formatMinutes(minutes: number): string {
   const h = Math.floor(minutes / 60);

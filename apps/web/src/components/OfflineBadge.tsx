@@ -1,35 +1,46 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { pendingCount } from '@/lib/offline-queue';
+import Link from 'next/link';
+import { useEffect, useMemo, useState } from 'react';
+import { getDeviceId } from '@/lib/offline-queue';
+import { useSyncReconcile } from '@/lib/use-sync-reconcile';
 
 /**
- * Offline state indicator (PRD §8.6).
- * Non-blocking and always shows how many changes are waiting, so the user
- * knows nothing has been lost.
+ * Offline state indicator (PRD §8.6) and the app-global reconcile loop.
+ *
+ * The queue must drain on every view, not just Today, so the loop lives in
+ * the shell: it recovers on mount, drains on reconnect, on new work arriving
+ * while online, and per stored backoff. Views react to `nextdoo-synced` to
+ * refresh their own data.
  */
-export function OfflineBadge() {
+export function OfflineBadge({ workspaceId }: { workspaceId: string }) {
   const [online, setOnline] = useState(true);
-  const [pending, setPending] = useState(0);
+  const deviceId = useMemo(() => getDeviceId(), []);
+  const { queued, attention } = useSyncReconcile(workspaceId, deviceId, () => {});
 
   useEffect(() => {
     const update = () => setOnline(navigator.onLine);
     update();
-    const poll = setInterval(() => setPending(pendingCount()), 1500);
     window.addEventListener('online', update);
     window.addEventListener('offline', update);
     return () => {
-      clearInterval(poll);
       window.removeEventListener('online', update);
       window.removeEventListener('offline', update);
     };
   }, []);
 
-  if (online && pending === 0) return null;
+  if (online && queued === 0 && attention === 0) return null;
 
+  const word = (n: number) => (n === 1 ? 'change' : 'changes');
   return (
     <div className="offline-badge" role="status" aria-live="polite">
-      {online ? `Syncing ${pending} change${pending === 1 ? '' : 's'}…` : `Offline — ${pending} change${pending === 1 ? '' : 's'} queued`}
+      {online ? `Syncing ${queued} ${word(queued)}…` : `Offline — ${queued} ${word(queued)} queued`}
+      {attention > 0 && (
+        <>
+          {' · '}
+          <Link href="/conflicts">{attention} {word(attention)} need attention — review</Link>
+        </>
+      )}
     </div>
   );
 }

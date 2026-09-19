@@ -1,7 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, ApiError, type Task } from '@/lib/api';
+import { useTaskPages } from '@/lib/use-task-pages';
+import { TaskPagination } from '@/components/TaskPagination';
+import { api, ApiError } from '@/lib/api';
 import { getDeviceId } from '@/lib/offline-queue';
 
 interface ActiveTimer {
@@ -9,7 +11,7 @@ interface ActiveTimer {
   taskId: string;
   startedAt: string;
   status: 'RUNNING' | 'PAUSED' | 'STOPPED' | 'OVERLAPPED';
-  accumulatedSeconds: number;
+  elapsedSeconds: number;
 }
 
 /**
@@ -19,7 +21,8 @@ interface ActiveTimer {
  * ticks locally, so a backgrounded tab or a sleeping laptop cannot drift.
  */
 export function FocusView({ workspaceId }: { workspaceId: string }) {
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const page = useTaskPages(workspaceId, 'status=ACTIVE');
+  const { tasks } = page;
   const [timer, setTimer] = useState<ActiveTimer | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -30,11 +33,7 @@ export function FocusView({ workspaceId }: { workspaceId: string }) {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [taskResponse, timerResponse] = await Promise.all([
-        api<{ data: Task[] }>(`/tasks?workspaceId=${workspaceId}&status=ACTIVE&limit=50`),
-        api<{ timer: ActiveTimer | null }>('/timers'),
-      ]);
-      setTasks(taskResponse.data);
+      const timerResponse = await api<{ timer: ActiveTimer | null }>('/timers');
       setTimer(timerResponse.timer);
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.problem.detail : 'Could not load the focus session.');
@@ -48,11 +47,12 @@ export function FocusView({ workspaceId }: { workspaceId: string }) {
   useEffect(() => {
     if (tick.current) clearInterval(tick.current);
     if (timer?.status !== 'RUNNING') {
-      setElapsed(timer?.accumulatedSeconds ?? 0);
+      setElapsed(timer?.elapsedSeconds ?? 0);
       return;
     }
+    const receivedAt = Date.now();
     const compute = () =>
-      setElapsed(timer.accumulatedSeconds + Math.floor((Date.now() - new Date(timer.startedAt).getTime()) / 1000));
+      setElapsed(timer.elapsedSeconds + Math.max(0, Math.floor((Date.now() - receivedAt) / 1000)));
     compute();
     tick.current = setInterval(compute, 1000);
     return () => {
@@ -86,7 +86,7 @@ export function FocusView({ workspaceId }: { workspaceId: string }) {
         body: JSON.stringify({ action }),
       });
       setTimer(action === 'stop' ? null : result);
-      if (action === 'stop') void load();
+      if (action === 'stop') { void load(); void page.reload(); }
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.problem.detail : 'Could not update the timer.');
     } finally {
@@ -138,8 +138,8 @@ export function FocusView({ workspaceId }: { workspaceId: string }) {
       </div>
 
       <h2>Start a session</h2>
-      {loading && <div className="skeleton" style={{ height: 56 }} />}
-      {!loading && !tasks.length && (
+      {(loading || page.loading) && <div className="skeleton" style={{ height: 56 }} />}
+      {!loading && !page.loading && !page.error && !tasks.length && (
         <div className="empty">
           <div className="empty-title">No active tasks</div>
           <p>Add something to work on from Today, then come back to focus on it.</p>
@@ -168,6 +168,7 @@ export function FocusView({ workspaceId }: { workspaceId: string }) {
           </li>
         ))}
       </ul>
+      <TaskPagination {...page} count={tasks.length} onMore={page.loadMore} onRetry={tasks.length ? page.loadMore : page.reload} />
     </>
   );
 }

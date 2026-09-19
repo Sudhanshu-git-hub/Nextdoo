@@ -1,7 +1,9 @@
 import { and, eq, gt, isNull, lt } from 'drizzle-orm';
 import { AppError } from '@nextdoo/contracts';
 import { authTokens, users } from '@nextdoo/db';
-import { getDb } from '../db';
+import { getDb, withTransaction } from '../db';
+import { withAccountTransaction, deletionExpired } from '../account-security';
+import { features } from '../env';
 import { newId } from '../ids';
 import { generateToken, hashToken, hashPassword, revokeAllSessions } from '../auth';
 import { absoluteUrl, sendMail } from '../mailer';
@@ -21,11 +23,12 @@ export type TokenPurpose = 'EMAIL_VERIFICATION' | 'PASSWORD_RESET';
 
 const TTL_MS: Record<TokenPurpose, number> = {
   EMAIL_VERIFICATION: 24 * 60 * 60 * 1000,
-  PASSWORD_RESET: 60 * 60 * 1000, // deliberately short: it grants account access
+  PASSWORD_RESET: 30 * 60 * 1000, // deliberately short: it grants account access
 };
 
 async function issueToken(userId: string, purpose: TokenPurpose): Promise<string> {
-  const db = getDb();
+  return withAccountTransaction(userId, async (db) => {
+
   const token = generateToken();
 
   // Outstanding tokens for the same purpose are invalidated, so requesting a
@@ -44,6 +47,7 @@ async function issueToken(userId: string, purpose: TokenPurpose): Promise<string
   });
 
   return token;
+  });
 }
 
 /**
@@ -54,6 +58,9 @@ async function issueToken(userId: string, purpose: TokenPurpose): Promise<string
  */
 async function consumeToken(token: string, purpose: TokenPurpose): Promise<string> {
   const db = getDb();
+  const [candidate] = await db.select({ userId: authTokens.userId }).from(authTokens)
+    .where(and(eq(authTokens.tokenHash, hashToken(token)), eq(authTokens.purpose, purpose))).limit(1);
+  if (candidate) await withAccountTransaction(candidate.userId, async () => {});
   const now = new Date();
 
   const rows = await db
@@ -88,8 +95,9 @@ export async function requestEmailVerification(userId: string, email: string): P
 }
 
 export async function verifyEmail(token: string): Promise<void> {
+  return withTransaction( async (db) => {
   const userId = await consumeToken(token, 'EMAIL_VERIFICATION');
-  const db = getDb();
+
 
   await db
     .update(users)
@@ -97,6 +105,7 @@ export async function verifyEmail(token: string): Promise<void> {
     .where(and(eq(users.id, userId), isNull(users.emailVerifiedAt)));
 
   await writeAuditLog({ userId, action: 'account.email_verified', entityType: 'user', entityId: userId });
+  });
 }
 
 // ------------------------------------------------------------------ password reset
@@ -107,15 +116,16 @@ export async function verifyEmail(token: string): Promise<void> {
  * enumeration oracle.
  */
 export async function requestPasswordReset(email: string): Promise<void> {
+  if (process.env.NODE_ENV === 'production' && !features().email) throw new AppError('PROVIDER_UNAVAILABLE', 'Email delivery is not configured.');
   const db = getDb();
   const rows = await db
-    .select({ id: users.id, email: users.email })
+    .select({ id: users.id, email: users.email, status: users.status, deletionRequestedAt: users.deletionRequestedAt })
     .from(users)
     .where(and(eq(users.email, email.toLowerCase()), isNull(users.deletedAt)))
     .limit(1);
 
   const user = rows[0];
-  if (!user) {
+  if (!user || user.status !== 'ACTIVE' || deletionExpired(user.deletionRequestedAt)) {
     logger.info('auth.reset_requested_unknown_email');
     return;
   }
@@ -126,8 +136,10 @@ export async function requestPasswordReset(email: string): Promise<void> {
 }
 
 export async function resetPassword(token: string, newPassword: string): Promise<void> {
+  let email: string | undefined;
+  await withTransaction( async (db) => {
   const userId = await consumeToken(token, 'PASSWORD_RESET');
-  const db = getDb();
+
   const passwordHash = await hashPassword(newPassword);
 
   const rows = await db
@@ -141,7 +153,12 @@ export async function resetPassword(token: string, newPassword: string): Promise
   await revokeAllSessions(userId);
 
   await writeAuditLog({ userId, action: 'account.password_reset', entityType: 'user', entityId: userId });
-  if (rows[0]) await sendMail('password-changed', rows[0].email);
+  email = rows[0]?.email;
+  });
+  if (email) {
+    try { await sendMail('password-changed', email); }
+    catch { logger.warn('auth.password_changed_notice_unavailable'); }
+  }
 }
 
 /** Housekeeping for the worker: consumed and expired tokens are not evidence. */
