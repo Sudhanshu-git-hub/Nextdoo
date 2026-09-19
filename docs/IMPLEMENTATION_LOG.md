@@ -1658,3 +1658,39 @@ implementation CLOSED (`9fe6514`), M8-i4 review CLOSED (`267a80c`),
 M8-i4 implementation CLOSED (`5b3c4e9`). Per directive, STOP after
 M8-i4 — M8-i5 (or any other increment) is NOT started; the next
 recommended increment is recorded in the milestone doc / review §8.
+
+## M8-i5 — Google Calendar live-unblock path — 2026-09-19 (preflight)
+
+Per the M8-i5 directive, this increment starts with a preflight deciding
+whether the 16-point live Google verification is executable. **It is
+not — M8-i5 is BLOCKED at preflight** (fourth probe of this
+environment; M7-i3 2026-09-14 and M8-i4 2026-09-19 recorded the same).
+No live flow was attempted, no live result was manufactured, no product
+code was changed. Deliverable:
+[M8_i5_GOOGLE_CALENDAR_LIVE_UNBLOCK_PREFLIGHT.md](M8_i5_GOOGLE_CALENDAR_LIVE_UNBLOCK_PREFLIGHT.md)
+(six-check preflight table, the exact 16-point checklist, T3 decision
+rule, four-line unblock requirements, non-goals).
+
+Preflight (measured 2026-09-19): branch state OK (local = remote
+`90e6992`, tree clean — a 7th sandbox partial reset was recovered via
+the established refspec-fetch + `reset --mixed FETCH_HEAD` procedure
+with the tree byte-verified against the tip); GitHub auth OK;
+`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` **absent** (empty
+`.env.example` template only, no `.env`); `APP_URL`/public HTTPS
+redirect host **absent**; egress to `accounts.google.com`,
+`oauth2.googleapis.com`, `www.googleapis.com` **blocked** (all `000`);
+inbound public reachability for
+`POST /api/v1/calendar/webhook` **not available** (no long-lived public
+HTTPS ingress). 4 of 6 prerequisites unavailable → STOP at preflight
+per directive.
+
+T3 (dedicated random push-channel verification token, audit L4)
+**remains deferred**: with no live pass, no live evidence exists to
+justify the change; the evaluation criteria and decision rule are
+recorded in the preflight doc for the unblocked increment.
+
+Consolidated M8 status: audit CLOSED (`83fce2f`), M8-i1 CLOSED
+(`1c224b4`), M8-i2 CLOSED (`be02566`), M8-i3 CLOSED (`9fe6514`),
+M8-i4 CLOSED (`5b3c4e9` + `90e6992`), M8-i5 **BLOCKED at preflight**
+(no commits beyond this doc/ledger entry). Per directive, STOP after
+the preflight — no M8-i5 implementation.
