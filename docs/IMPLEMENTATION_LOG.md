@@ -1694,3 +1694,29 @@ Consolidated M8 status: audit CLOSED (`83fce2f`), M8-i1 CLOSED
 M8-i4 CLOSED (`5b3c4e9` + `90e6992`), M8-i5 **BLOCKED at preflight**
 (no commits beyond this doc/ledger entry). Per directive, STOP after
 the preflight — no M8-i5 implementation.
+
+## M8-i6 — remaining class-3 hardening review — 2026-09-19
+
+Review/planning only; no product code changed and no M8-i6 implementation
+started. Deliverable:
+[M8_i6_REMAINING_HARDENING_REVIEW.md](M8_i6_REMAINING_HARDENING_REVIEW.md).
+
+The review re-read the full PRD, the M8 audit, M8-i4 review/milestone,
+M8-i5 preflight, and the closed M8-i1…i3 docs to avoid overlap. It then
+surveyed the current webhook, Calendar, billing, route-limiter, migration,
+restore and CI implementation/test coverage for the remaining hardening
+candidates.
+
+Recommendation: M8-i6 should be a bounded **Calendar webhook ingress
+replay/fairness hardening** increment: implement Calendar webhook redelivery
+dedupe (T2) plus token-scoped webhook bucket fairness (T6b). This is the
+remaining Calendar class-3 hardening that is implementable without live
+Google access, does not reopen M8-i5, does not implement T3, and adds no
+product feature surface. T3 remains externally blocked/deferred per M8-i5;
+optional export cleanup remains convenience only; live provider gates and
+production SLO/restore/pen-test evidence remain externally blocked. The
+review also records CI database restore smoke testing as a strong later
+release-gate hardening candidate.
+
+Per directive, STOP after the review. No implementation, no live Google
+verification retry, no T3 channel-token hardening.
