@@ -3,7 +3,7 @@
 **Date:** 2026-09-20
 **Branch:** `arena/01a0ba0b-nextdoo`
 **Scope:** bounded Option (b) from the approved review at `94062ed`: CI-local PostgreSQL backup → restore → migration → application smoke.
-**Status:** implemented locally; GitHub CI evidence to be appended after push verification.
+**Status:** CLOSED — CI-verified on GitHub Actions (`35464236805`, then docs follow-up `35464738765`).
 
 M8-i6 remains closed. This increment does **not** reopen Calendar webhook replay/fairness behavior, does **not** retry live Google verification, and does **not** implement production backup/PITR/DR infrastructure.
 
