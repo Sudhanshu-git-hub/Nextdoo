@@ -1775,3 +1775,49 @@ transitions are preserved, unknown/inactive tokens remain inert no-op, and no ra
 OAuth/channel token material is stored or logged. Live Google remains externally
 blocked for the M8-i5 reasons. Per directive, STOP after M8-i6; do not start
 M8-i7.
+
+## M8-i7 — CI database restore smoke coverage review — 2026-09-19
+
+Review/planning only; no product code changed and no M8-i7 implementation started.
+M8-i6 remains closed and CI-verified at `29cdf35`; Calendar webhook replay/fairness
+behavior was not reopened or modified, and live Google verification was not retried.
+Deliverable:
+[M8_i7_CI_DATABASE_RESTORE_SMOKE_REVIEW.md](M8_i7_CI_DATABASE_RESTORE_SMOKE_REVIEW.md).
+
+Initial verification: active branch `arena/01a0ba0b-nextdoo`; local HEAD and
+remote branch HEAD both `29cdf35b9c6abddaef08a97f08467b1d43099b60`; working tree
+clean before docs edits; GitHub auth succeeded as `arena-ai-coding-agent[bot]`.
+This checkout lacked a local `origin/arena/01a0ba0b-nextdoo` tracking ref after
+fetch, so remote equality was verified with `FETCH_HEAD` and `git ls-remote`.
+
+Reviewed PRD §§11.4, 11.9, 12.2, 12.3, 12.5, 19.1, 19.2 #14, 19.4 and 21.4;
+`M8_ROADMAP_AUDIT.md`; the M8-i6 remaining-hardening H7 row; current GitHub CI;
+`runMigrations`; migration integrity tests; migration files; test database helpers;
+dev-service setup; health route; development/operations docs; and existing audit
+remediation records.
+
+Conclusion: the correct bounded M8-i7 implementation scope, if authorized later,
+is option **(b) backup → restore → migration → application smoke path** using
+native PostgreSQL logical backup tooling in CI. Option (a) would not prove the
+restored database can serve the application readiness path; option (c) would
+require real production infrastructure and would risk inventing operational
+backup capabilities. The proposed CI smoke should create disposable source/target
+databases, apply all migrations except latest to the source, seed non-secret
+representative data, `pg_dump -Fc`, `pg_restore` into the target, run the full
+migration chain so at least one real checked-in migration applies after restore,
+assert representative data/integrity/sequence/checksum survival, start the built
+web app against the restored DB, and require `/api/v1/health` database status ok.
+
+Current gap recorded: CI proves fresh migrations, idempotent migration rerun,
+checksum/concurrent migration safety, full tests, build and E2E, but it does not
+prove a database backup can be produced, restored, migrated after restore, used to
+start the app, or preserve representative data and integrity through dump/restore.
+No repo backup/restore script currently exists.
+
+External/deployment-blocked items remain explicitly out of scope: production PITR,
+daily encrypted backups, separate backup credentials/IAM, 30-day backup retention,
+monthly restore evidence, quarterly DR exercise, measured RTO/RPO, regional
+failover/cutover, attachment/object-store restore, deletion propagation through
+backup windows, SLO dashboards/status page/on-call, and GA production readiness.
+Per directive, STOP after this review; do not implement M8-i7 until separately
+authorized.
