@@ -1,13 +1,15 @@
 # M8-i6 — Remaining class-3 hardening review and recommendation
 
-**Status: REVIEW ONLY — no M8-i6 implementation started.**  
+**Status: REVIEW APPROVED; T2/T6b IMPLEMENTED AS M8-i6.**
 Date: 2026-09-19. Review baseline: M8-i5 final commit `bc4fd90` on
-`arena/01a0ba0b-nextdoo`.
+`arena/01a0ba0b-nextdoo`; implementation authorized from review commit
+`e6eab16`.
 
-This document is the planning/review artifact requested after M8-i5 closed
-blocked at preflight. It does **not** reopen M8-i5, does **not** retry live
+This document began as the planning/review artifact requested after M8-i5 closed
+blocked at preflight. It now also records the as-built M8-i6 result for the two
+approved items only: T2 webhook redelivery/replay dedupe and T6b token-scoped
+webhook bucket fairness. M8-i6 does **not** reopen M8-i5, does **not** retry live
 Google verification, and does **not** implement T3 channel-token hardening.
-Only documentation changes are made in this review.
 
 ## 0. Sources reviewed
 
@@ -203,7 +205,41 @@ No live Google calls, no live webhook delivery, and no T3 channel-token column.
 | E2E | Existing `calendar.spec.ts` and `calendar-sync.spec.ts` should pass unchanged. No new live-provider E2E is added. |
 | Security/logging | Assert no token material appears in logger output or dedupe ledger; duplicate requests cannot cross tenant boundaries. |
 
-## 9. Stop point
+## 9. As-built implementation result
 
-This review stops here. M8-i6 implementation has **not** started. The next turn may
-implement the recommended M8-i6 scope only if explicitly directed.
+Implementation proceeded only after explicit authorization from review commit
+`e6eab16`. The selected M8-i6 scope is complete in code and deterministic tests:
+
+- **T2 implemented:** `handleCalendarWebhook(token, { messageId? })` claims a
+  durable `(connection_id, message_id)` ledger row before import. Successful
+  duplicates return an additive `duplicate: true` no-op response and make zero
+  provider calls. Failed/stale processing rows are reclaimable, so legitimate
+  provider retries after a transient failure remain recoverable. Absent
+  `messageId` keeps the previous token-only import behavior.
+- **T6b implemented:** the Calendar webhook route now parses safely, then applies
+  per-token `300/minute` buckets with `Retry-After`, an IP-level invalid/missing
+  body guard, and a higher global IP safety guard that is checked only after the
+  token bucket admits a request. Bucket keys hash the token; raw token values are
+  not logged.
+- **Schema implemented:** migration
+  `packages/db/migrations/0024_calendar_webhook_deliveries.sql` adds
+  `calendar_webhook_deliveries`; `packages/db/src/schema.ts` exports
+  `calendarWebhookDeliveries`.
+- **Retention implemented:** `sweepCalendarRetention` purges expired webhook
+  delivery rows and returns a `webhookDeliveries` count; the worker retention log
+  includes it.
+- **Regression tests added:** expanded Calendar integration tests cover first
+  delivery, exact/multiple duplicates, duplicate after success, retry after
+  processing failure, same message id on two connections, distinct messages on
+  one connection, tenant isolation, concurrent duplicate safety, retention purge,
+  token-bucket exhaustion, unrelated-token admission from the same IP, window
+  rollover, and invalid/missing-token IP guarding.
+
+Detailed as-built notes, validation results and deferred items are recorded in
+`docs/M8_i6_GOOGLE_CALENDAR_WEBHOOK_INGRESS_MILESTONE.md`.
+
+## 10. Stop point
+
+M8-i6 stops after T2/T6b webhook ingress hardening. Do not start M8-i7 from this
+milestone, and do not reopen M8-i5/T3/live Google without a separate unblock
+decision.

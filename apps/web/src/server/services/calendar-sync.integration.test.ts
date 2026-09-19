@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import { dedicatedDatabase, type DedicatedDatabase } from '../../../../../tests/dedicated-database';
 
@@ -680,6 +680,240 @@ describe('calendar sync engine + services (integration, fixture provider)', () =
     expect(sync.imported).toBeGreaterThanOrEqual(0);
     void taskA;
     svc.setCalendarProviderFactoryForTests(null);
+  });
+
+  maybe()('M8-i6 T2: webhook provider-message dedupe is scoped, replay-safe and preserves distinct notifications', async () => {
+    const a = await seedConnection({ name: 'm8i6-dedupe-a' });
+    const b = await seedConnection({ name: 'm8i6-dedupe-b' });
+    const connA = await connectionIdOf(a.userId);
+    const connB = await connectionIdOf(b.userId);
+    const svc = await import('./calendar-connections');
+    svc.setCalendarProviderFactoryForTests((row) => (row?.id === connA.id ? a.provider : b.provider));
+    try {
+      a.provider.pushEvent({ externalId: 'dedupe-a-1', title: 'Dedupe A1', startsAt: new Date(Date.now() + H).toISOString(), endsAt: new Date(Date.now() + 2 * H).toISOString() });
+      b.provider.pushEvent({ externalId: 'dedupe-b-1', title: 'Dedupe B1', startsAt: new Date(Date.now() + H).toISOString(), endsAt: new Date(Date.now() + 2 * H).toISOString() });
+      const listA = () => a.provider.calls.filter((c) => c.op === 'list').length;
+      const listB = () => b.provider.calls.filter((c) => c.op === 'list').length;
+
+      const first = await svc.handleCalendarWebhook(connA.id, { messageId: 'same-provider-message' });
+      expect(first).toMatchObject({ ok: true, duplicate: false });
+      expect(first.imported).toBe(1);
+      const afterFirst = listA();
+      expect(afterFirst).toBe(1);
+
+      // Exact duplicate and repeated duplicates are idempotent no-ops.
+      await expect(svc.handleCalendarWebhook(connA.id, { messageId: 'same-provider-message' })).resolves.toMatchObject({ ok: true, imported: 0, duplicate: true });
+      await expect(svc.handleCalendarWebhook(connA.id, { messageId: 'same-provider-message' })).resolves.toMatchObject({ ok: true, imported: 0, duplicate: true });
+      expect(listA()).toBe(afterFirst);
+
+      // The same provider notification id on a different connection is scoped independently.
+      const bFirst = await svc.handleCalendarWebhook(connB.id, { messageId: 'same-provider-message' });
+      expect(bFirst).toMatchObject({ ok: true, duplicate: false });
+      expect(listB()).toBe(1);
+
+      // A genuinely distinct notification for the same connection still runs.
+      a.provider.pushEvent({ externalId: 'dedupe-a-2', title: 'Dedupe A2', startsAt: new Date(Date.now() + 3 * H).toISOString(), endsAt: new Date(Date.now() + 4 * H).toISOString() });
+      const distinct = await svc.handleCalendarWebhook(connA.id, { messageId: 'distinct-provider-message' });
+      expect(distinct).toMatchObject({ ok: true, duplicate: false });
+      expect(listA()).toBe(afterFirst + 1);
+
+      // Tenant isolation: B sees only B's mirror rows after both webhooks.
+      const start = new Date(Date.now() - H).toISOString();
+      const end = new Date(Date.now() + 24 * H).toISOString();
+      expect((await svc.listCalendarEvents(b.userId, start, end)).map((e) => e.title)).toEqual(['Dedupe B1']);
+    } finally {
+      svc.setCalendarProviderFactoryForTests(null);
+    }
+  });
+
+  maybe()('M8-i6 T2: provider retries after a processing failure are recoverable', async () => {
+    const seed = await seedConnection({ name: 'm8i6-failure' });
+    const conn = await connectionIdOf(seed.userId);
+    seed.provider.pushEvent({ externalId: 'retry-after-failure', title: 'Retry me', startsAt: new Date(Date.now() + H).toISOString(), endsAt: new Date(Date.now() + 2 * H).toISOString() });
+    const svc = await import('./calendar-connections');
+    const original = seed.provider.listChanges.bind(seed.provider);
+    let fail = true;
+    seed.provider.listChanges = (async (args) => {
+      if (fail) {
+        seed.provider.calls.push({ op: 'list' });
+        throw new Error('fixture transient webhook failure');
+      }
+      return original(args);
+    }) as typeof seed.provider.listChanges;
+    svc.setCalendarProviderFactoryForTests(() => seed.provider);
+    try {
+      await expect(svc.handleCalendarWebhook(conn.id, { messageId: 'retryable-message' })).rejects.toThrow(/transient/);
+      const { getDb } = await import('../db');
+      const { calendarWebhookDeliveries } = await import('@nextdoo/db');
+      const [failed] = await getDb().select().from(calendarWebhookDeliveries).where(and(eq(calendarWebhookDeliveries.connectionId, conn.id), eq(calendarWebhookDeliveries.messageId, 'retryable-message')));
+      expect(failed!.status).toBe('FAILED');
+
+      fail = false;
+      const retry = await svc.handleCalendarWebhook(conn.id, { messageId: 'retryable-message' });
+      expect(retry).toMatchObject({ ok: true, imported: 1, duplicate: false });
+      const [succeeded] = await getDb().select().from(calendarWebhookDeliveries).where(and(eq(calendarWebhookDeliveries.connectionId, conn.id), eq(calendarWebhookDeliveries.messageId, 'retryable-message')));
+      expect(succeeded!.status).toBe('SUCCEEDED');
+      await expect(svc.handleCalendarWebhook(conn.id, { messageId: 'retryable-message' })).resolves.toMatchObject({ duplicate: true, imported: 0 });
+    } finally {
+      svc.setCalendarProviderFactoryForTests(null);
+    }
+  });
+
+  maybe()('M8-i6 T2: concurrent duplicate delivery claims one import and no-ops the loser', async () => {
+    const seed = await seedConnection({ name: 'm8i6-concurrent' });
+    const conn = await connectionIdOf(seed.userId);
+    seed.provider.pushEvent({ externalId: 'concurrent-event', title: 'Concurrent', startsAt: new Date(Date.now() + H).toISOString(), endsAt: new Date(Date.now() + 2 * H).toISOString() });
+    const svc = await import('./calendar-connections');
+    const original = seed.provider.listChanges.bind(seed.provider);
+    let entered!: () => void;
+    let release!: () => void;
+    const enteredPromise = new Promise<void>((resolve) => { entered = resolve; });
+    const releasePromise = new Promise<void>((resolve) => { release = resolve; });
+    seed.provider.listChanges = (async (args) => {
+      entered();
+      await releasePromise;
+      return original(args);
+    }) as typeof seed.provider.listChanges;
+    svc.setCalendarProviderFactoryForTests(() => seed.provider);
+    try {
+      const first = svc.handleCalendarWebhook(conn.id, { messageId: 'concurrent-message' });
+      await enteredPromise;
+      const duplicate = await svc.handleCalendarWebhook(conn.id, { messageId: 'concurrent-message' });
+      expect(duplicate).toMatchObject({ ok: true, imported: 0, duplicate: true });
+      release();
+      await expect(first).resolves.toMatchObject({ ok: true, imported: 1, duplicate: false });
+      expect(seed.provider.calls.filter((c) => c.op === 'list')).toHaveLength(1);
+    } finally {
+      svc.setCalendarProviderFactoryForTests(null);
+    }
+  });
+
+  maybe()('M8-i6 T2: webhook dedupe rows expire through calendar retention without touching mirrors', async () => {
+    const seed = await seedConnection({ name: 'm8i6-retention' });
+    const conn = await connectionIdOf(seed.userId);
+    seed.provider.pushEvent({ externalId: 'retention-event', title: 'Retention', startsAt: new Date(Date.now() + H).toISOString(), endsAt: new Date(Date.now() + 2 * H).toISOString() });
+    const svc = await import('./calendar-connections');
+    svc.setCalendarProviderFactoryForTests(() => seed.provider);
+    try {
+      await svc.handleCalendarWebhook(conn.id, { messageId: 'expires-message', now: new Date('2026-09-19T00:00:00.000Z') });
+      const { getDb } = await import('../db');
+      const { calendarEvents, calendarWebhookDeliveries, sweepCalendarRetention } = await import('@nextdoo/db');
+      expect(await getDb().select().from(calendarWebhookDeliveries).where(eq(calendarWebhookDeliveries.connectionId, conn.id))).toHaveLength(1);
+      const mirrorsBefore = await getDb().select().from(calendarEvents).where(eq(calendarEvents.connectionId, conn.id));
+      expect(mirrorsBefore).toHaveLength(1);
+      const swept = await sweepCalendarRetention(getDb(), new Date('2026-09-20T00:00:01.000Z'));
+      expect(swept.webhookDeliveries).toBe(1);
+      expect(await getDb().select().from(calendarWebhookDeliveries).where(eq(calendarWebhookDeliveries.connectionId, conn.id))).toHaveLength(0);
+      expect(await getDb().select().from(calendarEvents).where(eq(calendarEvents.connectionId, conn.id))).toHaveLength(1);
+    } finally {
+      svc.setCalendarProviderFactoryForTests(null);
+    }
+  });
+
+  maybe()('M8-i6 T6b: route bucket is token-scoped so one noisy channel cannot starve another', async () => {
+    const a = await seedConnection({ name: 'm8i6-fair-a' });
+    const b = await seedConnection({ name: 'm8i6-fair-b' });
+    const connA = await connectionIdOf(a.userId);
+    const connB = await connectionIdOf(b.userId);
+    const svc = await import('./calendar-connections');
+    const route = await import('../../app/api/v1/calendar/webhook/route');
+    const baseNow = Date.parse('2026-09-19T12:00:00.000Z');
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(baseNow);
+    svc.setCalendarProviderFactoryForTests((row) => (row?.id === connA.id ? a.provider : b.provider));
+    const req = (token: string, ip = '203.0.113.10') => new Request('http://localhost/api/v1/calendar/webhook', {
+      method: 'POST',
+      headers: { Origin: 'http://localhost', 'Content-Type': 'application/json', 'X-Forwarded-For': ip },
+      body: JSON.stringify({ channel: { token } }),
+    });
+    try {
+      for (let i = 0; i < 300; i += 1) {
+        expect((await route.POST(req(connA.id))).status).toBe(200);
+      }
+      const denied = await route.POST(req(connA.id));
+      expect(denied.status).toBe(429);
+      expect(denied.headers.get('Retry-After')).toBeTruthy();
+
+      // Same source IP, different connection/token: admitted and processed.
+      const bRes = await route.POST(req(connB.id));
+      expect(bRes.status).toBe(200);
+      expect(await bRes.json()).toMatchObject({ ok: true });
+
+      // The exhausted token is admitted after the window rolls over.
+      nowSpy.mockReturnValue(baseNow + 60_001);
+      expect((await route.POST(req(connA.id))).status).toBe(200);
+    } finally {
+      nowSpy.mockRestore();
+      svc.setCalendarProviderFactoryForTests(null);
+    }
+  });
+
+  maybe()('M8-i6 T6b: concurrent deliveries on independent buckets are admitted tenant-scoped', async () => {
+    const a = await seedConnection({ name: 'm8i6-concurrent-fair-a' });
+    const b = await seedConnection({ name: 'm8i6-concurrent-fair-b' });
+    const connA = await connectionIdOf(a.userId);
+    const connB = await connectionIdOf(b.userId);
+    a.provider.pushEvent({ externalId: 'fair-a-event', title: 'Fair A', startsAt: new Date(Date.now() + H).toISOString(), endsAt: new Date(Date.now() + 2 * H).toISOString() });
+    b.provider.pushEvent({ externalId: 'fair-b-event', title: 'Fair B', startsAt: new Date(Date.now() + H).toISOString(), endsAt: new Date(Date.now() + 2 * H).toISOString() });
+    const route = await import('../../app/api/v1/calendar/webhook/route');
+    const svc = await import('./calendar-connections');
+    const baseNow = Date.parse('2026-09-19T12:30:00.000Z');
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(baseNow);
+    svc.setCalendarProviderFactoryForTests((row) => (row?.id === connA.id ? a.provider : b.provider));
+    const req = (token: string) => new Request('http://localhost/api/v1/calendar/webhook', {
+      method: 'POST',
+      headers: { Origin: 'http://localhost', 'Content-Type': 'application/json', 'X-Forwarded-For': '203.0.113.42' },
+      body: JSON.stringify({ channel: { token } }),
+    });
+    try {
+      const [resA, resB] = await Promise.all([route.POST(req(connA.id)), route.POST(req(connB.id))]);
+      expect(resA.status).toBe(200);
+      expect(resB.status).toBe(200);
+      expect(await resA.json()).toMatchObject({ ok: true });
+      expect(await resB.json()).toMatchObject({ ok: true });
+      const start = new Date(Date.now() - H).toISOString();
+      const end = new Date(Date.now() + 24 * H).toISOString();
+      expect((await svc.listCalendarEvents(a.userId, start, end)).map((e) => e.title)).toEqual(['Fair A']);
+      expect((await svc.listCalendarEvents(b.userId, start, end)).map((e) => e.title)).toEqual(['Fair B']);
+    } finally {
+      nowSpy.mockRestore();
+      svc.setCalendarProviderFactoryForTests(null);
+    }
+  });
+
+  maybe()('M8-i6 T6b: missing-token traffic is IP-guarded and does not affect valid token buckets', async () => {
+    const seed = await seedConnection({ name: 'm8i6-invalid-guard' });
+    const conn = await connectionIdOf(seed.userId);
+    const route = await import('../../app/api/v1/calendar/webhook/route');
+    const svc = await import('./calendar-connections');
+    const ip = '203.0.113.99';
+    const baseNow = Date.parse('2026-09-19T13:00:00.000Z');
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(baseNow);
+    svc.setCalendarProviderFactoryForTests(() => seed.provider);
+    const missing = () => new Request('http://localhost/api/v1/calendar/webhook', {
+      method: 'POST',
+      headers: { Origin: 'http://localhost', 'Content-Type': 'application/json', 'X-Forwarded-For': ip },
+      body: JSON.stringify({ resource: 'ignored' }),
+    });
+    const valid = () => new Request('http://localhost/api/v1/calendar/webhook', {
+      method: 'POST',
+      headers: { Origin: 'http://localhost', 'Content-Type': 'application/json', 'X-Forwarded-For': ip },
+      body: JSON.stringify({ channel: { token: conn.id } }),
+    });
+    try {
+      for (let i = 0; i < 300; i += 1) {
+        const res = await route.POST(missing());
+        expect(res.status).toBe(200);
+        expect(await res.json()).toEqual({ ok: false, imported: 0 });
+      }
+      expect((await route.POST(missing())).status).toBe(429);
+      // Valid token traffic has an independent token bucket and still processes.
+      expect((await route.POST(valid())).status).toBe(200);
+      nowSpy.mockReturnValue(baseNow + 60_001);
+      expect((await route.POST(missing())).status).toBe(200);
+    } finally {
+      nowSpy.mockRestore();
+      svc.setCalendarProviderFactoryForTests(null);
+    }
   });
 
   // ------------------------------------------------------------------

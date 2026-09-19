@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
-import { and, asc, count, eq, gt, inArray, lte, sql } from 'drizzle-orm';
+import { and, asc, count, eq, gt, inArray, lte, or, sql } from 'drizzle-orm';
 import { AppError, limitsFor, notFound, type CalendarProvider, type CalendarTokenSet } from '@nextdoo/contracts';
-import { applyTaskDueChange, calendarConnections, calendarEvents, calendarMappings, calendarOauthStates, finalizeDisconnect, tasks, tokensChanged } from '@nextdoo/db';
+import { applyTaskDueChange, calendarConnections, calendarEvents, calendarMappings, calendarOauthStates, calendarWebhookDeliveries, finalizeDisconnect, tasks, tokensChanged } from '@nextdoo/db';
 import { getDb } from '../db';
 import { decryptSecret, encryptSecret } from '../crypto';
 import { getEnv } from '../env';
@@ -30,6 +30,8 @@ import { withWorkspaceTransaction } from './transactions';
  */
 
 const CALENDAR_TOKEN_PURPOSE = 'calendar_token';
+const WEBHOOK_DEDUPE_TTL_MS = 24 * 60 * 60_000;
+const WEBHOOK_PROCESSING_LEASE_MS = 5 * 60_000;
 /** Providers with a defined verified exchange; Outlook/CalDAV are deferred (PRD M6). */
 const CONNECTABLE_PROVIDERS = new Set(['google']);
 
@@ -575,20 +577,133 @@ export async function listCalendarEvents(userId: string, fromIso: string, toIso:
   }));
 }
 
+export interface CalendarWebhookOptions {
+  /** Provider notification id. Optional because the existing route accepted
+   * token-only fixture webhooks before M8-i6; token-only delivery keeps the
+   * old behavior and is not claimed as deduplicated. */
+  messageId?: string | null;
+  /** Injectable clock for deterministic replay/lease tests. */
+  now?: Date;
+}
+
+export interface CalendarWebhookResult {
+  ok: boolean;
+  imported: number;
+  duplicate?: boolean;
+}
+
+async function claimCalendarWebhookDelivery(
+  db: ReturnType<typeof getDb>,
+  connectionId: string,
+  messageId: string,
+  now: Date,
+): Promise<{ process: true } | { process: false; imported: number }> {
+  const leaseUntil = new Date(now.getTime() + WEBHOOK_PROCESSING_LEASE_MS);
+  const expiresAt = new Date(now.getTime() + WEBHOOK_DEDUPE_TTL_MS);
+  const inserted = await db
+    .insert(calendarWebhookDeliveries)
+    .values({ connectionId, messageId, status: 'PROCESSING', leaseUntil, expiresAt, updatedAt: now })
+    .onConflictDoNothing({ target: [calendarWebhookDeliveries.connectionId, calendarWebhookDeliveries.messageId] })
+    .returning({ messageId: calendarWebhookDeliveries.messageId });
+  if (inserted.length > 0) return { process: true };
+
+  const [existing] = await db
+    .select()
+    .from(calendarWebhookDeliveries)
+    .where(and(eq(calendarWebhookDeliveries.connectionId, connectionId), eq(calendarWebhookDeliveries.messageId, messageId)))
+    .limit(1);
+  if (!existing) return { process: true }; // deleted by retention between insert conflict and read; retry safely.
+  if (existing.status === 'SUCCEEDED' && existing.expiresAt.getTime() > now.getTime()) {
+    return { process: false, imported: existing.imported };
+  }
+  if (existing.status === 'PROCESSING' && existing.leaseUntil && existing.leaseUntil.getTime() > now.getTime()) {
+    return { process: false, imported: 0 };
+  }
+
+  // Failed or stale PROCESSING rows are deliberately recoverable: a provider
+  // retry after a genuine processing failure may claim and run again.
+  const reclaimed = await db
+    .update(calendarWebhookDeliveries)
+    .set({ status: 'PROCESSING', leaseUntil, lastError: null, updatedAt: now, expiresAt })
+    .where(and(
+      eq(calendarWebhookDeliveries.connectionId, connectionId),
+      eq(calendarWebhookDeliveries.messageId, messageId),
+      or(
+        eq(calendarWebhookDeliveries.status, 'FAILED'),
+        lte(calendarWebhookDeliveries.leaseUntil, now),
+        lte(calendarWebhookDeliveries.expiresAt, now),
+      ),
+    ))
+    .returning({ messageId: calendarWebhookDeliveries.messageId });
+  return reclaimed.length > 0 ? { process: true } : { process: false, imported: 0 };
+}
+
+async function finishCalendarWebhookDelivery(
+  db: ReturnType<typeof getDb>,
+  connectionId: string,
+  messageId: string,
+  outcome: { imported: number } | { error: unknown },
+  now: Date,
+): Promise<void> {
+  if ('error' in outcome) {
+    await db
+      .update(calendarWebhookDeliveries)
+      .set({
+        status: 'FAILED',
+        leaseUntil: null,
+        lastError: String(outcome.error).slice(0, 300),
+        updatedAt: now,
+      })
+      .where(and(eq(calendarWebhookDeliveries.connectionId, connectionId), eq(calendarWebhookDeliveries.messageId, messageId)));
+    return;
+  }
+  await db
+    .update(calendarWebhookDeliveries)
+    .set({
+      status: 'SUCCEEDED',
+      imported: outcome.imported,
+      processedAt: now,
+      leaseUntil: null,
+      lastError: null,
+      updatedAt: now,
+    })
+    .where(and(eq(calendarWebhookDeliveries.connectionId, connectionId), eq(calendarWebhookDeliveries.messageId, messageId)));
+}
+
 /**
  * Push-channel webhook (PRD §16.1). The channel token is the connection
  * id, which Google echoes back in `channel.token`; it triggers an
  * immediate import for that connection only.
+ *
+ * M8-i6 (T2): when the caller supplies a provider notification id, replay
+ * dedupe is scoped to `(connection_id, message_id)`. Successful deliveries
+ * are no-ops on redelivery; failed/stale processing rows are reclaimable so
+ * provider retries remain useful. No OAuth tokens or raw channel secrets are
+ * stored in the dedupe ledger.
  */
-export async function handleCalendarWebhook(channelToken: string): Promise<{ ok: boolean; imported: number }> {
+export async function handleCalendarWebhook(channelToken: string, options: CalendarWebhookOptions = {}): Promise<CalendarWebhookResult> {
   const db = getDb();
   const [row] = await db.select().from(calendarConnections).where(eq(calendarConnections.id, channelToken)).limit(1);
   if (!row || row.status !== 'ACTIVE') return { ok: false, imported: 0 };
   const provider = buildCalendarProvider(row);
   if (!provider) return { ok: false, imported: 0 };
+  const messageId = options.messageId?.trim() || null;
+  const now = options.now ?? new Date();
+  if (messageId) {
+    const claim = await claimCalendarWebhookDelivery(db, row.id, messageId, now);
+    if (!claim.process) return { ok: true, imported: 0, duplicate: true };
+  }
   const { runCalendarImport } = await import('@nextdoo/db');
-  const outcome = await runCalendarImport({ db, connectionId: row.id, provider });
-  return { ok: true, imported: outcome.imported };
+  try {
+    const outcome = await runCalendarImport({ db, connectionId: row.id, provider });
+    if (messageId) await finishCalendarWebhookDelivery(db, row.id, messageId, { imported: outcome.imported }, options.now ?? new Date());
+    const result: CalendarWebhookResult = { ok: true, imported: outcome.imported };
+    if (messageId) result.duplicate = false;
+    return result;
+  } catch (error) {
+    if (messageId) await finishCalendarWebhookDelivery(db, row.id, messageId, { error }, options.now ?? new Date());
+    throw error;
+  }
 }
 
 export type CalendarConflictAction = 'KEEP_TASK' | 'KEEP_CALENDAR' | 'UNLINK';

@@ -714,6 +714,33 @@ export const calendarEvents = pgTable(
   ],
 );
 
+/**
+ * M8-i6: provider webhook replay ledger. Message ids are scoped to the
+ * calendar connection; the raw channel token is not stored in this table.
+ */
+export const calendarWebhookDeliveries = pgTable(
+  'calendar_webhook_deliveries',
+  {
+    connectionId: uuid('connection_id').notNull().references(() => calendarConnections.id, { onDelete: 'cascade' }),
+    messageId: varchar('message_id', { length: 200 }).notNull(),
+    status: varchar('status', { length: 20 }).notNull().default('PROCESSING'),
+    imported: integer('imported').notNull().default(0),
+    firstReceivedAt: timestamp('first_received_at', { withTimezone: true }).notNull().defaultNow(),
+    processedAt: timestamp('processed_at', { withTimezone: true }),
+    leaseUntil: timestamp('lease_until', { withTimezone: true }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    lastError: varchar('last_error', { length: 300 }),
+    ...timestamps,
+  },
+  (t) => [
+    primaryKey({ columns: [t.connectionId, t.messageId] }),
+    index('calendar_webhook_deliveries_expiry_idx').on(t.expiresAt),
+    index('calendar_webhook_deliveries_processing_idx').on(t.status, t.leaseUntil),
+    check('calendar_webhook_deliveries_status_chk', sql`${t.status} IN ('PROCESSING','SUCCEEDED','FAILED')`),
+    check('calendar_webhook_deliveries_imported_nonnegative', sql`${t.imported} >= 0`),
+  ],
+);
+
 /** In-flight OAuth authorization (single-use; the PKCE verifier seam). */
 export const calendarOauthStates = pgTable(
   'calendar_oauth_states',

@@ -16,6 +16,7 @@ import {
   calendarEvents,
   calendarMappings,
   calendarOauthStates,
+  calendarWebhookDeliveries,
   notifications,
   outbox,
   syncChanges,
@@ -797,9 +798,15 @@ export async function finalizeDisconnect(db: Database, connectionId: string, pro
  * the retained mappings + event mirrors (PRD §16.5). Tasks and audit
  * rows are never touched here.
  */
-export async function sweepCalendarRetention(db: Database, now?: Date): Promise<{ states: number; mappings: number; events: number }> {
+export async function sweepCalendarRetention(db: Database, now?: Date): Promise<{ states: number; mappings: number; events: number; webhookDeliveries: number }> {
   const at = now ?? new Date();
   const states = await db.delete(calendarOauthStates).where(lte(calendarOauthStates.expiresAt, at)).returning({ id: calendarOauthStates.stateHash });
+  // M8-i6 (T2): replay-dedupe rows are short-lived provider-delivery
+  // evidence. They do not contain the channel token or event content.
+  const webhookDeliveries = (await db
+    .delete(calendarWebhookDeliveries)
+    .where(lte(calendarWebhookDeliveries.expiresAt, at))
+    .returning({ connectionId: calendarWebhookDeliveries.connectionId })).length;
   const stale = await db
     .select()
     .from(calendarConnections)
@@ -811,7 +818,7 @@ export async function sweepCalendarRetention(db: Database, now?: Date): Promise<
     mappings = (await db.delete(calendarMappings).where(inArray(calendarMappings.connectionId, staleIds)).returning({ id: calendarMappings.id })).length;
     events = (await db.delete(calendarEvents).where(inArray(calendarEvents.connectionId, staleIds)).returning({ id: calendarEvents.id })).length;
   }
-  return { states: states.length, mappings, events };
+  return { states: states.length, mappings, events, webhookDeliveries };
 }
 
 /**
@@ -868,7 +875,7 @@ export interface CalendarCycleResult {
   failed: number;
   /** M8-i4 (T1): connections whose refreshed/rotated tokens were re-sealed. */
   tokenUpdates: number;
-  retention: { states: number; mappings: number; events: number };
+  retention: { states: number; mappings: number; events: number; webhookDeliveries: number };
 }
 
 const CALENDAR_IMPORT_INTERVAL_MS = 10 * 60_000;
@@ -876,7 +883,7 @@ const CALENDAR_IMPORT_INTERVAL_MS = 10 * 60_000;
 export async function runCalendarSyncCycle(db: Database, deps: CalendarCycleDeps = {}): Promise<CalendarCycleResult> {
   const now = deps.now ?? new Date();
   const importInterval = deps.importIntervalMs ?? CALENDAR_IMPORT_INTERVAL_MS;
-  const result: CalendarCycleResult = { connections: 0, imported: 0, exported: 0, paused: 0, rateLimited: 0, failed: 0, tokenUpdates: 0, retention: { states: 0, mappings: 0, events: 0 } };
+  const result: CalendarCycleResult = { connections: 0, imported: 0, exported: 0, paused: 0, rateLimited: 0, failed: 0, tokenUpdates: 0, retention: { states: 0, mappings: 0, events: 0, webhookDeliveries: 0 } };
 
   const rows = await db
     .select()

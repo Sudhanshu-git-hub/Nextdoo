@@ -553,7 +553,7 @@ const syncCalendar: Job = {
     if (result.failed) logger.warn('calendar.sync.failed', { ...result });
     // M8-i4 (T6a): rate-limited cycles were previously invisible in the logs.
     if (result.rateLimited) logger.warn('calendar.sync.rate_limited', { ...result });
-    if (result.retention.states || result.retention.mappings || result.retention.events) {
+    if (result.retention.states || result.retention.mappings || result.retention.events || result.retention.webhookDeliveries) {
       logger.info('calendar.retention_swept', result.retention);
     }
     return { processed: result.connections, details: { ...result } };

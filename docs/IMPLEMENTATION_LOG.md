@@ -1720,3 +1720,58 @@ release-gate hardening candidate.
 
 Per directive, STOP after the review. No implementation, no live Google
 verification retry, no T3 channel-token hardening.
+## M8-i6 — Google Calendar webhook ingress replay/fairness hardening — 2026-09-19
+
+Implemented the approved M8-i6 scope from review commit `e6eab16` only: Calendar
+webhook redelivery/replay dedupe (T2) and token-scoped webhook bucket fairness
+(T6b). Milestone deliverable:
+[M8_i6_GOOGLE_CALENDAR_WEBHOOK_INGRESS_MILESTONE.md](M8_i6_GOOGLE_CALENDAR_WEBHOOK_INGRESS_MILESTONE.md).
+The review source was updated with as-built results:
+[M8_i6_REMAINING_HARDENING_REVIEW.md](M8_i6_REMAINING_HARDENING_REVIEW.md).
+
+T2 as built: `calendar_webhook_deliveries` is a small durable ledger keyed by
+`(connection_id, message_id)` with `PROCESSING`/`SUCCEEDED`/`FAILED`, a 5-minute
+processing lease and a 24-hour TTL. `handleCalendarWebhook(token, { messageId })`
+claims the ledger before import; successful duplicates return `duplicate: true`
+and make zero provider calls; failed/stale rows are reclaimable so legitimate
+provider retries after processing failure still recover. Absent message id keeps
+the previous token-only behavior.
+
+T6b as built: `POST /api/v1/calendar/webhook` now rate-limits after safe parsing:
+per-token `300/minute` buckets for well-formed channel tokens, an IP-level
+`300/minute` invalid/missing-body guard, and a higher global IP safety bucket
+checked after token admission. Bucket keys hash the channel token, and route logs
+continue to avoid token/body material. Endpoint path and 200/no-op behavior for
+unknown well-formed tokens remain compatible.
+
+Schema/code changes: migration `0024_calendar_webhook_deliveries.sql`; schema
+export `calendarWebhookDeliveries`; Calendar retention now purges expired webhook
+ledger rows and reports `webhookDeliveries`; worker Calendar retention logging
+includes the new counter. No T3 dedicated channel-token column, no live Google
+verification, no provider abstraction, no Calendar UI/product feature.
+
+Deterministic tests added in `calendar-sync.integration.test.ts` cover first
+webhook delivery, exact and repeated duplicates, duplicate after success,
+retry-after-failure recovery, same message id across connections, distinct
+messages on one connection, tenant isolation, concurrent duplicate safety,
+retention purge, exhausted one-token bucket, unrelated token admission from the
+same IP, window rollover, and invalid/missing-token IP guarding.
+
+Local validation: `db:migrate` applied `0024` and two follow-up migration runs
+were already up to date; targeted Calendar sync/webhook integration **31 passed**;
+targeted worker Calendar integration **20 passed**; full unit/integration suite
+**79 files / 900 tests passed** before the final concurrent-fairness regression;
+final coverage gate **79 files / 901 tests passed**
+with summary 89.2% statements / 81.77% branches / 92.27% functions / 93.14%
+lines; lint clean; typecheck **7/7 packages**; production build clean. Local
+Playwright E2E was attempted but browser-launch tests were blocked by missing
+Chromium binaries; installing Chromium from `cdn.playwright.dev` failed in the
+sandbox with `ECONNRESET`, so full E2E must be verified by GitHub CI where the
+workflow installs browsers.
+
+Calendar invariants/security: dedupe remains connection-scoped, tenant isolation
+is covered by tests, polling fallback/import/export behavior and connection state
+transitions are preserved, unknown/inactive tokens remain inert no-op, and no raw
+OAuth/channel token material is stored or logged. Live Google remains externally
+blocked for the M8-i5 reasons. Per directive, STOP after M8-i6; do not start
+M8-i7.
