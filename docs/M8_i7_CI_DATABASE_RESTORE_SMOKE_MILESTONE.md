@@ -187,7 +187,13 @@ Local limitations:
 
 ## 7. CI evidence
 
-To be filled after the implementation is pushed and GitHub Actions completes on this branch.
+First implementation push CI succeeded:
+
+| Run | Event | Commit | Result | Evidence |
+| --- | --- | --- | --- | --- |
+| `35464236805` | `push` | `919faf3a0b65f6e2bceb03969cbed09fc6034d1c` | SUCCESS | Job `verify` (`105953402824`) completed in ~9m08s. Steps succeeded: ClamAV install + EICAR, `pnpm audit`, `pnpm db:migrate && pnpm db:migrate`, `pnpm lint`, `pnpm typecheck`, `pnpm test:coverage`, `pnpm build`, PostgreSQL client install, `Smoke PostgreSQL backup restore and post-restore migration`, full Playwright E2E, artifact upload. |
+
+The new restore-smoke step was green in the authoritative CI path. Because the script fails on any dump, restore, migration, ledger/checksum, data-integrity, sequence, health, authenticated-read, or cleanup error, the step success is the CI evidence that the full backup → restore → migration → application smoke passed.
 
 ## 8. Remaining release-gate gaps
 

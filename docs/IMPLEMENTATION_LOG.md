@@ -1877,8 +1877,13 @@ without `DATABASE_URL` failed on the existing database-backed suites, as expecte
 GitHub CI provides PostgreSQL and is the authoritative full-suite/restore-smoke
 validation environment.
 
-CI evidence: pending first implementation push. Production PITR, encrypted daily
-backups, separate backup IAM/credentials, monthly restore evidence, quarterly DR
-exercise, measured RTO/RPO, regional failover, attachment/object-store restore,
-backup deletion-window semantics, status page/on-call/SLO and pen-test evidence
-remain external release-gate gaps. STOP after M8-i7; M8-i8 not started.
+CI evidence: first implementation push run `35464236805` on commit
+`919faf3a0b65f6e2bceb03969cbed09fc6034d1c` succeeded (job `verify`
+`105953402824`, ~9m08s). The new `Smoke PostgreSQL backup restore and
+post-restore migration` step was green after build and before full Playwright E2E;
+ClamAV/EICAR, audit, migration replay, lint, typecheck, coverage, build, E2E and
+artifact upload also succeeded. Production PITR, encrypted daily backups, separate
+backup IAM/credentials, monthly restore evidence, quarterly DR exercise, measured
+RTO/RPO, regional failover, attachment/object-store restore, backup deletion-window
+semantics, status page/on-call/SLO and pen-test evidence remain external
+release-gate gaps. STOP after M8-i7; M8-i8 not started.

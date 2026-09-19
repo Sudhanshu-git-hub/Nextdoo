@@ -116,7 +116,7 @@ Local environment limitations:
 - `pnpm db:restore-smoke` requires a live PostgreSQL server plus `pg_dump`/`pg_restore`. The sandbox had neither, and `sudo apt-get install postgresql postgresql-client` could not use Debian package indexes (`Connection failed` / package not found). A local dry attempt reached source DB creation and failed with `ECONNREFUSED`, as expected without the service.
 - `pnpm test:coverage` without `DATABASE_URL` fails on the existing database-backed integration suites that intentionally require PostgreSQL. GitHub CI provides that service and remains authoritative for full coverage/migration/restore/E2E verification.
 
-CI run IDs/results will be appended after the implementation push completes.
+Implementation push CI succeeded: run `35464236805` (`push`) on commit `919faf3a0b65f6e2bceb03969cbed09fc6034d1c`, job `verify` / `105953402824`, result SUCCESS. The new `Smoke PostgreSQL backup restore and post-restore migration` step passed, followed by full Playwright E2E and artifact upload.
 
 ## 8. Remaining external / deployment-blocked work
 
