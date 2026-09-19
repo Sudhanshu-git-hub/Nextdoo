@@ -19,7 +19,8 @@
     "dev:worker": "pnpm --filter @nextdoo/worker start",
     "test:unit": "vitest run packages/core scripts",
     "test:coverage": "vitest run --coverage",
-    "verify": "pnpm lint && pnpm typecheck && pnpm test:coverage && pnpm build && pnpm test:e2e"
+    "verify": "pnpm lint && pnpm typecheck && pnpm test:coverage && pnpm build && pnpm test:e2e",
+    "db:restore-smoke": "pnpm --filter @nextdoo/db exec tsx ../../scripts/db-restore-smoke.mts"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",

@@ -1821,3 +1821,64 @@ failover/cutover, attachment/object-store restore, deletion propagation through
 backup windows, SLO dashboards/status page/on-call, and GA production readiness.
 Per directive, STOP after this review; do not implement M8-i7 until separately
 authorized.
+
+## M8-i7 — CI database restore smoke coverage implementation — 2026-09-20
+
+Implemented the bounded Option (b) approved in
+[M8_i7_CI_DATABASE_RESTORE_SMOKE_REVIEW.md](M8_i7_CI_DATABASE_RESTORE_SMOKE_REVIEW.md)
+at baseline `94062ed`: CI-local PostgreSQL backup → restore → post-restore
+migration → application smoke. M8-i6 remains closed; Calendar webhook
+replay/fairness behavior was not reopened or modified; live Google verification
+was not retried. Milestone deliverable:
+[M8_i7_CI_DATABASE_RESTORE_SMOKE_MILESTONE.md](M8_i7_CI_DATABASE_RESTORE_SMOKE_MILESTONE.md).
+
+What shipped:
+
+- New `scripts/db-restore-smoke.mts` plus root `pnpm db:restore-smoke` command.
+- The script creates disposable source and target databases, applies every
+  checked-in migration except the latest to the source, seeds deterministic
+  non-secret representative data, runs real `pg_dump -Fc`, restores with real
+  `pg_restore`, runs the normal `pnpm --filter @nextdoo/db migrate` command on
+  the restored target, verifies an idempotent rerun, checks migration ledger
+  count/checksums, deterministic row counts/fingerprints, uniqueness, FK
+  enforcement, sequence continuity, and the latest-migration Calendar webhook
+  table.
+- The script starts the already-built production Next app using the CI production
+  start convention (`pnpm exec next start -H 0.0.0.0 -p 3100`) against the
+  restored database, requires `/api/v1/health` with database `ok`, and performs
+  an authenticated `/api/v1/me` read of the restored synthetic profile.
+- `.github/workflows/quality.yml` now installs PostgreSQL client tools and runs
+  `pnpm db:restore-smoke` after `pnpm build` and before the full Playwright E2E
+  suite, making the restore smoke part of the authoritative push/PR gate.
+
+The migration boundary at implementation time is source through `0023`, restored
+post-migration applies `0024_calendar_webhook_deliveries.sql`, then the second
+normal migration run must report `Already up to date`. Seeded domains include
+user/session/workspace/account data, projects/sections/tasks/tags, sync/audit/
+outbox/tracking rows, and representative Calendar connection/event/mapping data.
+All data is synthetic (`restore-smoke@example.test`, fixed test UUIDs,
+placeholder hashes) and the dump is temporary, not uploaded.
+
+Security/cleanup: PostgreSQL tool passwords are passed via `PGPASSWORD`, command
+arguments are redacted in smoke logs, no connection URL passwords or secret values
+are logged, source/target DB names are controlled quoted identifiers, the built app
+process is killed after smoke, source/target databases are dropped best-effort with
+`WITH (FORCE)`, and temp dump/migration directories are removed in `finally`.
+
+Local validation before first push: `pnpm install --frozen-lockfile` passed;
+script NodeNext compile check passed; `pnpm lint` passed; `pnpm typecheck` passed
+(7 packages); `pnpm build` passed; `pnpm test:unit` passed (10 files / 227 tests).
+Local full restore smoke could not complete because this sandbox has no live
+PostgreSQL service and no installable PostgreSQL client/server packages — Debian
+package indexes were unreachable, so `postgresql`/`postgresql-client` could not be
+installed; a dry smoke attempt reached source DB creation and failed with the
+expected `ECONNREFUSED`. Local `pnpm test:coverage`/migration integration tests
+without `DATABASE_URL` failed on the existing database-backed suites, as expected;
+GitHub CI provides PostgreSQL and is the authoritative full-suite/restore-smoke
+validation environment.
+
+CI evidence: pending first implementation push. Production PITR, encrypted daily
+backups, separate backup IAM/credentials, monthly restore evidence, quarterly DR
+exercise, measured RTO/RPO, regional failover, attachment/object-store restore,
+backup deletion-window semantics, status page/on-call/SLO and pen-test evidence
+remain external release-gate gaps. STOP after M8-i7; M8-i8 not started.

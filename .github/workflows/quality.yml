@@ -82,6 +82,14 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test:coverage
       - run: pnpm build
+      - name: Install PostgreSQL client tools for restore smoke
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-client
+          pg_dump --version
+          pg_restore --version
+      - name: Smoke PostgreSQL backup restore and post-restore migration
+        run: pnpm db:restore-smoke
       # --retries=2: one non-deterministic browser test (task-virtualization
       # focus-pinning, M4) intermittently fails on slow CI runners while
       # passing in every local run and on at least one full CI run of each
