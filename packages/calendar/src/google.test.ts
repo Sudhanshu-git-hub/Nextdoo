@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { CalendarAuthError, CalendarRateLimited } from '@nextdoo/contracts';
+import { CalendarAuthError, CalendarRateLimited, CalendarSyncTokenInvalid } from '@nextdoo/contracts';
 import { createGoogleCalendar, toDto } from './google';
 import { FixtureCalendarProvider } from './fixture';
 
@@ -486,5 +486,86 @@ describe('FixtureCalendarProvider — recurring series (M7-i2)', () => {
     // The next sync re-reports the same single series-level deletion.
     const again = await provider.listChanges({ syncToken: changes.nextSyncToken, timeMin: '2026-09-01T00:00:00.000Z' });
     expect(again.deletedExternalIds).toEqual(['series-1']);
+  });
+});
+
+describe('createGoogleCalendar — M8-i4 (T4 Retry-After forms, T5 invalid sync token)', () => {
+  function rateLimitedProvider(responder: () => { status: number; headers?: Record<string, string>; body: string }) {
+    const w = wire();
+    w.setResponder(() => responder());
+    const provider = createGoogleCalendar({ clientId: 'c', clientSecret: 's', redirectUri: 'r', transport: w.transport, now, initialTokens: { accessToken: 'at', refreshToken: 'rt', expiresAt: '2026-09-13T00:00:00.000Z', scopes: null } });
+    return { provider, w };
+  }
+
+  it('parses the delta-seconds Retry-After form (429 and 403)', async () => {
+    const { provider } = rateLimitedProvider(() => ({ status: 429, headers: { 'retry-after': '90' }, body: '{}' }));
+    const e429 = await provider.listChanges({ syncToken: null, timeMin: '2026-09-11T00:00:00.000Z' }).catch((e) => e);
+    expect(e429).toBeInstanceOf(CalendarRateLimited);
+    expect((e429 as CalendarRateLimited).retryAfterSeconds).toBe(90);
+
+    const { provider: p2 } = rateLimitedProvider(() => ({ status: 403, headers: { 'retry-after': '2' }, body: '{}' }));
+    const e403 = await p2.listChanges({ syncToken: null, timeMin: '2026-09-11T00:00:00.000Z' }).catch((e) => e);
+    expect(e403).toBeInstanceOf(CalendarRateLimited);
+    expect((e403 as CalendarRateLimited).retryAfterSeconds).toBe(2);
+  });
+
+  it('treats Retry-After "0" as "retry immediately" (0 s), not the default', async () => {
+    const { provider } = rateLimitedProvider(() => ({ status: 429, headers: { 'retry-after': '0' }, body: '{}' }));
+    const err = await provider.listChanges({ syncToken: null, timeMin: '2026-09-11T00:00:00.000Z' }).catch((e) => e);
+    expect(err).toBeInstanceOf(CalendarRateLimited);
+    expect((err as CalendarRateLimited).retryAfterSeconds).toBe(0);
+  });
+
+  it('parses the HTTP-date Retry-After form against the injected clock', async () => {
+    // now = 2026-09-12T00:00:00Z; the date is 1h30m ahead → 5400 s.
+    const { provider } = rateLimitedProvider(() => ({ status: 429, headers: { 'retry-after': 'Sun, 12 Sep 2026 01:30:00 GMT' }, body: '{}' }));
+    const err = await provider.listChanges({ syncToken: null, timeMin: '2026-09-11T00:00:00.000Z' }).catch((e) => e);
+    expect(err).toBeInstanceOf(CalendarRateLimited);
+    expect((err as CalendarRateLimited).retryAfterSeconds).toBe(5400);
+
+    // A past HTTP date clamps to 0 (retry immediately), never negative.
+    const { provider: p2 } = rateLimitedProvider(() => ({ status: 429, headers: { 'retry-after': 'Sat, 11 Sep 2026 00:00:00 GMT' }, body: '{}' }));
+    const err2 = await p2.listChanges({ syncToken: null, timeMin: '2026-09-11T00:00:00.000Z' }).catch((e) => e);
+    expect((err2 as CalendarRateLimited).retryAfterSeconds).toBe(0);
+  });
+
+  it('defaults to 60 s when Retry-After is absent or unusable', async () => {
+    const { provider } = rateLimitedProvider(() => ({ status: 429, body: '{}' }));
+    const err = await provider.listChanges({ syncToken: null, timeMin: '2026-09-11T00:00:00.000Z' }).catch((e) => e);
+    expect((err as CalendarRateLimited).retryAfterSeconds).toBe(60);
+
+    const { provider: p2 } = rateLimitedProvider(() => ({ status: 429, headers: { 'retry-after': 'not-a-date-or-number' }, body: '{}' }));
+    const err2 = await p2.listChanges({ syncToken: null, timeMin: '2026-09-11T00:00:00.000Z' }).catch((e) => e);
+    expect((err2 as CalendarRateLimited).retryAfterSeconds).toBe(60);
+  });
+
+  it('maps 400 + invalid-syncToken body to CalendarSyncTokenInvalid (T5 detection)', async () => {
+    const { provider } = rateLimitedProvider(() => ({ status: 400, body: '{"error":{"code":400,"message":"Invalid value at \'syncToken\'"}}' }));
+    const err = await provider.listChanges({ syncToken: 'tok-stale', timeMin: '2026-09-11T00:00:00.000Z' }).catch((e) => e);
+    expect(err).toBeInstanceOf(CalendarSyncTokenInvalid);
+    expect(err).not.toBeInstanceOf(CalendarAuthError);
+  });
+
+  it('does NOT treat a generic 400 as a sync-token reset', async () => {
+    const { provider } = rateLimitedProvider(() => ({ status: 400, body: '{"error":"invalid_grant"}' }));
+    const err = await provider.listChanges({ syncToken: 'tok-stale', timeMin: '2026-09-11T00:00:00.000Z' }).catch((e) => e);
+    expect(err).not.toBeInstanceOf(CalendarSyncTokenInvalid);
+    expect(err).toBeInstanceOf(Error);
+    expect(String((err as Error).message)).toContain('400');
+  });
+
+  it('FixtureCalendarProvider: invalidateSyncToken rejects the stored token and the full-window re-fetch issues a fresh one (T5 seam)', async () => {
+    const provider = new FixtureCalendarProvider({ tokens: { accessToken: 'fx-at', refreshToken: 'fx-rt', expiresAt: '2027-01-01T00:00:00.000Z', scopes: null } });
+    const first = await provider.listChanges({ syncToken: null, timeMin: '2026-09-11T00:00:00.000Z' });
+    const delivered = first.nextSyncToken;
+    // Google invalidates the stored (last-delivered) token — change-count lifetime.
+    provider.invalidateSyncToken();
+    await expect(provider.listChanges({ syncToken: delivered, timeMin: '2026-09-11T00:00:00.000Z' })).rejects.toBeInstanceOf(CalendarSyncTokenInvalid);
+    // The tokenless (full-window) call succeeds and delivers a FRESH token.
+    const recovered = await provider.listChanges({ syncToken: null, timeMin: '2026-09-11T00:00:00.000Z' });
+    expect(recovered.nextSyncToken).toBeTruthy();
+    expect(recovered.nextSyncToken).not.toBe(delivered);
+    // The recovered checkpoint is accepted on the next call (idempotent).
+    await expect(provider.listChanges({ syncToken: recovered.nextSyncToken, timeMin: '2026-09-11T00:00:00.000Z' })).resolves.toBeDefined();
   });
 });

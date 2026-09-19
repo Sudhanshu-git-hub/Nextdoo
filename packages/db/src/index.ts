@@ -16,6 +16,7 @@ export {
   runCalendarImport,
   runCalendarSyncCycle,
   sweepCalendarRetention,
+  tokensChanged,
   CALENDAR_EXPORT_HORIZON_DAYS,
   CALENDAR_SYNC_PAUSE_AFTER,
   CALENDAR_MAPPING_RETENTION_DAYS,

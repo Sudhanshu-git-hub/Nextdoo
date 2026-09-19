@@ -3,6 +3,7 @@ import { deriveExternalId } from './instance-key';
 import {
   CalendarAuthError,
   CalendarRateLimited,
+  CalendarSyncTokenInvalid,
   type CalendarAuthRequest,
   type CalendarAuthResult,
   type CalendarChangeSet,
@@ -93,15 +94,34 @@ export function createGoogleCalendar(options: GoogleOptions): CalendarProvider {
     return tokens;
   }
 
-  /** Paced request with 401 → auth error, 403/429 → rate-limited. */
+  /**
+   * M8-i4 (T4): parse a Retry-After header. Supports both the delta-seconds
+   * form and the HTTP-date form; defaults to 60 s when absent/unusable.
+   */
+  function parseRetryAfter(value: string | null): number {
+    if (value === null || value === '') return 60;
+    const seconds = Number(value);
+    if (Number.isFinite(seconds) && seconds >= 0) return Math.floor(seconds);
+    const dateMs = Date.parse(value);
+    if (!Number.isNaN(dateMs)) return Math.max(0, Math.ceil((dateMs - clock().getTime()) / 1000));
+    return 60;
+  }
+
+  /** Paced request with 401 → auth error, 403/429 → rate-limited, 400 + invalid sync token → sync-token error. */
   async function request(url: string, init: { method?: string; headers?: Record<string, string>; body?: string } = {}): Promise<{ status: number; headers: Record<string, string>; body: string }> {
     const res = await transport(url, init);
     if (res.status === 401) throw new CalendarAuthError('Calendar provider rejected the credentials.');
     if (res.status === 403 || res.status === 429) {
-      const retryAfter = Number(res.headers['retry-after'] ?? '') || 60;
-      throw new CalendarRateLimited(Number.isFinite(retryAfter) ? retryAfter : 60);
+      throw new CalendarRateLimited(parseRetryAfter(res.headers['retry-after'] ?? null));
     }
     if (res.status === 424) throw new CalendarRateLimited(60);
+    // M8-i4 (T5): Google answers events.list?syncToken=… with 400 when the
+    // stored incremental token is no longer valid (change-count lifetime,
+    // channel churn). The engine recovers by clearing the token and
+    // re-importing the bounded window instead of counting a generic failure.
+    if (res.status === 400 && /sync_?token/i.test(res.body)) {
+      throw new CalendarSyncTokenInvalid('Calendar provider rejected the stored sync token (400).');
+    }
     return res;
   }
 

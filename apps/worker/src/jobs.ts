@@ -1,12 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { deliverMail } from './mail-delivery';
 import { and, eq, isNotNull, isNull, lt, lte, sql as raw } from 'drizzle-orm';
-import { authTokens, auditLogs, idempotencyKeys, reminders, users, purgeAccount, deliverDueReminders, runRecurrenceGeneration, relayTrackingOutbox, reconcileTracking, runTrackingEvaluation, runTrackingBackfill, createDurableFileExportStore, expireExports, runExportGeneration, createDurableFileAttachmentStore, createClamavScanner, defaultClamavBin, runAttachmentScan, applyBillingDeadlines, reconcileBilling, runRetentionPurge, runCalendarSyncCycle, openSecret } from '@nextdoo/db';
+import { authTokens, auditLogs, calendarConnections, idempotencyKeys, reminders, users, purgeAccount, deliverDueReminders, runRecurrenceGeneration, relayTrackingOutbox, reconcileTracking, runTrackingEvaluation, runTrackingBackfill, createDurableFileExportStore, expireExports, runExportGeneration, createDurableFileAttachmentStore, createClamavScanner, defaultClamavBin, runAttachmentScan, applyBillingDeadlines, reconcileBilling, runRetentionPurge, runCalendarSyncCycle, openSecret, sealSecret } from '@nextdoo/db';
 import { buildBillingProviders } from '@nextdoo/billing';
 import { createGoogleCalendar } from '@nextdoo/calendar';
 import { createWebPushTransport } from './push-transport';
 import { deliverPushDeliveries } from '@nextdoo/db';
-import type { CalendarProvider } from '@nextdoo/contracts';
+import type { CalendarProvider, CalendarTokenSet } from '@nextdoo/contracts';
 import { db, logger, type Job, type JobResult } from './runtime';
 
 /**
@@ -477,31 +477,62 @@ const reconcileBillingJob: Job = {
  */
 const CALENDAR_TOKEN_PURPOSE = 'calendar_token';
 
+/**
+ * M8-i4 (T1): opens the connection's stored (sealed) token set, or null when
+ * there is nothing openable — including a tampered envelope, which the
+ * provider factory treats as "no tokens" so the engine pauses the connection
+ * with a reconnect prompt instead of syncing forever.
+ */
+export function openCalendarTokens(row: {
+  accessTokenEncrypted: string | null;
+  refreshTokenEncrypted?: string | null;
+  tokenExpiresAt?: Date | null;
+  scopes?: string | null;
+}): CalendarTokenSet | null {
+  const authSecret = process.env.AUTH_SECRET;
+  if (!authSecret || !row.accessTokenEncrypted) return null;
+  try {
+    return {
+      accessToken: openSecret(row.accessTokenEncrypted, authSecret, CALENDAR_TOKEN_PURPOSE),
+      refreshToken: row.refreshTokenEncrypted ? openSecret(row.refreshTokenEncrypted, authSecret, CALENDAR_TOKEN_PURPOSE) : null,
+      expiresAt: row.tokenExpiresAt ? row.tokenExpiresAt.toISOString() : null,
+      scopes: row.scopes ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function calendarProviderFor(row: { id: string; provider: string; status: string; accessTokenEncrypted: string | null; refreshTokenEncrypted?: string | null; tokenExpiresAt?: Date | null; scopes?: string | null }): CalendarProvider | null {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const authSecret = process.env.AUTH_SECRET;
   if (row.provider !== 'google') return null;
-  if (!clientId || !clientSecret || !authSecret) return null;
+  if (!clientId || !clientSecret || !process.env.AUTH_SECRET) return null;
   const appUrl = process.env.APP_URL ?? 'http://localhost:3000';
   const base = { clientId, clientSecret, redirectUri: `${appUrl}/api/v1/calendar/connections/google/callback` };
-  if (row.accessTokenEncrypted) {
-    try {
-      return createGoogleCalendar({
-        ...base,
-        initialTokens: {
-          accessToken: openSecret(row.accessTokenEncrypted, authSecret, CALENDAR_TOKEN_PURPOSE),
-          refreshToken: row.refreshTokenEncrypted ? openSecret(row.refreshTokenEncrypted, authSecret, CALENDAR_TOKEN_PURPOSE) : null,
-          expiresAt: row.tokenExpiresAt ? row.tokenExpiresAt.toISOString() : null,
-          scopes: row.scopes,
-        },
-      });
-    } catch {
-      // Tampered envelope: sync with no tokens so the engine pauses the
-      // connection with a reconnect prompt instead of syncing forever.
-    }
-  }
-  return createGoogleCalendar(base);
+  const tokens = openCalendarTokens(row);
+  return createGoogleCalendar(tokens ? { ...base, initialTokens: tokens } : base);
+}
+
+/**
+ * M8-i4 (T1): re-seals refreshed/rotated tokens (PRD §16.1 "access tokens
+ * refreshed on demand and cached until expiry") using the SAME
+ * envelope-encrypted mechanism as the OAuth callback — no plaintext at rest,
+ * no double encryption (sealSecret takes the plaintext and returns a fresh
+ * v1 envelope). Called by the cycle only when the token set actually changed.
+ */
+export async function sealCalendarTokens(row: { id: string }, tokens: CalendarTokenSet): Promise<void> {
+  const authSecret = process.env.AUTH_SECRET;
+  if (!authSecret) return;
+  await db
+    .update(calendarConnections)
+    .set({
+      accessTokenEncrypted: sealSecret(tokens.accessToken, authSecret, CALENDAR_TOKEN_PURPOSE),
+      refreshTokenEncrypted: tokens.refreshToken ? sealSecret(tokens.refreshToken, authSecret, CALENDAR_TOKEN_PURPOSE) : null,
+      tokenExpiresAt: tokens.expiresAt ? new Date(tokens.expiresAt) : null,
+      scopes: tokens.scopes ?? raw`${calendarConnections.scopes}`,
+    })
+    .where(eq(calendarConnections.id, row.id));
 }
 
 const syncCalendar: Job = {
@@ -512,9 +543,16 @@ const syncCalendar: Job = {
     const result = await runCalendarSyncCycle(db, {
       providerFor: calendarProviderFor,
       webhookTarget: `${appUrl}/api/v1/calendar/webhook`,
+      // M8-i4 (T1): the re-seal seam — the engine detects a refresh/rotation
+      // against the opened baseline and persists it back through the same
+      // envelope mechanism the callback used.
+      tokensFor: openCalendarTokens,
+      sealTokens: sealCalendarTokens,
     });
     if (result.paused) logger.warn('calendar.sync.paused', { ...result });
     if (result.failed) logger.warn('calendar.sync.failed', { ...result });
+    // M8-i4 (T6a): rate-limited cycles were previously invisible in the logs.
+    if (result.rateLimited) logger.warn('calendar.sync.rate_limited', { ...result });
     if (result.retention.states || result.retention.mappings || result.retention.events) {
       logger.info('calendar.retention_swept', result.retention);
     }

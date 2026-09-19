@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, eq, gte, inArray, isNull, like, lte, ne, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNull, like, lt, lte, ne, or, sql } from 'drizzle-orm';
 import {
   CalendarAuthError,
   CalendarRateLimited,
+  CalendarSyncTokenInvalid,
   CALENDAR_INSTANCE_KEY_SEPARATOR,
+  type CalendarChangeSet,
   type CalendarProvider,
   type CalendarTokenSet,
 } from '@nextdoo/contracts';
@@ -61,6 +63,8 @@ export interface CalendarSyncOutcome {
   rateLimitedSeconds: number | null;
   /** Refreshed tokens the caller must re-seal (PRD §16.1 rotation). */
   tokens: CalendarTokenSet | null;
+  /** M8-i4 (T5): the stored sync token was invalid; cleared and re-imported. */
+  syncTokenReset: boolean;
 }
 
 const NOOP: CalendarSyncOutcome = {
@@ -75,7 +79,23 @@ const NOOP: CalendarSyncOutcome = {
   paused: null,
   rateLimitedSeconds: null,
   tokens: null,
+  syncTokenReset: false,
 };
+
+/**
+ * M8-i4 (T1): true when the provider's current token set differs from the one
+ * the pass started with — i.e. a refresh (new access token/expiry) or a
+ * rotation (new refresh token) occurred and must be re-sealed.
+ */
+export function tokensChanged(initial: CalendarTokenSet | null, next: CalendarTokenSet): boolean {
+  if (!initial) return true;
+  return (
+    initial.accessToken !== next.accessToken ||
+    (initial.refreshToken ?? null) !== (next.refreshToken ?? null) ||
+    (initial.expiresAt ?? null) !== (next.expiresAt ?? null) ||
+    (initial.scopes ?? null) !== (next.scopes ?? null)
+  );
+}
 
 export interface SyncContext {
   db: Database;
@@ -83,6 +103,12 @@ export interface SyncContext {
   provider: CalendarProvider;
   /** Injectable clock for deterministic tests. */
   now?: Date;
+  /**
+   * M8-i4 (T1): the token set the provider was opened with (decrypted from
+   * the connection row). Lets the caller detect a refresh/rotation and
+   * re-seal — without the engine ever touching plaintext token material.
+   */
+  initialTokens?: CalendarTokenSet | null;
 }
 
 /** The transaction handle the workspace transaction hands to callbacks. */
@@ -109,13 +135,28 @@ async function ensureTokens(ctx: SyncContext, outcome: CalendarSyncOutcome): Pro
       return false;
     }
     // Rate-limited on the token op itself: skip the pass (PRD §16.1),
-    // never count it as a failure.
+    // never count it as a failure; schedule the backoff across cycles (T4).
     if (error instanceof CalendarRateLimited) {
       outcome.rateLimitedSeconds = error.retryAfterSeconds;
+      await recordRateLimit(ctx, error.retryAfterSeconds);
       return false;
     }
     throw error;
   }
+}
+
+/**
+ * M8-i4 (T4): persist the 429/403 backoff so subsequent worker cycles make
+ * zero provider calls for this connection until `now + retryAfter` (PRD
+ * §16.1 "respect 403/429 backoff" across cycles). A rate limit is a skip,
+ * never a generic failure — this write must not touch consecutive_failures.
+ */
+async function recordRateLimit(ctx: SyncContext, retryAfterSeconds: number): Promise<void> {
+  const until = new Date((ctx.now ?? new Date()).getTime() + retryAfterSeconds * 1000);
+  await ctx.db
+    .update(calendarConnections)
+    .set({ rateLimitedUntil: until })
+    .where(and(eq(calendarConnections.id, ctx.connectionId), or(lt(calendarConnections.rateLimitedUntil, until), isNull(calendarConnections.rateLimitedUntil))));
 }
 
 function tokensIfRefreshed(ctx: SyncContext): CalendarTokenSet | null {
@@ -251,18 +292,30 @@ export async function runCalendarImport(ctx: SyncContext): Promise<CalendarSyncO
   if (!conn) return outcome;
   if (!(await ensureTokens(ctx, outcome))) return outcome;
 
-  const changes = await ctx.provider
-    .listChanges({
-      syncToken: conn.syncToken,
-      timeMin: new Date(now.getTime() - 86_400_000).toISOString(),
-    })
-    .catch((error: unknown) => {
-      if (error instanceof CalendarRateLimited) {
-        outcome.rateLimitedSeconds = error.retryAfterSeconds;
-        return null;
-      }
+  // M8-i4 (T5): when Google invalidates the stored incremental sync token
+  // (change-count lifetime, channel churn) the provider answers with
+  // CalendarSyncTokenInvalid. Recover inside the pass instead of counting a
+  // generic failure: clear the token, re-import the bounded 24 h window, and
+  // adopt the fresh checkpoint below. Idempotent — the upserts and the
+  // mapping/conflict logic are unchanged, and a second invalid token in the
+  // same pass is impossible (the retry carries no token).
+  const timeMin = new Date(now.getTime() - 86_400_000).toISOString();
+  let changes: CalendarChangeSet | null;
+  try {
+    changes = await ctx.provider.listChanges({ syncToken: conn.syncToken, timeMin });
+  } catch (error) {
+    if (error instanceof CalendarRateLimited) {
+      outcome.rateLimitedSeconds = error.retryAfterSeconds;
+      await recordRateLimit(ctx, error.retryAfterSeconds);
+      return outcome;
+    }
+    if (error instanceof CalendarSyncTokenInvalid) {
+      changes = await ctx.provider.listChanges({ syncToken: null, timeMin });
+      outcome.syncTokenReset = true;
+    } else {
       throw error;
-    });
+    }
+  }
   if (changes === null) return outcome;
 
   await db.transaction(async (tx) => {
@@ -442,10 +495,25 @@ export async function runCalendarImport(ctx: SyncContext): Promise<CalendarSyncO
       }
     }
 
-    // 4) Advance the sync checkpoint.
+    // 3c) M8-i4 (T5): the invalid-token recovery is a structured event, not
+    // a failure — audit it in the same transaction as the re-import.
+    if (outcome.syncTokenReset) {
+      await tx.insert(auditLogs).values({
+        id: randomUUID(),
+        workspaceId: conn.workspaceId,
+        actorId: null,
+        action: 'calendar.sync_token_reset',
+        targetType: 'calendar_connection',
+        targetId: conn.id,
+        metadata: { reason: 'invalid_sync_token', reimported: changes.events.length },
+      });
+    }
+
+    // 4) Advance the sync checkpoint. After a T5 reset the stale token is
+    // never re-adopted: fall back to NULL (full window next pass) instead.
     await tx
       .update(calendarConnections)
-      .set({ syncToken: changes.nextSyncToken ?? conn.syncToken, lastSyncedAt: now, updatedAt: now })
+      .set({ syncToken: changes.nextSyncToken ?? (outcome.syncTokenReset ? null : conn.syncToken), lastSyncedAt: now, updatedAt: now })
       .where(eq(calendarConnections.id, conn.id));
   });
 
@@ -596,6 +664,7 @@ export async function runCalendarExport(ctx: SyncContext): Promise<CalendarSyncO
     } catch (error) {
       if (error instanceof CalendarRateLimited) {
         outcome.rateLimitedSeconds = error.retryAfterSeconds;
+        await recordRateLimit(ctx, error.retryAfterSeconds);
         return outcome;
       }
       if (error instanceof CalendarAuthError) {
@@ -636,6 +705,7 @@ export async function runCalendarExport(ctx: SyncContext): Promise<CalendarSyncO
     } catch (error) {
       if (error instanceof CalendarRateLimited) {
         outcome.rateLimitedSeconds = error.retryAfterSeconds;
+        await recordRateLimit(ctx, error.retryAfterSeconds);
         break;
       }
       if (error instanceof CalendarAuthError) {
@@ -770,6 +840,23 @@ export interface CalendarCycleDeps {
   now?: Date;
   /** Import cadence in ms (default 10 minutes, PRD §16.1). */
   importIntervalMs?: number;
+  /**
+   * M8-i4 (T1): opens the stored (encrypted) token set for a row, so the
+   * cycle can detect a refresh/rotation and re-seal. The engine never sees
+   * or stores plaintext itself — this is the same seam `providerFor` opens.
+   */
+  tokensFor?: (row: {
+    id: string;
+    accessTokenEncrypted: string | null;
+    refreshTokenEncrypted: string | null;
+    tokenExpiresAt: Date | null;
+    scopes: string | null;
+  }) => CalendarTokenSet | null;
+  /**
+   * M8-i4 (T1): persists a refreshed/rotated token set (re-sealed with the
+   * existing encrypted-token mechanism) back onto the connection row.
+   */
+  sealTokens?: (row: { id: string }, tokens: CalendarTokenSet) => Promise<void>;
 }
 
 export interface CalendarCycleResult {
@@ -779,6 +866,8 @@ export interface CalendarCycleResult {
   paused: number;
   rateLimited: number;
   failed: number;
+  /** M8-i4 (T1): connections whose refreshed/rotated tokens were re-sealed. */
+  tokenUpdates: number;
   retention: { states: number; mappings: number; events: number };
 }
 
@@ -787,7 +876,7 @@ const CALENDAR_IMPORT_INTERVAL_MS = 10 * 60_000;
 export async function runCalendarSyncCycle(db: Database, deps: CalendarCycleDeps = {}): Promise<CalendarCycleResult> {
   const now = deps.now ?? new Date();
   const importInterval = deps.importIntervalMs ?? CALENDAR_IMPORT_INTERVAL_MS;
-  const result: CalendarCycleResult = { connections: 0, imported: 0, exported: 0, paused: 0, rateLimited: 0, failed: 0, retention: { states: 0, mappings: 0, events: 0 } };
+  const result: CalendarCycleResult = { connections: 0, imported: 0, exported: 0, paused: 0, rateLimited: 0, failed: 0, tokenUpdates: 0, retention: { states: 0, mappings: 0, events: 0 } };
 
   const rows = await db
     .select()
@@ -796,9 +885,23 @@ export async function runCalendarSyncCycle(db: Database, deps: CalendarCycleDeps
 
   for (const row of rows) {
     result.connections += 1;
+    // M8-i4 (T4): inside a stored 429/403 backoff window the cycle makes
+    // ZERO provider calls for this connection — no export, no import, no
+    // channel renewal. A rate limit is a skip: no failure counts, no pause.
+    if (row.rateLimitedUntil && row.rateLimitedUntil.getTime() > now.getTime()) {
+      result.rateLimited += 1;
+      continue;
+    }
     const provider = deps.providerFor ? deps.providerFor(row) : null;
     if (!provider) continue; // provider unconfigured for this deployment
-    const ctx: SyncContext = { db, connectionId: row.id, provider, now };
+    if (row.rateLimitedUntil) {
+      // Window expired: clear the marker before the pass runs again.
+      await db
+        .update(calendarConnections)
+        .set({ rateLimitedUntil: null })
+        .where(eq(calendarConnections.id, row.id));
+    }
+    const ctx: SyncContext = { db, connectionId: row.id, provider, now, initialTokens: deps.tokensFor ? deps.tokensFor(row) : undefined };
     let paused = false;
     let failed = false;
     try {
@@ -821,6 +924,21 @@ export async function runCalendarSyncCycle(db: Database, deps: CalendarCycleDeps
       // 3) Renew the push channel before it lapses (best effort).
       if (deps.webhookTarget) {
         await renewCalendarChannel(ctx, deps.webhookTarget);
+      }
+
+      // 4) M8-i4 (T1): persist refreshed/rotated tokens (PRD §16.1 "access
+      // tokens refreshed on demand and cached until expiry"). Comparing
+      // against `initialTokens` (opened by the caller's `tokensFor`) means
+      // an unchanged token set causes no write at all; the seal itself is
+      // the caller's encrypted-token mechanism — the engine never handles
+      // plaintext sealing. Covers refreshes from export, import AND the
+      // channel-renewal call above (same in-memory provider).
+      if (deps.sealTokens && ctx.initialTokens) {
+        const current = tokensIfRefreshed(ctx);
+        if (current && tokensChanged(ctx.initialTokens, current)) {
+          await deps.sealTokens(row, current);
+          result.tokenUpdates += 1;
+        }
       }
 
       if (!paused) {

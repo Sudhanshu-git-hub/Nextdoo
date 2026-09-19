@@ -1559,3 +1559,91 @@ CLOSED (`be02566`), M8-i3 review CLOSED (`5c8eede`), M8-i3
 implementation CLOSED (`9fe6514`). Per directive, STOP after M8-i3 —
 M8-i4 (next: Google Calendar two-way sync reliability hardening, or a
 §7.9 "sounds" surface review) is NOT started.
+
+## M8-i4 — Google Calendar two-way sync reliability hardening — 2026-09-19
+
+Review closed at `267a80c`
+([M8_i4_GOOGLE_CALENDAR_HARDENING_REVIEW.md](M8_i4_GOOGLE_CALENDAR_HARDENING_REVIEW.md),
+CI-verified); this entry records the approved implementation (T1 → T5 → T4 →
+T6a, one migration). Deliverable:
+[M8_i4_GOOGLE_CALENDAR_HARDENING_MILESTONE.md](M8_i4_GOOGLE_CALENDAR_HARDENING_MILESTONE.md).
+The review doc's new §9 records the as-built deltas.
+
+What shipped:
+
+- **T1 — refreshed/rotated tokens are persisted and reused (class-1
+  defect closed).** The sync cycle takes a `tokensFor(row)` opener and a
+  `sealTokens(row, tokens)` persister; after export + import + channel
+  renewal it compares `provider.currentTokens()` with the opened baseline
+  (new exported `tokensChanged` — access token, refresh token, expiry and
+  scopes) and re-seals only on a real change (`CalendarCycleResult` gains
+  `tokenUpdates`). Worker: new `openCalendarTokens` (null on missing
+  secret / no token / tampered envelope — the existing
+  "tampered → tokenless provider → pause" fall-through is preserved) and
+  `sealCalendarTokens` (both envelopes via `sealSecret`, `token_expires_at`
+  advanced, `scopes` kept via column self-reference). Web:
+  `calendarProviderTokens` becomes the single decrypt source and
+  `syncConnectionNow` re-seals a changed set through `encryptSecret`.
+  Before this change the worker re-opened the pre-refresh credentials
+  every 60 s and a rotated refresh token was lost; now the next cycle
+  serves the new set from the sealed row with zero extra token calls.
+- **T5 — invalid sync-token recovery.** The adapter maps a 400 whose body
+  matches `/sync_?token/i` to the new `CalendarSyncTokenInvalid` (generic
+  400s untouched); `runCalendarImport` retries once with a `null` token on
+  the bounded 24 h window, adopts the fresh checkpoint (never re-adopts
+  the stale token), writes the `calendar.sync_token_reset` audit in the
+  same transaction, and counts no failure, pauses nothing. Idempotent and
+  connection-scoped; a failing recovery call falls through to the existing
+  generic-failure path (no recursion).
+- **T4 — rate-limit backoff persisted across cycles (migration `0023`
+  `rate_limited_until`).** Every `CalendarRateLimited` catch point calls
+  `recordRateLimit` (`now + retryAfterSeconds`, guarded so a concurrent
+  429 extends but never shrinks a longer stored window). The worker cycle
+  checks the window **before building the provider** — zero provider calls
+  (no export, import or channel renewal) inside the window; at/after
+  expiry the marker is cleared and the pass runs. Rate limits stay skips:
+  no `consecutive_failures`, no pause, per-connection isolation. Adapter
+  `Retry-After` now parses delta-seconds (floored; `"0"` = 0 s — spec
+  change from the old `|| 60`) and HTTP-date (injectable clock, clamped ≥
+  0), defaulting to 60 s.
+- **T6a —** `calendar.sync` logs one `warn`
+  `calendar.sync.rate_limited` line per rate-limited cycle (result counts
+  only; no tokens, no logging redesign).
+
+No new endpoints, workers, or API shape changes; the `calendar.sync` job
+registry (name/60 s cadence/§12.4 contract) is unchanged. **T3
+(dedicated channel-token column) remains explicitly deferred** (audit L4);
+class-5 live-Google items remain CLOSED-BLOCKED.
+
+Testing (all deterministic; fixture provider / injected transport — zero
+network): 26 new tests — T1 ×10 (worker 8 acceptance: refresh persisted,
+rotation replaces, no plaintext at rest, expiry metadata, next-cycle reuse
+with zero refresh calls and byte-identical envelope, unchanged-set no-op,
+no spurious pause, failed-refresh semantics; web 2: manual-sync re-seal +
+no-write), T5 ×3 integration (detect/clear/re-import/fresh-checkpoint/
+audit/no-pause, tenant isolation, conflict+mirror safety) + adapter/
+fixture seam units, T4 ×5 integration (store-on-429, zero-calls-in-window,
+at/after-expiry retry + marker clear, max-window guard, multi-connection
+isolation) + 4 adapter units (both Retry-After forms, `"0"`, default),
+T6a ×1 job-level (warn line, no pause/failed noise, no token material).
+No existing test weakened or deleted.
+
+Environment: the sandbox was partially reset during the increment
+(node_modules + `/tmp` wiped; tree and HEAD survived) — recovered via pnpm
+store rehydration (10 s), a rebuilt PostgreSQL 18.4 cluster, and a
+re-inflated Chromium 153 from the npm-distributed `@sparticuz/chromium`
+binary via the documented `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` fallback
+(no browser security disabled, no API mocks). Live Google re-probed at the
+start: **all Google endpoints still unreachable — the M7 §7.3 16-point
+live verification stays CLOSED-BLOCKED**; nothing live was simulated.
+
+Verification (local): targeted calendar suites green; full `vitest run`
+(unit + integration) **79 files / 894 tests all pass**;
+`test:coverage` thresholds met (calendar package: fixture 96.8% lines,
+adapter 90.9% lines); `typecheck` + `lint` clean; production `build`
+clean; E2E **161 passed** with the only non-passes being the
+ClamAV-dependent `attachments.spec.ts` suite (sandbox has no `clamscan`;
+CI installs ClamAV and runs it for real) and one transient 30 s
+`waitForResponse` timeout in `wellbeing.spec.ts` axe (runner-load flake —
+re-run in isolation: **5/5 passed in 9 s**). Pushed; CI runs recorded in
+the follow-up docs commit.

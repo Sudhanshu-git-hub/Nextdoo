@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { and, asc, count, eq, gt, inArray, lte, sql } from 'drizzle-orm';
-import { AppError, limitsFor, notFound, type CalendarProvider } from '@nextdoo/contracts';
-import { applyTaskDueChange, calendarConnections, calendarEvents, calendarMappings, calendarOauthStates, finalizeDisconnect, tasks } from '@nextdoo/db';
+import { AppError, limitsFor, notFound, type CalendarProvider, type CalendarTokenSet } from '@nextdoo/contracts';
+import { applyTaskDueChange, calendarConnections, calendarEvents, calendarMappings, calendarOauthStates, finalizeDisconnect, tasks, tokensChanged } from '@nextdoo/db';
 import { getDb } from '../db';
 import { decryptSecret, encryptSecret } from '../crypto';
 import { getEnv } from '../env';
@@ -352,6 +352,21 @@ export function setCalendarProviderFactoryForTests(fn: ((row?: typeof calendarCo
   providerFactoryForTests = fn;
 }
 
+/**
+ * The stored (sealed) token set, opened. Throws on a malformed/tampered
+ * envelope — the caller decides the failure semantics (today: the provider
+ * build fails, exactly as before M8-i4).
+ */
+export function calendarProviderTokens(row: typeof calendarConnections.$inferSelect): CalendarTokenSet | null {
+  if (!row.accessTokenEncrypted) return null;
+  return {
+    accessToken: decryptSecret(row.accessTokenEncrypted, CALENDAR_TOKEN_PURPOSE),
+    refreshToken: row.refreshTokenEncrypted ? decryptSecret(row.refreshTokenEncrypted, CALENDAR_TOKEN_PURPOSE) : null,
+    expiresAt: row.tokenExpiresAt ? row.tokenExpiresAt.toISOString() : null,
+    scopes: row.scopes ?? null,
+  };
+}
+
 /** Build a provider bound to a stored connection (opened, sealed tokens). */
 export function buildCalendarProvider(row: typeof calendarConnections.$inferSelect): CalendarProvider | null {
   if (providerFactoryForTests) return providerFactoryForTests(row);
@@ -361,12 +376,7 @@ export function buildCalendarProvider(row: typeof calendarConnections.$inferSele
     clientId: cfg.clientId,
     clientSecret: cfg.clientSecret,
     redirectUri: cfg.redirectUri,
-    initialTokens: {
-      accessToken: decryptSecret(row.accessTokenEncrypted, CALENDAR_TOKEN_PURPOSE),
-      refreshToken: row.refreshTokenEncrypted ? decryptSecret(row.refreshTokenEncrypted, CALENDAR_TOKEN_PURPOSE) : null,
-      expiresAt: row.tokenExpiresAt ? row.tokenExpiresAt.toISOString() : null,
-      scopes: row.scopes,
-    },
+    initialTokens: calendarProviderTokens(row)!,
   });
 }
 
@@ -485,9 +495,33 @@ export async function syncConnectionNow(userId: string, connectionId: string): P
   if (row.status === 'DISCONNECTED') throw new AppError('VALIDATION_FAILED', 'This calendar is disconnected.');
   const provider = buildCalendarProvider(row);
   if (!provider) throw new AppError('PROVIDER_UNAVAILABLE', 'Calendar sync is not configured in this deployment.');
-  const ctx = { db, connectionId: row.id, provider };
+  // M8-i4 (T1): the baseline the provider was opened with (null when the
+  // envelope is missing/tampered — in which case there is nothing to compare
+  // against and nothing to re-seal).
+  let initial: CalendarTokenSet | null = null;
+  try { initial = calendarProviderTokens(row); } catch { initial = null; }
+  const ctx = { db, connectionId: row.id, provider, initialTokens: initial };
   const imp = await runCalendarImport(ctx);
   const exp = row.mode === 'READ_WRITE' ? await runCalendarExport(ctx) : { exportedCreated: 0, exportedUpdated: 0, exportedDeleted: 0 };
+  // M8-i4 (T1): when the pass refreshed/rotated the token set, persist it
+  // through the SAME sealed-envelope mechanism the OAuth callback used, so
+  // the next pass runs with the new credentials (PRD §16.1 "cached until
+  // expiry"). No plaintext at rest; no write when the set is unchanged.
+  if (initial) {
+    let current: CalendarTokenSet | null = null;
+    try { current = provider.currentTokens(); } catch { current = null; }
+    if (current && tokensChanged(initial, current)) {
+      await db
+        .update(calendarConnections)
+        .set({
+          accessTokenEncrypted: encryptSecret(current.accessToken, CALENDAR_TOKEN_PURPOSE),
+          refreshTokenEncrypted: current.refreshToken ? encryptSecret(current.refreshToken, CALENDAR_TOKEN_PURPOSE) : null,
+          tokenExpiresAt: current.expiresAt ? new Date(current.expiresAt) : null,
+          scopes: current.scopes ?? sql`${calendarConnections.scopes}`,
+        })
+        .where(eq(calendarConnections.id, row.id));
+    }
+  }
   return {
     imported: imp.imported,
     conflicts: imp.conflicts,

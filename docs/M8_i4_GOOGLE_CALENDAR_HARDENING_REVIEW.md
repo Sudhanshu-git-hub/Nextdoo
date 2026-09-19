@@ -1,6 +1,9 @@
 # M8-i4 — Google Calendar two-way sync reliability hardening — REVIEW (planning only)
 
-**Status: REVIEW COMPLETE — no product code changed in this turn.**
+**Status: REVIEW COMPLETE; APPROVED AND IMPLEMENTED** — the implementation
+increment (T1 → T5 → T4 → T6a, migration `0023`) is recorded in
+`docs/M8_i4_GOOGLE_CALENDAR_HARDENING_MILESTONE.md` and the closeout notes
+in §9 below. No product code was changed by this review turn itself.
 Design authorities: PRD §16 (§16.1–§16.7), §12.4, §13.5, §11.1, §11.4;
 `docs/M8_ROADMAP_AUDIT.md` (O1, O2, X1, L4, M1, N8); M7 milestone docs
 (`docs/M7_GOOGLE_CALENDAR_SYNC_MILESTONE.md` §2/§5/§6/§7.2/§7.3,
@@ -318,3 +321,79 @@ the start of that increment (if the environment changes, the 16-point live
 pass supersedes the offline items' ordering). If the team wants §11.1
 literal dedupe (T2), it slots in after T4 as a fifth bounded item; T3
 stays deferred until the unblock checklist is met.
+## 9. Implementation closeout (as-built, M8-i4)
+
+Implemented exactly per §4/§5/§6 (T1 → T5 → T4 → T6a). Full as-built detail
+lives in `docs/M8_i4_GOOGLE_CALENDAR_HARDENING_MILESTONE.md`. What actually
+shipped, and where it differs from the proposal:
+
+**Migration `0023_rate_limited_until.sql`** — `calendar_connections
+.rate_limited_until TIMESTAMPTZ` (nullable, no default); schema column
+inserted between `channel_expires_at` and `consecutive_failures`.
+
+**T1 (token re-seal)** — shipped via an engine seam rather than by having
+the engine open envelopes: `runCalendarSyncCycle` takes `tokensFor(row)`
+and `sealTokens(row, tokens)`; the engine compares `provider.currentTokens()`
+to the opened baseline with the exported `tokensChanged(...)` and calls
+`sealTokens` only on a real change. `CalendarCycleResult` gained
+`tokenUpdates`. The worker supplies `openCalendarTokens` (null on missing
+secret / no token / tampered envelope — preserving the existing pause
+fall-through) and `sealCalendarTokens` (re-seals both tokens + expiry via
+`sealSecret`, keeps `scopes` via column self-reference). The web
+`syncConnectionNow` re-seals the same way through `encryptSecret`, using a
+new single decrypt source `calendarProviderTokens`. One deliberate
+strengthening beyond the proposal: `tokensChanged` also compares
+**`scopes`** (a scope change is a credential change and must persist).
+
+**T5 (invalid sync-token recovery)** — adapter maps 400 + body matching
+`/sync_?token/i` to the new `CalendarSyncTokenInvalid` (generic 400
+untouched). `runCalendarImport` retries once with a `null` sync token on
+the bounded 24 h window, adopts the fresh checkpoint, and writes the
+`calendar.sync_token_reset` audit in the same transaction. No
+`consecutive_failures` increment, no pause, no `calendar.sync_failed`
+audit; idempotent and connection-scoped. A failing recovery call
+propagates to the existing generic-failure path (no recursion).
+
+**T4 (rate-limit backoff)** — `recordRateLimit` runs at all four
+`CalendarRateLimited` catch points and sets
+`rate_limited_until = now + retryAfterSeconds`, guarded so a concurrent
+429 extends but never shrinks a longer stored window. The cycle checks the
+window **before** building the provider (zero provider calls — no export,
+import, or channel renewal — inside the window) and clears the marker at/
+after expiry. Adapter `parseRetryAfter` now handles delta-seconds (floored;
+`"0"` → 0 s) and HTTP-date (against the injectable clock, clamped ≥ 0),
+defaulting to 60 s. Known behavior change: `Retry-After: "0"` is now 0 s,
+not the old 60 s (spec-correct, unit-tested).
+
+**T6a (worker log)** — `calendar.sync` emits one `warn`
+`calendar.sync.rate_limited` line per rate-limited cycle carrying the
+result counts (no tokens). No logging redesign.
+
+**Differences from the proposal (all within scope):** (a) T1 persistence is
+delegated to caller-supplied `tokensFor`/`sealTokens` instead of the engine
+touching envelopes — keeps plaintext out of `@nextdoo/db`; (b) the cycle
+skip is placed before `providerFor` so the provider is never even
+constructed inside a window; (c) `tokensChanged` includes `scopes`;
+(d) `Retry-After: "0"` → 0 s. No API shape changed; `calendar.sync`
+registry (name/cadence/§12.4 contract) unchanged; no new endpoints/workers.
+
+**Test evidence:** T1 ×10 (worker 8 + web 2), T5 ×3 integration + adapter/
+fixture seam unit tests, T4 ×5 integration + 4 adapter unit tests (both
+Retry-After forms, `"0"`, HTTP-date, default), T6a ×1 job-level test — all
+deterministic on the fixture provider (zero network). Full regression: the
+four calendar vitest files, the 79-file suite, and both calendar E2E specs
+green unchanged; no existing test weakened or deleted.
+
+**Environment / live-Google:** egress re-probed at increment start — all
+Google endpoints still unreachable, so the M7 §7.3 16-point live
+verification **stays CLOSED-BLOCKED**; nothing live was simulated. The
+sandbox was partially reset mid-milestone (node_modules + `/tmp`);
+recovered via pnpm store rehydration, a rebuilt PostgreSQL 18.4 cluster,
+and a re-inflated Chromium 153 via the documented
+`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` fallback (no security disabled, no
+API mocks).
+
+**Deferred (unchanged):** T3 channel-token column (audit L4), T2 literal
+webhook dedupe, T6b webhook bucket fairness, optional export cleanup,
+multi-calendar, RRULE/series editing, Outlook/CalDAV, new calendar UI; all
+class-5 live-Google items remain CLOSED-BLOCKED.

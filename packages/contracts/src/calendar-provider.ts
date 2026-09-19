@@ -134,6 +134,21 @@ export class CalendarRateLimited extends Error {
   }
 }
 
+/**
+ * Raised when the provider rejects a stored incremental sync token (M8-i4,
+ * PRD §16.1 polling fallback): Google invalidates sync tokens (change-count
+ * lifetime, channel churn) and answers `events.list?syncToken=...` with
+ * HTTP 400. The engine recovers inside the pass — clear the token, re-import
+ * the bounded window, adopt the fresh checkpoint — instead of counting a
+ * generic failure.
+ */
+export class CalendarSyncTokenInvalid extends Error {
+  constructor(message = 'Calendar provider rejected the stored sync token') {
+    super(message);
+    this.name = 'CalendarSyncTokenInvalid';
+  }
+}
+
 /** Minimal fetch-shaped transport for deterministic tests. */
 export type CalendarTransport = (url: string, init: {
   method?: string;

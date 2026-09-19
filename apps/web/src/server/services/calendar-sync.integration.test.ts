@@ -378,6 +378,228 @@ describe('calendar sync engine + services (integration, fixture provider)', () =
     svc.setCalendarProviderFactoryForTests(null);
   });
 
+  // ------------------------------------------------------------------
+  // M8-i4 — T5 (invalid sync-token recovery) and T1 (manual-sync
+  // re-seal). Same fixture-provider discipline as the M7 suite.
+  // ------------------------------------------------------------------
+
+  const t5Event = (id: string, title: string, offsetH: number, updated: string) => ({
+    externalId: id,
+    title,
+    startsAt: new Date(Date.now() + offsetH * H).toISOString(),
+    endsAt: new Date(Date.now() + (offsetH + 1) * H).toISOString(),
+    updatedAt: updated,
+  });
+
+  maybe()('M8-i4 T5: an invalidated stored sync token is cleared, the bounded window re-imported, and a fresh checkpoint adopted — audited, no pause, idempotent', async () => {
+    const seed = await seedConnection({ name: 't5main' });
+    const conn = await connectionIdOf(seed.userId);
+    const { getDb } = await import('../db');
+    const { runCalendarImport, calendarEvents, auditLogs } = await import('@nextdoo/db');
+
+    // Pass 1 establishes the checkpoint with two events.
+    seed.provider.pushEvent(t5Event('ext-t5a', 'T5 A', 2, '2026-09-01T00:00:00.000Z'));
+    seed.provider.pushEvent(t5Event('ext-t5b', 'T5 B', 3, '2026-09-01T00:00:00.000Z'));
+    const first = await runCalendarImport({ db: getDb(), connectionId: conn.id, provider: seed.provider });
+    expect(first.syncTokenReset).toBe(false);
+    expect(first.imported).toBe(2);
+    const storedToken = (await connectionIdOf(seed.userId)).syncToken;
+    expect(storedToken).toBeTruthy();
+
+    // Google invalidates the stored token (change-count lifetime exhausted)
+    // and a new event lands on the provider side.
+    seed.provider.invalidateSyncToken();
+    seed.provider.pushEvent(t5Event('ext-t5c', 'T5 C', 4, '2026-09-06T00:00:00.000Z'));
+
+    const second = await runCalendarImport({ db: getDb(), connectionId: conn.id, provider: seed.provider });
+    expect(second.syncTokenReset).toBe(true);
+    expect(second.imported).toBe(3); // bounded full-window re-import
+    const row = await connectionIdOf(seed.userId);
+    // A FRESH checkpoint from the tokenless call — the stale token is gone:
+    expect(row.syncToken).toBe(seed.provider.lastDeliveredSyncToken);
+    expect(row.syncToken).not.toBe(storedToken);
+    // Structured audit, not a failure:
+    const audits = await getDb().select().from(auditLogs).where(and(eq(auditLogs.action, 'calendar.sync_token_reset'), eq(auditLogs.targetId, conn.id)));
+    expect(audits).toHaveLength(1);
+    expect(audits[0]!.metadata).toMatchObject({ reason: 'invalid_sync_token', reimported: 3 });
+    // No pause, no generic failure count, no sync_failed audit:
+    expect(row.status).toBe('ACTIVE');
+    expect(row.consecutiveFailures).toBe(0);
+    expect(row.pauseReason).toBeNull();
+    const failed = await getDb().select().from(auditLogs).where(eq(auditLogs.action, 'calendar.sync_failed'));
+    expect(failed.filter((a) => a.targetId === conn.id)).toHaveLength(0);
+    // The mirror has exactly the three events — the re-import duplicated nothing:
+    const events = await getDb().select().from(calendarEvents).where(eq(calendarEvents.connectionId, conn.id));
+    expect(events.map((e) => e.externalId).sort()).toEqual(['ext-t5a', 'ext-t5b', 'ext-t5c']);
+
+    // Idempotent: the next pass runs the adopted checkpoint normally — no
+    // second reset, no second audit, no duplicates.
+    const third = await runCalendarImport({ db: getDb(), connectionId: conn.id, provider: seed.provider });
+    expect(third.syncTokenReset).toBe(false);
+    expect(await getDb().select().from(calendarEvents).where(eq(calendarEvents.connectionId, conn.id))).toHaveLength(3);
+    const auditsAfter = await getDb().select().from(auditLogs).where(and(eq(auditLogs.action, 'calendar.sync_token_reset'), eq(auditLogs.targetId, conn.id)));
+    expect(auditsAfter).toHaveLength(1);
+    expect((await connectionIdOf(seed.userId)).syncToken).toBe(row.syncToken); // checkpoint stable
+  });
+
+  maybe()('M8-i4 T5: the token reset is connection-scoped (tenant isolation)', async () => {
+    const a = await seedConnection({ name: 't5iso-a' });
+    const b = await seedConnection({ name: 't5iso-b' });
+    const connA = await connectionIdOf(a.userId);
+    const connB = await connectionIdOf(b.userId);
+    a.provider.pushEvent(t5Event('ext-iso-a', 'Iso A', 2, '2026-09-01T00:00:00.000Z'));
+    b.provider.pushEvent(t5Event('ext-iso-b', 'Iso B', 2, '2026-09-01T00:00:00.000Z'));
+    const { runCalendarImport } = await import('@nextdoo/db');
+    const { getDb } = await import('../db');
+    const { calendarEvents } = await import('@nextdoo/db');
+    await runCalendarImport({ db: getDb(), connectionId: connA.id, provider: a.provider });
+    await runCalendarImport({ db: getDb(), connectionId: connB.id, provider: b.provider });
+    const tokenA = (await connectionIdOf(a.userId)).syncToken!;
+    const tokenB = (await connectionIdOf(b.userId)).syncToken!;
+
+    // A's token is invalidated and A gets a new event; only A is re-imported.
+    a.provider.invalidateSyncToken();
+    a.provider.pushEvent(t5Event('ext-iso-a2', 'Iso A2', 3, '2026-09-02T00:00:00.000Z'));
+    const out = await runCalendarImport({ db: getDb(), connectionId: connA.id, provider: a.provider });
+    expect(out.syncTokenReset).toBe(true);
+
+    // A reset; B is untouched — same checkpoint, same mirror.
+    const aRow = await connectionIdOf(a.userId);
+    const bRow = await connectionIdOf(b.userId);
+    expect(aRow.syncToken).not.toBe(tokenA);
+    expect(bRow.syncToken).toBe(tokenB);
+    expect(await getDb().select().from(calendarEvents).where(eq(calendarEvents.connectionId, connA.id))).toHaveLength(2);
+    const bEvents = await getDb().select().from(calendarEvents).where(eq(calendarEvents.connectionId, connB.id));
+    expect(bEvents).toHaveLength(1);
+    expect(bEvents[0]!.externalId).toBe('ext-iso-b');
+  });
+
+  maybe()('M8-i4 T5: a reset re-import never duplicates mirrors and preserves an open conflict', async () => {
+    const seed = await seedConnection({ name: 't5conf' });
+    const conn = await connectionIdOf(seed.userId);
+    const task = await seedTask(seed.workspaceId, 'Conflict keeper', 8 * H);
+    seed.provider.pushEvent(t5Event('ext-conf', 'Conflict keeper', 5, '2026-09-01T00:00:00.000Z'));
+    // Locally modified after the last external apply → an external change is a conflict.
+    await seedMapping(seed, task, 'ext-conf', { localUpdatedAt: new Date('2026-09-02T00:00:00.000Z') });
+    seed.provider.pushEvent(t5Event('ext-plain', 'Plain block', 6, '2026-09-01T00:00:00.000Z'));
+
+    const { runCalendarImport } = await import('@nextdoo/db');
+    const { getDb } = await import('../db');
+    const { calendarEvents, calendarMappings, tasks } = await import('@nextdoo/db');
+    await runCalendarImport({ db: getDb(), connectionId: conn.id, provider: seed.provider }); // establish
+
+    // Google moves the mapped event (after the local change), and the stored
+    // sync token is invalidated in the same pass.
+    const t2 = new Date(task.dueAt!.getTime() + 2 * H);
+    seed.provider.pushEvent({ externalId: 'ext-conf', title: 'Conflict keeper (moved)', startsAt: t2.toISOString(), endsAt: new Date(t2.getTime() + H).toISOString(), updatedAt: '2026-09-03T00:00:00.000Z' });
+    seed.provider.invalidateSyncToken();
+
+    const out = await runCalendarImport({ db: getDb(), connectionId: conn.id, provider: seed.provider });
+    expect(out.syncTokenReset).toBe(true);
+    expect(out.conflicts).toBe(1);
+    // The conflict is detected on the re-imported data and preserved for the
+    // user — the task was NOT silently moved:
+    const [mapping] = await getDb().select().from(calendarMappings).where(eq(calendarMappings.connectionId, conn.id));
+    expect(mapping!.syncState).toBe('CONFLICT');
+    const [taskNow] = await getDb().select().from(tasks).where(eq(tasks.id, task.id));
+    expect(taskNow!.dueAt!.toISOString()).toBe(task.dueAt!.toISOString());
+    // Full-window re-import: exactly two mirrors, one mapping — no duplication.
+    expect(await getDb().select().from(calendarEvents).where(eq(calendarEvents.connectionId, conn.id))).toHaveLength(2);
+    expect(await getDb().select().from(calendarMappings).where(eq(calendarMappings.connectionId, conn.id))).toHaveLength(1);
+  });
+
+  maybe()('M8-i4 T1: manual sync re-seals the refreshed/rotated token set (no plaintext, no pause)', async () => {
+    const svc = await import('./calendar-connections');
+    const { FixtureCalendarProvider } = await import('@nextdoo/calendar');
+    const { registerUser } = await import('./accounts');
+    const { upsertVerifiedConnection } = await import('./calendar-connections');
+    // The row stores the SAME (expired) token set the provider opens with, so
+    // the re-seal comparison has a true baseline.
+    const expiredAt = new Date(Date.now() - 1000).toISOString();
+    const provider = new FixtureCalendarProvider({
+      tokens: { accessToken: 'fx-at', refreshToken: 'fx-rt', expiresAt: expiredAt, scopes: null },
+      rotateOnRefresh: true,
+    });
+    const user = await registerUser({
+      email: `calreseal-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@test.local`,
+      passwordHash: 'scrypt$deadbeef$deadbeef',
+      name: 'Reseal',
+      timeZone: 'UTC',
+    });
+    await upsertVerifiedConnection(user.id, user.workspaceId, {
+      provider: 'google',
+      accessToken: 'fx-at',
+      refreshToken: 'fx-rt',
+      tokenExpiresAt: expiredAt,
+      externalAccountId: 'fixture-user@test.local',
+      mode: 'READ_WRITE',
+      scopes: null,
+    });
+    const conn = await connectionIdOf(user.id);
+    const before = await connectionIdOf(user.id);
+
+    svc.setCalendarProviderFactoryForTests((row) => (row?.id === conn.id ? provider : null));
+    try {
+      const sync = await svc.syncConnectionNow(user.id, conn.id);
+      expect(sync.paused).toBeNull();
+    } finally {
+      svc.setCalendarProviderFactoryForTests(null);
+    }
+
+    const { decryptSecret } = await import('../crypto');
+    const after = await connectionIdOf(user.id);
+    expect(after.accessTokenEncrypted).not.toBe(before.accessTokenEncrypted);
+    // Re-openable through the app's envelope mechanism to the NEW credentials:
+    expect(decryptSecret(after.accessTokenEncrypted!, 'calendar_token')).toBe('fixture-access-1');
+    expect(decryptSecret(after.refreshTokenEncrypted!, 'calendar_token')).toBe('fixture-refresh-1'); // rotated
+    // No plaintext at rest; expiry metadata preserved:
+    expect(after.accessTokenEncrypted).toMatch(/^v1\./);
+    expect(after.accessTokenEncrypted).not.toContain('fixture-access-1');
+    expect(after.refreshTokenEncrypted).not.toContain('fixture-refresh-1');
+    expect(after.tokenExpiresAt!.getTime() > Date.now()).toBe(true);
+    // A re-seal is not a failure:
+    expect(after.status).toBe('ACTIVE');
+    expect(after.consecutiveFailures).toBe(0);
+  });
+
+  maybe()('M8-i4 T1: manual sync with an unchanged token set performs no token write', async () => {
+    const svc = await import('./calendar-connections');
+    const { FixtureCalendarProvider } = await import('@nextdoo/calendar');
+    const { registerUser } = await import('./accounts');
+    const { upsertVerifiedConnection } = await import('./calendar-connections');
+    const provider = new FixtureCalendarProvider({
+      tokens: { accessToken: 'fx-at', refreshToken: 'fx-rt', expiresAt: null, scopes: null }, // never expires
+    });
+    const user = await registerUser({
+      email: `calreseal2-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@test.local`,
+      passwordHash: 'scrypt$deadbeef$deadbeef',
+      name: 'Reseal2',
+      timeZone: 'UTC',
+    });
+    await upsertVerifiedConnection(user.id, user.workspaceId, {
+      provider: 'google',
+      accessToken: 'fx-at',
+      refreshToken: 'fx-rt',
+      tokenExpiresAt: null,
+      externalAccountId: 'fixture-user@test.local',
+      mode: 'READ_WRITE',
+      scopes: null,
+    });
+    const conn = await connectionIdOf(user.id);
+    const before = await connectionIdOf(user.id);
+
+    svc.setCalendarProviderFactoryForTests((row) => (row?.id === conn.id ? provider : null));
+    try {
+      await svc.syncConnectionNow(user.id, conn.id);
+    } finally {
+      svc.setCalendarProviderFactoryForTests(null);
+    }
+    const after = await connectionIdOf(user.id);
+    expect(after.accessTokenEncrypted).toBe(before.accessTokenEncrypted); // no write
+    expect(after.refreshTokenEncrypted).toBe(before.refreshTokenEncrypted);
+    expect(after.status).toBe('ACTIVE');
+  });
+
   maybe()('OAuth flow: mode-before-auth, PKCE state is single-use, 503 when unconfigured', async () => {
     const svc = await import('./calendar-connections');
     const { FixtureCalendarProvider } = await import('@nextdoo/calendar');

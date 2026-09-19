@@ -654,6 +654,12 @@ export const calendarConnections = pgTable(
     pauseReason: varchar('pause_reason', { length: 40 }),
     /** Google push-channel expiry; renewed before lapsing (PRD §16.1). */
     channelExpiresAt: timestamp('channel_expires_at', { withTimezone: true }),
+    /**
+     * Active 429/403 backoff (M8-i4, PRD §16.1): while this instant is in the
+     * future the cycle makes zero provider calls for the connection; cleared
+     * when the pass runs again. NULL = no active backoff.
+     */
+    rateLimitedUntil: timestamp('rate_limited_until', { withTimezone: true }),
     /** Consecutive generic sync failures; pause+notify at 5 (PRD §12.4). */
     consecutiveFailures: integer('consecutive_failures').notNull().default(0),
     version: integer('version').notNull().default(1),

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import {
   CalendarAuthError,
   CalendarRateLimited,
+  CalendarSyncTokenInvalid,
   CALENDAR_INSTANCE_KEY_SEPARATOR,
   type CalendarAuthRequest,
   type CalendarAuthResult,
@@ -51,6 +52,18 @@ export interface FixtureProviderOptions {
   rateLimitCalls?: number;
   /** Injectable clock. */
   now?: () => Date;
+  /**
+   * M8-i4 (T1): when set, each access-token refresh also ROTATES the refresh
+   * token (the way Google re-issues refresh tokens), exercising the
+   * re-seal/rotation persistence seam.
+   */
+  rotateOnRefresh?: boolean;
+  /**
+   * M8-i4 (T1): shared event store so distinct provider instances (one per
+   * cycle, as the worker rebuilds providers) observe the same (simulated)
+   * provider state across cycles.
+   */
+  store?: Map<string, FixtureEvent>;
 }
 
 export interface FixtureCall {
@@ -64,7 +77,7 @@ export class FixtureCalendarProvider implements CalendarProvider {
   readonly providerId = 'google' as const;
   readonly calls: FixtureCall[] = [];
   /** Events as the (simulated) provider holds them, incl. soft-deleted. */
-  readonly store: Map<string, FixtureEvent> = new Map();
+  store: Map<string, FixtureEvent> = new Map();
   private tokens: CalendarTokenSet | null;
   private revoked: boolean;
   private rateLimitCalls: number;
@@ -75,13 +88,33 @@ export class FixtureCalendarProvider implements CalendarProvider {
   private clock: () => Date;
   private accountEmail = 'fixture-user@test.local';
   private refreshCount = 0;
+  private rotateOnRefresh: boolean;
+  /**
+   * M8-i4 (T5): sync tokens Google has invalidated — `listChanges` with one
+   * of these throws CalendarSyncTokenInvalid, like the real 400 response.
+   */
+  private invalidSyncTokens = new Set<string>();
+  /** The sync token the last successful `listChanges` delivered (T5 seam). */
+  lastDeliveredSyncToken: string | null = null;
 
   constructor(options: FixtureProviderOptions = {}) {
     this.tokens = options.tokens ?? null;
     this.revoked = options.revoked ?? false;
     this.rateLimitCalls = options.rateLimitCalls ?? 0;
     this.clock = options.now ?? (() => new Date());
+    this.rotateOnRefresh = options.rotateOnRefresh ?? false;
+    if (options.store) this.store = options.store;
     for (const event of options.events ?? []) this.store.set(event.externalId, { ...event });
+  }
+
+  /**
+   * M8-i4 (T5): invalidate the most recently delivered sync token, the way
+   * Google does when a token's change-count lifetime is exhausted. The next
+   * `listChanges` carrying that token throws CalendarSyncTokenInvalid; a
+   * tokenless (full-window) call succeeds and delivers a fresh token.
+   */
+  invalidateSyncToken(): void {
+    if (this.lastDeliveredSyncToken !== null) this.invalidSyncTokens.add(this.lastDeliveredSyncToken);
   }
 
   /** Add/replace an event on the (simulated) provider side. */
@@ -170,7 +203,14 @@ export class FixtureCalendarProvider implements CalendarProvider {
       this.calls.push({ op: 'refresh' });
       this.refreshCount += 1;
       if (this.revoked) throw new CalendarAuthError('fixture: refresh rejected');
-      this.tokens = { ...t, accessToken: `fixture-access-${this.refreshCount}`, expiresAt: new Date(this.clock().getTime() + 3_600_000).toISOString() };
+      this.tokens = {
+        ...t,
+        accessToken: `fixture-access-${this.refreshCount}`,
+        // M8-i4 (T1): Google re-issues refresh tokens on refresh for some
+        // accounts; mirror that when the test opts in.
+        refreshToken: this.rotateOnRefresh ? `fixture-refresh-${this.refreshCount}` : t.refreshToken,
+        expiresAt: new Date(this.clock().getTime() + 3_600_000).toISOString(),
+      };
     }
     return this.tokens.accessToken;
   }
@@ -214,6 +254,10 @@ export class FixtureCalendarProvider implements CalendarProvider {
   async listChanges(since: { syncToken: string | null; timeMin: string }): Promise<CalendarChangeSet> {
     this.calls.push({ op: 'list' });
     this.requireAuth();
+    // M8-i4 (T5): an invalidated stored token is rejected, like Google's 400.
+    if (since.syncToken !== null && this.invalidSyncTokens.has(since.syncToken)) {
+      throw new CalendarSyncTokenInvalid('fixture: stored sync token invalidated');
+    }
     const events: CalendarEventDto[] = [];
     const deletedExternalIds: string[] = [];
     const reportedSeries = new Set<string>();
@@ -248,8 +292,13 @@ export class FixtureCalendarProvider implements CalendarProvider {
       });
     }
     events.sort((a, b) => a.startsAt.localeCompare(b.startsAt) || a.externalId.localeCompare(b.externalId));
-    const next = `tok-${this.store.size}-${this.deliveredTokens.size + 1}`;
+    let next = `tok-${this.store.size}-${this.deliveredTokens.size + 1}`;
+    // M8-i4 (T5): a full-window re-fetch gets a FRESH token from Google. The
+    // fixture's short token space can collide with an invalidated value —
+    // re-issue so the recovered checkpoint is genuinely a new token.
+    if (this.invalidSyncTokens.has(next)) next = `${next}-reissued`;
     this.deliveredTokens.add(since.syncToken ?? 'tok-0');
+    this.lastDeliveredSyncToken = next;
     void since.timeMin;
     void createHash;
     return { events, deletedExternalIds, nextSyncToken: next };
