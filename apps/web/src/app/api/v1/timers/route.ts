@@ -9,7 +9,7 @@ export const GET = authedRoute({ routeName: 'timers.active' }, async (_r, ctx) =
   timer: await getActiveTimer(ctx.auth.userId),
 }));
 
-export const POST = authedRoute({ routeName: 'timers.start', rateLimitPerMinute: 120 }, async (request, ctx) => {
+export const POST = authedRoute({ routeName: 'timers.start', idempotent: true, rateLimitPerMinute: 120 }, async (request, ctx) => {
   const input = await parseBody(request, startTimerSchema);
   return startTimer(
     { userId: ctx.auth.userId, workspaceId: ctx.auth.workspaceId, requestId: ctx.requestId },

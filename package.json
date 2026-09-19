@@ -3,12 +3,12 @@
   "private": true,
   "packageManager": "pnpm@9.15.4",
   "engines": {
-    "node": ">=20.11"
+    "node": ">=22.22.0"
   },
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
-    "lint": "turbo run lint",
+    "lint": "eslint . --max-warnings=0",
     "typecheck": "turbo run typecheck",
     "test": "vitest run",
     "test:e2e": "pnpm --filter @nextdoo/web test:e2e",
@@ -16,17 +16,34 @@
     "db:migrate": "pnpm --filter @nextdoo/db migrate",
     "dev:services": "node scripts/dev-services.mjs",
     "test:watch": "vitest",
-    "dev:worker": "pnpm --filter @nextdoo/worker start"
+    "dev:worker": "pnpm --filter @nextdoo/worker start",
+    "test:unit": "vitest run packages/core scripts",
+    "test:coverage": "vitest run --coverage",
+    "verify": "pnpm lint && pnpm typecheck && pnpm test:coverage && pnpm build && pnpm test:e2e"
   },
   "devDependencies": {
-    "@types/node": "22.10.2",
+    "@eslint/js": "9.39.5",
+    "@types/node": "22.20.1",
+    "@vitest/coverage-v8": "4.1.11",
     "embedded-postgres": "18.4.0-beta.17",
-    "turbo": "2.3.3",
+    "eslint": "9.39.5",
+    "eslint-plugin-unused-imports": "4.4.1",
+    "fake-indexeddb": "6.2.4",
+    "turbo": "2.10.12",
     "typescript": "5.7.2",
-    "vitest": "2.1.8"
+    "typescript-eslint": "8.70.0",
+    "vite": "8.2.2",
+    "vitest": "4.1.11"
   },
   "dependencies": {
-    "drizzle-orm": "0.38.3",
+    "drizzle-orm": "0.45.2",
     "postgres": "3.4.5"
+  },
+  "pnpm": {
+    "overrides": {
+      "sharp": "0.35.4",
+      "postcss": "8.5.28",
+      "vite": "8.2.2"
+    }
   }
 }

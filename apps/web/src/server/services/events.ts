@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
+import { and, eq } from 'drizzle-orm';
 import type { DomainEventType, TrackingEventType } from '@nextdoo/contracts';
-import { auditLogs, outbox, syncChanges, trackingEvents } from '@nextdoo/db';
+import { auditLogs, outbox, syncChanges, trackingEvents, tasks } from '@nextdoo/db';
 import { newId } from '../ids';
 import { getDb } from '../db';
 import { logger } from '../observability';
@@ -12,15 +13,6 @@ import { logger } from '../observability';
  * events must commit atomically. A consumer failing later must never roll back
  * the user's work — that is what the outbox relay is for.
  */
-
-type Tx = {
-  insert: (table: unknown) => {
-    values: (v: unknown) => {
-      onConflictDoNothing: (c?: unknown) => Promise<unknown>;
-      returning: () => Promise<unknown[]>;
-    } & Promise<unknown>;
-  };
-};
 
 export interface TrackingEventInput {
   workspaceId: string;
@@ -35,8 +27,9 @@ export interface TrackingEventInput {
   payload?: Record<string, unknown>;
   /**
    * Stable key so replaying the same logical event is a no-op.
-   * Defaults to a hash of (task, type, occurredAt) which is safe for
-   * user-initiated actions; workers should pass an explicit key.
+   * Defaults to a hash including the accepted task version and source device.
+   * Tied timestamps must not collapse distinct CAS-protected commands. Workers
+   * and timer transitions supply their own stable command identities.
    */
   idempotencyKey?: string;
 }
@@ -51,6 +44,13 @@ export function trackingIdempotencyKey(taskId: string, type: string, at: Date, e
 /** Appends a tracking event. Duplicate keys are ignored, never updated. */
 export async function appendTrackingEvent(tx: any, input: TrackingEventInput): Promise<void> {
   const occurredAt = input.occurredAt ?? new Date();
+  let key = input.idempotencyKey;
+  if (!key) {
+    const [task] = await tx.select({ version: tasks.version }).from(tasks)
+      .where(and(eq(tasks.id,input.taskId),eq(tasks.workspaceId,input.workspaceId)));
+    if (!task) throw new Error('Tracking event task unavailable');
+    key = trackingIdempotencyKey(input.taskId,input.type,occurredAt,`${task.version}:${input.deviceId ?? ''}`);
+  }
   await tx
     .insert(trackingEvents)
     .values({
@@ -65,7 +65,7 @@ export async function appendTrackingEvent(tx: any, input: TrackingEventInput): P
       clientTimestamp: input.clientTimestamp ?? null,
       deviceId: input.deviceId ?? null,
       payload: input.payload ?? {},
-      idempotencyKey: input.idempotencyKey ?? trackingIdempotencyKey(input.taskId, input.type, occurredAt),
+      idempotencyKey: key,
       schemaVersion: 1,
     })
     .onConflictDoNothing();

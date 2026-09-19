@@ -166,3 +166,58 @@ describe('calculateScore', () => {
     expect(timingHeavy.score!).toBeLessThan(dflt.score!);
   });
 });
+
+describe('externally blocked correction (PRD §7.7)', () => {
+  it('marks timing Unmeasured and normalises over the remaining weights without changing the outcome', () => {
+    const input = base({
+      completed: true,
+      dueAt: at('2026-09-08T10:00:00Z'),
+      completedAt: at('2026-09-08T16:00:00Z'), // 6h late: timing would be 100 - 24 = 76
+      estimateMinutes: 60,
+      actualMinutes: 60,
+      // recurrence unmeasured (non-recurring task): plain measured weight is 0.85
+    });
+    const plain = calculateScore(input);
+    expect(plain.outcome).toBe('LATE');
+    expect(plain.components.find((c) => c.key === 'timing')?.value).toBe(76);
+    expect(plain.measuredWeight).toBe(0.85);
+
+    const blocked = calculateScore({ ...input, externallyBlocked: true });
+    // Facts (outcome) are unchanged; only the timing component is excluded.
+    expect(blocked.outcome).toBe('LATE');
+    const timing = blocked.components.find((c) => c.key === 'timing');
+    expect(timing).toMatchObject({ value: null, measured: false });
+    expect(timing?.reason).toMatch(/externally blocked/i);
+    expect(blocked.measuredWeight).toBe(0.6);
+    // completion 100*0.40 + estimate 100*0.20 over 0.60 = 100
+    expect(blocked.score).toBe(100);
+    expect(blocked.explanation).toContain('Excluded: timing');
+  });
+
+  it('never penalises a blocked task and leaves the other components untouched', () => {
+    const input = base({
+      completed: true,
+      dueAt: at('2026-09-08T10:00:00Z'),
+      completedAt: at('2026-09-08T14:00:00Z'), // 4h late → timing 100 - 4*4 = 84
+      estimateMinutes: 60,
+      actualMinutes: 90, // 50% over → estimate 50
+      expectedOccurrences: 4,
+      completedOccurrences: 1, // recurrence 25
+    });
+    const plain = calculateScore(input);
+    const blocked = calculateScore({ ...input, externallyBlocked: true });
+    for (const key of ['completion', 'estimateAccuracy', 'recurrence'] as const) {
+      expect(blocked.components.find((c) => c.key === key)).toEqual(plain.components.find((c) => c.key === key));
+    }
+    // plain: (100*0.40 + 84*0.25 + 50*0.20 + 25*0.15) / 1.00 = 74.75 → 74.8
+    expect(plain.score).toBe(74.8);
+    // blocked: (100*0.40 + 50*0.20 + 25*0.15) / 0.75 = 53.75 / 0.75 = 71.66… → 71.7
+    expect(blocked.score).toBe(71.7);
+    expect(blocked.measuredWeight).toBe(0.75);
+  });
+
+  it('keeps the score identical for inputs without the correction flag', () => {
+    const input = base({ completed: true, dueAt: at('2026-09-08T10:00:00Z'), completedAt: at('2026-09-08T09:00:00Z') });
+    expect(calculateScore(input)).toEqual(calculateScore({ ...input, externallyBlocked: undefined }));
+  });
+});
