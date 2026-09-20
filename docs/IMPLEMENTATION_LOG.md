@@ -1887,3 +1887,47 @@ backup IAM/credentials, monthly restore evidence, quarterly DR exercise, measure
 RTO/RPO, regional failover, attachment/object-store restore, backup deletion-window
 semantics, status page/on-call/SLO and pen-test evidence remain external
 release-gate gaps. STOP after M8-i7; M8-i8 not started.
+
+## M8-i8 — remaining release-gate hardening review — 2026-09-20
+
+Review/planning only; no implementation started. M8-i7 remains closed and
+CI-verified at `09ea72e`; the database restore smoke implementation was not
+modified, and live Google verification was not retried. Deliverable:
+[M8_i8_RELEASE_GATE_HARDENING_REVIEW.md](M8_i8_RELEASE_GATE_HARDENING_REVIEW.md).
+
+Initial verification found this local checkout stale/dirty (`bc4fd90` with stale
+M8-i6/M8-i7 files) while the remote branch was the closed M8-i7 tip
+`09ea72e3b6f99d2b7c38c1b95f0bcf238b580514`; GitHub auth was OK. The workspace was
+realigned to the approved baseline with `git fetch origin refs/heads/arena/01a0ba0b-nextdoo`,
+`git reset --hard FETCH_HEAD`, and `git clean -fd`. Final verification before the
+review: active branch `arena/01a0ba0b-nextdoo`, local HEAD = remote HEAD =
+`09ea72e3b6f99d2b7c38c1b95f0bcf238b580514`, working tree clean, GitHub auth OK.
+
+Reviewed PRD §§11.4/11.8/11.9/12/19/21, `M8_ROADMAP_AUDIT.md`, M8-i5 preflight,
+M8-i6 hardening review, M8-i7 restore-smoke milestone, current CI workflow,
+package scripts, and the existing security/release documentation. The review builds
+a remaining release-gate matrix covering production PITR/backup strategy, daily
+encrypted backups, backup IAM, recurring restore evidence, RTO/RPO, regional
+failover, attachment/object-store restore, deletion-window backup semantics,
+status page, SLO/monitoring evidence, incident/on-call runbooks, ASVS mapping,
+SAST/secret scanning, container image scanning, pen-test evidence, k6/load,
+Lighthouse/performance gates, alerts, feature flags/canary/rollback, managed
+secrets/TLS, live provider verification and support documentation.
+
+Recommendation: if authorized later, M8-i8 should be the bounded **security
+assurance CI baseline**: ASVS Level 2 mapping for implemented surfaces plus a
+deterministic repo-local security scan covering secret patterns and a narrow static
+security rule set, wired into CI before expensive build/E2E work. This selects the
+parts of PRD §11.8/§19.4 that are deterministically implementable without deployed
+infrastructure. It explicitly does not claim a third-party pen test, GitHub push
+protection settings, production secrets manager/TLS evidence, container image
+scanning, status page/on-call/SLO evidence, production backup/DR evidence, k6,
+Lighthouse, or live provider verification.
+
+External/deployment-blocked items remain external: production PITR, encrypted daily
+backups, backup IAM, monthly restore evidence, quarterly DR, measured RTO/RPO,
+regional failover, object-store restore, backup deletion-window semantics, status
+page, monitoring backend and 30-day SLO evidence, on-call rotation, pen-test
+vendor evidence, container image scanning pipeline, production managed secrets/TLS,
+and live Google/billing/SMTP/S3 verification. STOP after the review; M8-i8
+implementation was not started.
