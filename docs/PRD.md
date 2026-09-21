@@ -2,14 +2,14 @@
 
 | Field | Value |
 |---|---|
-| Document status | Proposed |
-| Version | 1.1 |
-| Last updated | 2026-09-08 |
+| Document status | Authoritative product and technical blueprint |
+| Version | 1.2 |
+| Last updated | 2026-09-21 |
 | Product | NEXTDOO |
-| Initial platforms | Web, Windows Desktop |
-| Mobile | Planned after product-market fit |
-| Primary launch segment | Professionals and small teams whose work is deadline-driven, recurring, and measurable |
-| Core promise | Help users plan work against available time, execute it, and understand whether their execution matched their intentions |
+| Initial platform | Web |
+| Client sequence | Web → Windows → Android → iOS/macOS |
+| Primary launch segment | Individual users managing their own goals, tasks, habits, information, time, and progress |
+| Core promise | Help people connect what they want to achieve, what they do each day, and what they learn from the result |
 
 ---
 
@@ -46,7 +46,7 @@
 
 ## 1. Executive Summary
 
-NEXTDOO is an outcome-oriented task and time-management platform. Unlike conventional task managers that primarily track what users *intend* to do, NEXTDOO measures the relationship between:
+NEXTDOO is a personal productivity and life-management workspace. It connects a user's goals, milestones, tasks, trackers, knowledge and data, calendar, and insights rather than treating each as an isolated tool. Its initial execution-tracking capability remains a central differentiator: unlike conventional task managers that primarily track what users *intend* to do, NEXTDOO also measures the relationship between:
 
 - Planned work
 - Available time
@@ -67,11 +67,11 @@ The first release focuses on a narrow product loop:
 6. Calculate an explainable execution result.
 7. Review patterns and improve future planning.
 
-The MVP will **not** attempt to be a complete workspace, knowledge base, team collaboration suite, automation platform, plugin marketplace, or enterprise operating system.
+The first web release will not attempt to deliver every visualization, native client, AI capability, integration, team workflow, or plugin-platform capability in this document. Each requirement is classified as current, planned, future, external, or deferred; a vision item is not automatically an immediate implementation commitment.
 
 ### 1.1 Strategic Objective
 
-Establish NEXTDOO as the best task manager for users who want **measurable improvement in execution reliability**, not merely a larger task list.
+Establish NEXTDOO as a trusted personal workspace for users who want **measurable improvement in execution reliability** alongside connected planning, tracking, information, and time management.
 
 ### 1.2 MVP Success Criteria
 
@@ -96,36 +96,32 @@ These are **initial hypotheses, not universal industry benchmarks**. They must b
 
 ### 2.1 Mission
 
-Help people make realistic commitments, follow through consistently, and learn from how they actually work.
+Help people plan meaningful outcomes, follow through consistently, track what matters, keep related information together, and learn from how they actually live and work.
 
 ### 2.2 Vision
 
-Become the execution intelligence layer for personal and team work: a system that helps users decide what to do, make realistic plans, complete work, and improve planning through evidence.
+Become a deeply connected personal productivity and life-management workspace: a system that helps individuals decide what to do, make realistic plans, complete work, track routines and metrics, retain useful knowledge, schedule time, and improve through evidence.
 
 ### 2.3 Launch Positioning
 
-> NEXTDOO is an outcome-oriented task manager for professionals who want to know not just what they planned, but how reliably their plans became reality.
+> NEXTDOO is a personal productivity workspace for people who want their goals, tasks, routines, information, calendar, and progress to work together.
 
 ### 2.4 Ideal Customer Profile
 
-**Primary ICP** — Knowledge workers and independent professionals who:
+**Primary users** — students, professionals, creators, freelancers, and other individuals who:
 
-- Manage 20 to 100 active tasks
-- Work across recurring responsibilities and projects
-- Frequently underestimate work
-- Reschedule tasks repeatedly
-- Use calendars and task managers separately
-- Need planning visibility without heavyweight project-management software
+- Manage personal responsibilities, projects, learning, health, or routines
+- Need a clear connection between longer-term aims and daily actions
+- Use several disconnected tools for tasks, calendars, notes, and tracking
 - Value measurable improvement but dislike punitive productivity systems
 
-Examples: consultants, freelancers, agency operators, product managers, researchers, software engineers, marketing professionals, small business owners, operations specialists.
+Examples: students, consultants, freelancers, creators, researchers, software engineers, marketing professionals, small-business owners, and people managing personal goals or health routines.
 
-**Secondary ICP** — Small teams of 2–20 people that need shared projects, task ownership, deadlines, basic execution reporting, and lightweight coordination.
+**Later users** — teams and shared workspaces may be introduced only after the personal product is mature. They are not launch targets or a reason to make the initial product enterprise-first.
 
-**Deferred ICP (not launch targets)**
+**Deferred audiences (not launch targets)**
 
 - Large enterprises requiring SSO, SCIM, data residency, or complex compliance programs
-- Consumers seeking a general-purpose habit or wellness application
 - Developers seeking an automation and plugin platform
 - Organizations requiring resource planning or portfolio management
 
@@ -246,13 +242,40 @@ Pricing is a **hypothesis**. Validation plan:
 | Monthly logo churn (Pro) | Cancelled / active | < 5% |
 | Net revenue retention (Team, Phase 2) | Expansion − churn | > 100% |
 
-### 2.15 Three-Year Strategic Roadmap
+### 2.15 Product Structure And Scope Labels
+
+The product is organized around seven personal-productivity modules and a shared foundation:
+
+1. **Goal Center** — goals, parent/sub-goals, milestones, categories, priorities, linked tasks, and progress derived from real work.
+2. **Task Center** — daily navigation (Home, Inbox, Today, Tomorrow, Upcoming, Focus, Overdue/Backlog, Completed), lists, projects, rituals, spaces, recurring collections, and task execution.
+3. **Tracker** — habits, health, learning, finance, mood, routines, and custom metrics. Task-execution tracking is a related existing capability, not a substitute for a general tracker.
+4. **Knowledge & Data** — notes, files, resources, collections, structured records, and understandable personal tables.
+5. **Calendar** — the time layer for tasks, goals, milestones, tracker activity, relevant records, reminders, deadlines, and supported external events.
+6. **Insights** — summaries and reports across the connected modules, including task execution, goal/milestone progress, tracker performance, time, calendar workload, and trends.
+7. **Settings, Account & Personalization** — account/security/privacy, appearance, preferences, data/sync, notifications, integrations, and help.
+8. **Cross-module core engine** — shared identity and data model, relations, tags, global search, notifications, command palette, automation/events, sync, and attachments/resources.
+
+Smart/AI/integration capabilities are a future expansion layer. Collaboration/team capabilities follow personal-product maturity. A plugin SDK, sandbox, permissions model, and marketplace are long-term platform work.
+
+Requirements use these labels:
+
+| Label | Meaning |
+|---|---|
+| Current | Part of the active web product scope; implementation and acceptance criteria apply. |
+| Planned | Dependency-ordered work selected for the personal-core roadmap, but not represented as complete until code and evidence exist. |
+| Future | Intentional later product work; it is not an active delivery commitment. |
+| External | Requires credentials, provider systems, deployment infrastructure, legal/operational process, or elapsed production evidence. |
+| Deferred | Deliberately outside the current scope. |
+
+### 2.16 Strategic Roadmap
 
 | Year | Focus | Outcome |
 |---|---|---|
-| Year 1 | Individual execution loop; Web + Windows; Google Calendar; tracking v1 | Paid-quality MVP, GA, first 1,000 paying users |
-| Year 2 | Teams, mobile, smart planning, automations, advanced tracking rules | Expansion revenue, NRR > 100% |
-| Year 3 | Platform + enterprise: public API, plugins, SSO/SCIM, residency | Upmarket motion with compliance program |
+| Personal Core | Web-first connected Goal, Task, Tracker, Knowledge & Data, Calendar, Insights, Settings and cross-module foundation | A coherent individual workflow with real integrity, sync and accessibility evidence |
+| Personal Intelligence | Advisory AI, voice, smart planning, supported wearable-data integrations, and approved external integrations | Assistance that is explainable, consented, and never silently destructive |
+| Platform expansion | Windows, then Android, then iOS/macOS | One account and synchronized domain model across clients |
+| Collaboration | Shared workspaces, assignment, comments, permissions and team reporting | Personal product remains the base rather than an enterprise retrofit |
+| Plugin ecosystem | SDK, sandbox, permissions, review and marketplace | Mature, secure extension platform |
 
 ---
 
@@ -270,35 +293,45 @@ Pricing is a **hypothesis**. Validation plan:
 - **Job:** "Help me avoid dropping recurring obligations while preserving flexibility."
 - **Needs:** Recurring tasks, reminders, projects, time tracking, basic reporting, desktop access.
 
-### 3.3 The Small-Team Coordinator
+### 3.3 The Student Or Lifelong Learner
 
-- **Profile:** Coordinates work for 2–20 people.
-- **Job:** "Help us make commitments visible and identify execution bottlenecks."
-- **Needs:** Shared projects, assignment, comments, due dates, team summaries, permissions.
+- **Profile:** Balances coursework, a learning plan, resources, deadlines, and repeated study routines.
+- **Job:** "Help me connect what I am learning with the actions and time I need to complete it."
+- **Needs:** Goals and milestones, linked tasks and study trackers, course notes/resources, realistic scheduling, and nonjudgmental progress views.
 
-> Team collaboration is **Phase 2** and is not required for initial MVP launch.
+### 3.4 The Creator Or Independent Operator
+
+- **Profile:** Manages client delivery, personal projects, ideas, finance/admin routines, and information without a team operations layer.
+- **Job:** "Help me keep my commitments, routines, and supporting information together without turning my personal system into project-management overhead."
+- **Needs:** Fast capture, flexible organization, recurring work, goals, attached resources, calendar awareness, and explainable insights.
+
+> Collaboration is a later product stage, not a requirement for initial personal-product maturity.
 
 ---
 
 ## 4. Product Scope And Phasing
 
-### 4.1 Phase 1 — Paid-Quality MVP
+### 4.1 Personal Core — Current And Planned Web Scope
 
-**Included:** Authentication and account recovery · personal workspace · tasks and subtasks · projects and sections · tags · priorities · estimates and actual duration · due dates and time zones · recurring tasks · list, board, and calendar views · task notes and attachments · natural-language capture · reminders · focus timer · time tracking · execution tracking · daily and weekly analytics · Google Calendar two-way sync · offline capture and sync · web app · Windows desktop app · billing and entitlements · data export and account deletion · auditability and operational monitoring.
+**Current, with implementation-specific boundaries documented in the completion ledger:** authentication/account recovery · personal workspace · task lifecycle, projects, sections, tags, estimates, recurrence, reminders, focus/time tracking, task execution analytics · calendar foundations · offline task capture/sync/conflict handling · attachments · exports/deletion/retention · billing scaffolding · browser push · Google Calendar integration code and reliability hardening.
 
-**Explicitly deferred:** team collaboration · comments and mentions · advanced automations · voice capture · mobile apps · Outlook and CalDAV · plugin platform · marketplace · enterprise authentication · fully end-to-end encrypted workspaces · advanced AI scheduling · public API.
+**Planned in dependency order:** Goal Center; Tracker; Knowledge & Data; general cross-module relations; broader Task Center navigation and personal collections; cross-module Calendar layers; cross-module Insights; global search/command palette; remaining settings/onboarding/accessibility/release evidence. Existing functionality must be preserved while these modules are introduced.
 
-### 4.2 Phase 2 — Retention And Revenue Expansion
+**Explicitly deferred:** native clients · collaboration · enterprise administration · public API · plugin platform · marketplace · automatic destructive automation · broad AI agents.
 
-**Included:** workspace collaboration · assignment and team roles · comments and mentions · advanced execution rules and scoring formulas · smart scheduling suggestions · user-configurable automations · voice capture · Outlook Calendar · CalDAV/Apple Calendar · advanced reporting · mobile applications · public API for selected resources · expanded AI assistance.
+### 4.2 Personal Intelligence — Future After Personal-Core Maturity
 
-**Explicitly deferred:** plugin execution sandbox · marketplace · SSO/SCIM · data residency · customer-managed keys · offline-capable mobile parity beyond capture.
+**Future:** opt-in AI assistant, voice capture, natural-language expansion beyond the deterministic parser, smart scheduling/reminders, advanced constrained automations, intelligent reports, messaging integrations, and supported wearable-data integrations.
 
-### 4.3 Phase 3 — Platform And Enterprise
+Wearable strategy is **data integration first**: supported smartwatch and wearable ecosystems provide data through supported health, phone, or wearable-platform APIs; NEXTDOO uses that data in trackers, goals, dashboards, and reports. A dedicated Apple Watch or Wear OS application is optional future work and is not implied by this strategy.
 
-**Included:** SSO · SCIM · enterprise audit logs · data residency · customer-managed encryption options · plugin SDK · plugin review and permission model · marketplace · advanced workspace administration · compliance program · enterprise support · dedicated environments where commercially justified.
+### 4.3 Platform Expansion — Future
 
-**Explicitly deferred:** on-premise self-hosting · full zero-knowledge workspaces for AI/search-dependent features · professional services organization.
+Web is the reference implementation. The client sequence is **Windows, then Android, then iOS/macOS**. Clients share one account and synchronized core domain model. Windows focuses on desktop capture, shortcut, notifications, background sync, local files/folders and local commands; Android focuses on mobile capture, widgets, notifications, sharing, voice and health bridges; iOS/macOS provide equivalent Apple-platform capabilities where useful.
+
+### 4.4 Collaboration And Plugin Platform — Later
+
+Shared workspaces, assignment, comments, team permissions, organizational administration and team dashboards follow personal-product maturity. A plugin API/SDK, sandbox, permission model, review process and marketplace follow collaboration. Neither belongs to current web implementation scope.
 
 ---
 
@@ -628,7 +661,7 @@ CSV and JSON export of events, results, and rollups, generated asynchronously an
 
 ### 8.1 Information Architecture
 
-Primary navigation: **Today · Inbox · Projects · Calendar · Focus · Analytics · Settings**. Navigation exposes the core loop, not a feature catalog.
+Primary navigation evolves around the personal core: **Home · Inbox · Today · Tomorrow · Upcoming · Focus · Overdue/Backlog · Completed · Goals · Tracker · Knowledge & Data · Calendar · Insights · Settings**. Current navigation may expose a smaller, implemented subset while the missing modules are built. It must remain understandable for an individual user rather than becoming an enterprise project-management catalogue.
 
 ### 8.2 Capture Flow
 
@@ -698,7 +731,7 @@ MVP: English, with locale-aware dates, times, numbers, and time zones. Phase 2: 
 |---|---|
 | Web | Next.js App Router |
 | UI | React + TypeScript |
-| Desktop | Tauri (Windows) |
+| Desktop | Future Windows client; technology selected when the web reference implementation is mature |
 | Monorepo | pnpm + Turborepo |
 | API | TypeScript modular monolith |
 | Database | PostgreSQL |
@@ -718,7 +751,7 @@ MVP: English, with locale-aware dates, times, numbers, and time zones. Phase 2: 
 
 ### 9.2 Domain Modules
 
-Identity · Accounts · Workspaces · Tasks · Projects · Scheduling · Recurrence · Timers · Tracking · Calendar · Notifications · Attachments · Billing · Sync · Analytics · Audit.
+Identity · Accounts · Workspaces · Goals · Tasks · Projects · Tracker · Knowledge & Data · Scheduling · Recurrence · Timers · Task Execution Tracking · Calendar · Notifications · Attachments · Billing · Sync · Analytics · Audit.
 
 Each module owns its database tables, domain services, validation, events, authorization checks, and tests. Cross-module access goes through published service interfaces and events — never direct table reads.
 
@@ -727,16 +760,16 @@ Each module owns its database tables, domain services, validation, events, autho
 | Component | Responsibilities |
 |---|---|
 | Web client | UI, local cache, offline mutation queue, client validation, sync client |
-| Desktop client | Tauri shell, local SQLite, native notifications, global shortcut, offline operation, OS credential storage |
+| Future desktop client | Windows shell, local store, native notifications, global shortcut, offline operation and OS credential storage after web maturity |
 | API | AuthN/AuthZ, query and mutation endpoints, sync endpoints, billing portal handoff, event publication |
 | Auth service | In-process module: sessions, MFA, password reset, revocation |
 | Database | System of record for transactional data |
 | Object storage | Attachments and generated exports; metadata stays in PostgreSQL |
-| Search index | PostgreSQL FTS in MVP; dedicated engine only when justified |
+| Search index | PostgreSQL FTS initially; current task search evolves into global search across supported personal-core modules |
 | Job workers | Reminders, notifications, calendar sync, recurrence generation, tracking calculation, indexing, file scanning, exports, retention/deletion |
 | Notification service | Channel abstraction (web push, desktop, email), delivery status, suppression |
 | Billing service | Stripe integration, webhook verification, entitlement projection |
-| AI service | Provider abstraction, quota and cost enforcement, response validation, redaction, telemetry |
+| Smart service (future) | Provider abstraction, quota and cost enforcement, response validation, redaction and telemetry; deterministic local parsing/advice remains available without it |
 | Analytics pipeline | Rollups from tracking events into daily/weekly aggregates; product telemetry separated from user analytics |
 
 ### 9.4 Conditions For Extracting A Service
@@ -997,13 +1030,22 @@ UUIDv7-compatible identifiers · all tables carry `created_at`/`updated_at` · m
 | workspaces | id, owner_id, name, timezone | owner |
 | workspace_members | workspace_id, user_id, role | unique (workspace, user) |
 | roles_permissions | role, permission | unique composite |
+| goals (planned) | id, workspace_id, parent_goal_id, title, category, priority, dates, status, version | (workspace, status), parent_goal_id |
+| milestones (planned) | id, workspace_id, goal_id, identifier, title, due_at, status, version | unique (goal, identifier), (workspace, due_at) |
 | projects | id, workspace_id, name, status | (workspace, status) |
 | sections | id, project_id, name, position | (project, position) |
 | tasks | id, workspace_id, project_id, section_id, title, status, due_at, estimate_minutes, version | (workspace, status), due_at, project, parent_task_id |
 | task_dependencies | task_id, depends_on_task_id | composite unique |
 | tags | id, workspace_id, name | unique (workspace, name) |
 | task_tags | task_id, tag_id | composite unique |
-| comments (P2) | id, task_id, author_id, body | (task, created_at) |
+| goal_task_links (planned) | goal_id, task_id | unique composite |
+| milestone_task_links (planned) | milestone_id, task_id | unique composite |
+| trackers (planned) | id, workspace_id, name, kind, unit, frequency, target, goal_id, status, version | (workspace, status), goal_id |
+| tracker_entries (planned) | id, tracker_id, occurred_at, value, source, task_id, idempotency_key | (tracker, occurred_at), unique idempotency_key |
+| knowledge_collections (planned) | id, workspace_id, name, kind, version | (workspace, name) |
+| knowledge_records (planned) | id, workspace_id, collection_id, title, body, properties, version | (workspace, collection) |
+| entity_relations (planned) | workspace_id, source_type/id, target_type/id, relation_type | unique typed relation |
+| comments (later) | id, task_id, author_id, body | (task, created_at) |
 | attachments | id, task_id, object_key, size, scan_status | task |
 | reminders | id, task_id, scheduled_at, status | (status, scheduled_at) |
 | recurrence_rules | id, task_id, rule, timezone | task |
@@ -1760,20 +1802,26 @@ Initial team:
 
 The plan assumes a small team and prioritizes modular architecture over parallel feature development. Capacity assumption: roughly 4.5 engineering FTE, with 70% on roadmap, 20% on quality and operations, and 10% on unplanned work.
 
-### 21.2 Twelve-Month Roadmap
+### 21.2 Dependency-Ordered Roadmap
 
-| Period | Focus | Exit criteria |
+| Stage | Focus | Exit criteria |
 |---|---|---|
-| Months 1–2 | Architecture, authentication, database, task core | Tasks and accounts work in staging |
-| Months 3–4 | Projects, views, recurrence, reminders | Core task workflow passes acceptance tests |
-| Months 5–6 | Timers, tracking events, analytics | Explainable execution results available |
-| Months 7–8 | Offline sync, Windows desktop, attachments | Cross-platform synchronization passes conflict tests |
-| Month 9 | Google Calendar, billing, exports, deletion | Paid beta operational |
-| Month 10 | Accessibility, performance, security hardening | Release gates pass |
-| Month 11 | Private beta and user research | Retention and reliability issues prioritized |
-| Month 12 | Public beta or GA decision | Go/no-go criteria satisfied |
+| 0: Alignment and evidence | Keep PRD, code, migrations, tests and milestone evidence honest | Authoritative personal-first PRD and an implementation audit; no historical completion claim is widened by documentation |
+| 1: Goal Center | Parent/sub-goals, milestones, stable identifiers, task links and derived progress | Tenant-safe, versioned lifecycle and progress calculations with API/UI/integration evidence |
+| 2: Tracker | Manual trackers, targets, frequencies, metric entries, task-completion triggers, streak/scoring boundaries | Idempotent logging and reporting that does not alter task-execution history |
+| 3: Knowledge & Data | Notes, resources, collections, records and bounded relations | Usable personal data without a speculative Notion clone; deletion/export/authorization decisions tested |
+| 4: Connected daily workspace | Task Center navigation/collections, calendar layers, cross-module insights, search and preferences | Users can move from goal to task to tracker/data/calendar/report through real links |
+| 5: Web quality and release hardening | Accessibility, performance, security assurance, migration/recovery and operational evidence | Deterministic CI gates plus explicit external release blockers; no claim that CI proves production operations |
+| 6: Personal intelligence | Consent-based advisory AI, voice, smart planning and supported wearable-data integrations | Clear safety, cost and provider boundaries; no silent mutation |
+| 7: Clients | Windows, then Android, then iOS/macOS | Shared account/domain model and tested client-specific capabilities |
+| 8: Collaboration | Shared workspaces and team workflows | Personal workflows remain first-class |
+| 9: Plugin ecosystem | SDK, sandbox, permissions and marketplace | Mature security and review model |
 
 ### 21.3 Milestone Details
+
+#### Historical milestones 1–8
+
+The following milestone descriptions record prior execution-loop work and remain useful evidence. They do not redefine the current personal-core order above, and a listed feature is complete only to the boundary documented by its milestone and implementation evidence.
 
 #### Milestone 1: Foundation
 
@@ -1911,13 +1959,15 @@ The plan assumes a small team and prioritizes modular architecture over parallel
 
 | ID | Decision |
 |---|---|
-| PD-01 | Launch single-user; collaboration is Phase 2 |
-| PD-02 | Execution tracking is the wedge; everything else supports it |
-| PD-03 | Scores are explainable, correctable, and disableable |
-| PD-04 | No leaderboards or cross-user comparison in MVP |
-| PD-05 | Google Calendar is the only integration at launch |
-| PD-06 | Deterministic parser is the default; the model path is fallback and opt-in |
-| PD-07 | Windows-only desktop at launch; macOS and Linux after product-market fit |
+| PD-01 | Personal productivity and life management are first; collaboration is later |
+| PD-02 | Goals → milestones → tasks → trackers → knowledge/data → calendar → insights are connected through a shared core |
+| PD-03 | Task execution tracking remains the initial wedge; scores are explainable, correctable and disableable |
+| PD-04 | No leaderboards or cross-user comparison in the personal product |
+| PD-05 | Google Calendar is the first calendar integration; live-provider evidence remains external |
+| PD-06 | Deterministic parsing is the default; model-backed assistance is opt-in, advisory and schema-validated |
+| PD-07 | Web is the reference client; Windows → Android → iOS/macOS is the planned sequence |
+| PD-08 | Wearable strategy is supported data integration first, not a dedicated watch app |
+| PD-09 | Collaboration follows personal-product maturity; plugins follow collaboration |
 
 ### 22.3 Security Decisions
 

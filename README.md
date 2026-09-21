@@ -1,16 +1,17 @@
 # NEXTDOO
 
-An outcome-oriented task and time-management platform for Web and Windows Desktop.
+Personal productivity and life-management workspace, starting on the web.
 
-> Help users plan work against available time, execute it, and understand whether their execution matched their intentions.
+> Connect goals, milestones, tasks, trackers, knowledge and data, calendar, and insights so people can plan, do, track, store, schedule, and understand their progress.
 
 ## Documentation
 
-- [Product Requirements Document & Technical Blueprint](docs/PRD.md) — full PRD: strategy, phasing, tracking system, architecture, sync design, security, reliability, database, API, monetization, testing, delivery plan, decision register.
+- [Product Requirements Document & Technical Blueprint](docs/PRD.md) — authoritative strategy, scope labels, requirements, architecture and roadmap.
+- [Personal-first reconciliation audit](docs/PERSONAL_CORE_AUDIT.md) — inspected baseline, current boundaries, risks and next implementation order.
 
 ## Status
 
-Recovered implementation with verified incremental quality/security repairs. **Not a release-complete MVP.**
+Recovered implementation with substantial task, execution-tracking, sync, calendar and quality/security work. **Not a release-complete personal workspace.** Goal Center, general Tracker and Knowledge & Data are planned personal-core work, not implemented features.
 
 - [Development and verification](docs/DEVELOPMENT.md)
 - [Phase 1 completion ledger and remaining work](docs/PHASE1_COMPLETION_PLAN.md)

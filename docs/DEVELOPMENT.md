@@ -1,7 +1,7 @@
 # Development and verification
 
-The recovered implementation is not a release-complete MVP. `docs/PRD.md` on
-main is the product authority. This guide describes actual behavior, not planned integrations.
+The recovered implementation is not a release-complete personal workspace. `docs/PRD.md` on
+main is the product authority and `docs/PERSONAL_CORE_AUDIT.md` records the current inspected boundary. This guide describes development and verification behavior; historical limitation notes below must be read with their dates and milestone references.
 
 ## Toolchain and local services
 
