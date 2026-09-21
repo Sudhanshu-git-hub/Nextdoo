@@ -1888,6 +1888,50 @@ RTO/RPO, regional failover, attachment/object-store restore, backup deletion-win
 semantics, status page/on-call/SLO and pen-test evidence remain external
 release-gate gaps. STOP after M8-i7; M8-i8 not started.
 
+## M8-i6 — Google Calendar webhook redelivery dedupe — 2026-09-20 (review only)
+
+Per the M8-i6 directive this is a **planning/review turn only**: build the
+remaining class-3 hardening matrix and recommend the next bounded
+increment. No product code was changed; M8-i4 (`5b3c4e9` + `90e6992`) and
+M8-i5 (CLOSED-BLOCKED, `bc4fd90`) are untouched and not reopened; no live
+Google verification was retried. Deliverable:
+[M8_i6_GOOGLE_CALENDAR_WEBHOOK_DEDUPE_REVIEW.md](M8_i6_GOOGLE_CALENDAR_WEBHOOK_DEDUPE_REVIEW.md)
+(full PRD + audit + M8-i4 review/milestone + M8-i5 preflight re-read; code
+survey of the webhook path, rate-limit middleware, sync engine,
+disconnect/retention sweep, fixture seams, and all calendar test suites).
+
+Matrix (calendar class-3 candidates): **C1/T2 webhook redelivery dedupe
+(`X-Goog-Message-Id`) — class 3, RECOMMENDED for M8-i6** (§11.1 names
+"event-ID dedupe"; concrete waste/replay-control defect; zero external
+dependencies; deterministic via the fixture provider's call counter; no
+overlap — M8-i4 explicitly excluded T2). Deferred: C2/T6b webhook bucket
+fairness (closed M8-i4 deferral; no PRD anchor for the inbound webhook; no
+incident), C3/T3 channel-token column (directive: no live evidence or
+explicit PRD/security requirement; audit L4 deferral), C4/T7 opt-in export
+cleanup (feature, not hardening — Phase 2), C5 orphaned-export
+reconciliation (rare; needs a provider payload change; closed M8-i4
+trade-off), C6 proactive token bucket/batching (M8-i4: no observable
+protection at MVP scale; reactive backoff already delivered as T4), C7
+channel-state handling (current behavior is a safe superset; no defect).
+Externally blocked: C8/T8–T11 (16-point live pass etc. — M8-i5
+CLOSED-BLOCKED status stands). Non-calendar items (ASVS/SAST CI, restore
+test, k6, N2/N5/G3, X2/X3/X4) listed as not class-3 calendar hardening.
+
+Recommended M8-i6 scope (not started): migration `0024` +
+`calendar_webhook_messages` table + route reads the optional
+`X-Goog-Message-Id` header + `handleCalendarWebhook` dedupe (insert-first,
+compensating delete on import failure, no dedupe row for inert paths,
+absent header = legacy behavior) + `sweepCalendarRetention` 24 h purge.
+No endpoints, no API shape changes, no worker job-registry changes. 10
+deterministic acceptance criteria + test strategy recorded in the review
+doc. Per directive, STOP after this review — no M8-i6 implementation.
+
+Consolidated M8 status: audit CLOSED (`83fce2f`), M8-i1 CLOSED
+(`1c224b4`), M8-i2 CLOSED (`be02566`), M8-i3 CLOSED (`9fe6514`), M8-i4
+CLOSED (`5b3c4e9` + `90e6992`), M8-i5 **BLOCKED at preflight**
+(`bc4fd90`), M8-i6 **REVIEW COMPLETE** (this entry; implementation NOT
+started).
+
 ## M8-i8 — remaining release-gate hardening review — 2026-09-20
 
 Review/planning only; no implementation started. M8-i7 remains closed and
@@ -1931,3 +1975,38 @@ page, monitoring backend and 30-day SLO evidence, on-call rotation, pen-test
 vendor evidence, container image scanning pipeline, production managed secrets/TLS,
 and live Google/billing/SMTP/S3 verification. STOP after the review; M8-i8
 implementation was not started.
+
+
+## Consolidation — main repository consolidation — 2026-09-21
+
+Per the 2026-09-21 consolidation directive (safe full-repository
+consolidation; no new feature work), GitHub `main` (pre-consolidation
+`f84d299`, backed up at `backup/pre-main-consolidation-2026-09-21`) was
+consolidated to the canonical cumulative implementation.
+
+Branch analysis: `main` (`f84d299`) held only the PRD docs commit (its
+PRD is byte-identical to the development lineages');
+`arena/01a07feb-nextdoo` (`a55c3be`) was a separate docs-only lineage
+whose content (PRD + original README) is fully contained in `main` and
+superseded by the development lineages; `feat/mvp-implementation`
+(`49b2e68`) is the development-lineage root; `arena/01a080d5-nextdoo`
+(`658c829`) is an ancestor of the canonical branch (fully contained).
+Canonical implementation: `arena/01a0ba0b-nextdoo` (`f538748`) —
+contains all work through the M8-i5 preflight (`bc4fd90`) plus the M8-i6
+webhook replay/fairness implementation (`29cdf35`, migration `0024`),
+M8-i7 CI database restore smoke (CLOSED, CI-verified at `09ea72e`), and
+the M8-i8 release-gate review (`f538748`, review only).
+`arena/01a085b7-nextdoo` (`3697de1`) contributed its one unique commit —
+the M8-i6 review doc above — merged into the canonical tip; the only
+merge conflict was this ledger (both entries preserved, chronological
+order). No implementation code from any branch was reintroduced,
+superseded, or rewritten; the merged tree differs from the canonical tip
+only by the M8-i6 review doc + this entry.
+
+Final consolidated M8 status: audit CLOSED (`83fce2f`), M8-i1 CLOSED
+(`1c224b4`), M8-i2 CLOSED (`be02566`), M8-i3 CLOSED (`9fe6514`), M8-i4
+CLOSED (`5b3c4e9` + `90e6992`), M8-i5 **BLOCKED at preflight**
+(`bc4fd90`), M8-i6 reviewed in two sessions (both reviews are in this
+file) and implemented at `29cdf35`, M8-i7 CLOSED at `09ea72e`, M8-i8
+**REVIEW COMPLETE at `f538748` — implementation NOT started**. M8-i8 was
+not started by the consolidation.
