@@ -2003,6 +2003,18 @@ order). No implementation code from any branch was reintroduced,
 superseded, or rewritten; the merged tree differs from the canonical tip
 only by the M8-i6 review doc + this entry.
 
+Validation of the consolidated tree surfaced one genuine pre-existing
+test defect (not a merge artifact): the M8-i6 T6b
+"concurrent deliveries on independent buckets" test pushed fixture
+events with the real clock, then mocked `Date.now()` to a hardcoded
+2026-09-19 anchor and asserted inside a `[now-1h, now+24h]` window
+computed from the mock — from 2026-09-20T11:30Z UTC the real-clock
+event falls outside the mocked window and the test fails deterministically
+(reproduced: 900/901 on 2026-09-21; all other 900 green). Disclosed
+fix (`62eba62`): the mock anchor is now the actual current time; no
+assertion changed; full suite 901/901 green afterwards. No other code
+was modified during consolidation.
+
 Final consolidated M8 status: audit CLOSED (`83fce2f`), M8-i1 CLOSED
 (`1c224b4`), M8-i2 CLOSED (`be02566`), M8-i3 CLOSED (`9fe6514`), M8-i4
 CLOSED (`5b3c4e9` + `90e6992`), M8-i5 **BLOCKED at preflight**
