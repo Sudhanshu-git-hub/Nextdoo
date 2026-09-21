@@ -1,0 +1,32 @@
+{
+  "name": "@nextdoo/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema.ts"
+  },
+  "scripts": {
+    "generate": "node ../../scripts/new-migration.mjs",
+    "migrate": "tsx src/migrate.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@nextdoo/billing": "workspace:*",
+    "@nextdoo/contracts": "workspace:*",
+    "@nextdoo/core": "workspace:*",
+    "drizzle-orm": "0.45.2",
+    "postgres": "3.4.5"
+  },
+  "devDependencies": {
+    "@nextdoo/calendar": "workspace:*",
+    "embedded-postgres": "18.4.0-beta.17",
+    "tsx": "4.23.13",
+    "typescript": "5.7.2",
+    "vitest": "4.1.11"
+  }
+}

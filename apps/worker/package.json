@@ -1,0 +1,29 @@
+{
+  "name": "@nextdoo/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nextdoo/billing": "workspace:*",
+    "@nextdoo/calendar": "workspace:*",
+    "@nextdoo/contracts": "workspace:*",
+    "@nextdoo/core": "workspace:*",
+    "@nextdoo/db": "workspace:*",
+    "drizzle-orm": "0.45.2",
+    "nodemailer": "10.0.1",
+    "postgres": "3.4.5",
+    "web-push": "^3.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.1",
+    "@types/nodemailer": "8.0.1",
+    "@types/web-push": "^3.6.4",
+    "tsx": "4.23.13",
+    "typescript": "5.7.2"
+  }
+}

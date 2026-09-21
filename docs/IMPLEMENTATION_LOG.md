@@ -1,0 +1,2024 @@
+# Approved continuation: quality gates and integrity only
+
+Baseline: `49b2e68`, preserved on remote `feat/mvp-implementation`. Work stays on
+`arena/01a080d5-nextdoo`. No history rewrites or later product-feature implementation.
+
+## Phase 1 — quality gates
+
+- Real ESLint checks now run; removed unused imports/dead declarations, not working behavior.
+- Integration tests fail if DATABASE_URL or the migrated database is unavailable.
+  `test:unit` remains intentionally database-free.
+- V8 coverage includes core and server services. Core thresholds are 85% on all four metrics.
+- Playwright isolates E2E discovery, uses a real production server/database/browser and unique accounts.
+- CI provisions PostgreSQL 16/UTF-8 and runs installation, audit, migration replay,
+  lint, typecheck, coverage, build and E2E. Remote CI is not claimed executed until pushed/run.
+- Dependencies upgraded compatibly: Next stays on 15, React on 19, Drizzle remains ORM;
+  Vitest/Playwright/build tooling patched. Explicit Sharp/PostCSS/Vite pins cover transitive findings.
+- Removed obsolete Drizzle Kit generator, replacing it with a tested, exclusive-write,
+  nonzero-on-error **manual SQL scaffold** consistent with the existing migration workflow.
+- Documentation now distinguishes actual services from reserved config and placeholders.
+
+Verification: 193 tests passed (baseline 191 plus two migration-tool tests), 2 real
+Chromium E2E passed, lint/typecheck/build passed. Core: 99.50% lines, 96.45%
+statements, 85.58% branches, 100% functions. Full dependency audit: **0 findings**
+(previously 4 critical/17 high; production previously 2 critical/16 high).
+
+Environment: standard Playwright CDN download failed ECONNRESET. Locally ran real
+Chromium 149 from a registry-distributed binary via executable-path override and
+its native libraries; no API mocks or disabled browser security. CI installs the
+standard Playwright browser. Local DB is PostgreSQL 18.4 UTF-8; CI specifies 16.
+
+## Phase 2
+
+The seven prioritized repair groups below are implemented and verified, with
+regressions added before repairs. This is not closure of the entire baseline audit
+or a production security certification. See `docs/REPAIR_REPORT.md` for remaining
+audit findings, deployment caveats, validation evidence and the stop point.
+
+### Tenant isolation repair
+
+Added 9 database-backed regressions covering foreign task-ID collisions, foreign
+mutation replay, update/delete attempts, project/section/tag references through
+online and sync mutations, and inconsistent conflict snapshots. **6 failed before
+repair; all 9 pass after.** Scoped replay/collision/conflict targets and added shared
+reference authorization. Full verification passed: 202 tests, 2 browser E2E,
+coverage thresholds, lint, typecheck and production build.
+
+### Atomic HTTP idempotency
+
+Added five regression cases; **four failed before repair** (concurrent creates,
+changed request identity, missing keys, partial-commit rollback). Transaction-local
+service context now lets the wrapper commit domain state and response ledger
+atomically under a per-user/key PostgreSQL advisory lock. Canonical request hashing
+includes method/path/query/body. Legacy response-only ledger entries are rejected
+rather than guessed or silently reexecuted. Full verification: **207 tests and
+2 E2E passed**, lint/typecheck/coverage/build passed.
+
+### Commit-ordered sync cursors
+
+A real two-connection regression reproduced the late-commit skip. Migration 0002
+assigns sync sequence numbers inside a BEFORE INSERT trigger after acquiring a
+global transaction advisory lock, so a higher number cannot commit first. This
+covers application, worker and raw SQL writers. **Throughput tradeoff:** sync writes
+serialize globally through commit; no claim of production load/SLO validation.
+Migration applied successfully and rerun was a no-op. Regression green and full
+verification passed: **208 tests, 2 E2E**, lint/typecheck/coverage/build.
+
+### Sync/domain parity and entitlement integrity
+
+Seven new regressions all failed before repair, now pass. Sync create/update/delete
+and conflict resolution call task domain operations instead of raw task writes;
+completion timestamps/history/scoring and reminder cancellation now share the
+transaction. Workspace mutation locks protect merge decisions and concurrent task
+limits, including online creates. Mutation-ID replay is serialized and bound to
+request identity (migration 0003); old identity-less records are conservatively
+rejected. Canceled subscriptions retain paid entitlements until currentPeriodEnd.
+No billing/provider integration added. Full verification passed: **215 tests,
+2 E2E**, lint/typecheck/coverage/build.
+
+### Scoring and reopen integrity
+
+Five regressions added; four failed before repair. Evaluations now lock before
+assembling inputs and serialize with workspace mutations. Migration 0004 retains
+historical results while enforcing exactly one active result per task/occurrence;
+returning to an old input appends a new historical row. Reopen and scoring-input
+edits reevaluate atomically, failures roll back rather than being swallowed, due
+cutoff changes invalidate cached inputs, and TR-06 includes skipped occurrences in
+the denominator. Full verification passed: **220 tests, 2 E2E**, all other gates.
+
+### Timer integrity and Focus clock
+
+Five database regressions failed before repair; all pass after. Starts/transitions
+serialize per user, acquiring affected workspace locks before task writes. Older
+offline starts preserve the newer canonical session; terminal sessions cannot be
+credited again; transitions cannot move backward. Credited time now versions and
+syncs the task and reevaluates atomically. Migration 0005 records event transition
+time; legacy rows can only be backfilled to their best known durable lower bound
+(the old schema did not store each pause timestamp).
+
+A real browser regression reproduced **NaN:NaN:NaN** after fixing the test fixture
+to save a fully specified date rather than leave a capture confirmation open.
+Focus now consumes the API's elapsedSeconds snapshot and advances from receipt,
+not the original start time. Full verification passed: **225 tests, 3 E2E**,
+lint/typecheck/coverage/build.
+
+### Account purge with real task history
+
+Three regressions initially failed, including the actual worker job path. Both
+service and worker now use a shared atomic purge that rechecks deletion eligibility
+under a row lock, removes private outbox and replay payloads, and retains audit
+records (PRD separate one-year retention). Migration 0006 permits tracking deletion
+only through final account/workspace cascade and prevents live-account workspace
+deletion from bypassing immutability. Direct tracking UPDATE/DELETE still fail.
+No provider or billing-retention integration added. Full verification passed:
+**228 tests, 3 E2E**, lint/typecheck/coverage/build.
+
+### Browser cache isolation
+
+Final security review reproduced the accepted audit's browser-cache disclosure
+with two real accounts in the same browser and a failed task request. Task cache
+reads/writes now require workspace provenance; unscoped legacy records are not
+rendered. The browser regression failed before and passes after. Full verification
+passed: **228 tests, 4 E2E**, lint/typecheck/coverage/build. This is a security repair,
+not completion of offline capture/queue/conflict UX.
+
+### Adjacent lifecycle/data-loss checks
+
+Five additional database regressions failed before repair and pass after: expired
+restore/task-cap bypass, lost reschedule intent and relative-reminder dates, raw
+Date binding in the alternate reminder dispatcher, expired paid-grace access, and
+silently ignored recurrence inputs. Recurrence generation remains out of scope:
+unsupported recurring creates now explicitly fail without creating a one-off task.
+A real browser regression also failed before capture forwarded the parsed rule;
+it now shows the unsupported message and preserves the original input text.
+Provider dispatch is still not implemented; the dispatcher regression claims zero
+rows and verifies binding only. Full verification: **233 tests, 5 E2E**, all gates.
+
+
+## Final verification and stop point
+
+Final verification ran against **fresh `nextdoo_verify_20260908`**, not just the
+repair database. Migrations 0000–0006 applied successfully; the second run was a
+no-op. `pnpm verify` passed: 233 tests in 18 files, five real Chromium E2E tests,
+core coverage thresholds, lint, typecheck and production build. Full audit remains
+zero across all severities. `git diff --check` found one inherited test whitespace
+line introduced by Phase 1 cleanup; it was removed before the final documentation
+commit. No functional test assertions were removed or weakened.
+
+Stop here: no subsequent product milestone was started. Full audit closure is NOT
+claimed; the separate authentication-hardening finding and offline queue/provider/
+production gaps are explicitly carried forward in `docs/REPAIR_REPORT.md`.
+
+After resuming the interrupted documentation turn, `pnpm verify` was repeated
+successfully (233 tests, 5 E2E, all gates); evidence: `final-resume-verify.log`.
+
+
+## Separately authorized task-management continuation — 2026-09-09
+
+The quality/integrity stop point above remains historical. Subsequent user-approved
+project, board, relationship, lifecycle, filtering and bulk milestones are recorded
+in their dedicated reports. The next dependency, recurrence, now has a shared real-task
+generator, independently scheduled worker, scoped/versioned/idempotent APIs and an
+online capture/editor/series-management workflow. User-approved DST and preserve-
+generated-history policies, regression failures/fixes, bounds and release limitations
+are in [TASK_RECURRENCE_MILESTONE.md](TASK_RECURRENCE_MILESTONE.md).
+
+Final local validation: **386 tests / 41 files, 57 browser/API scenarios**, lint,
+types, coverage, production build and migration replay passed; audit is zero across
+all severities. No working board/subtask implementation was replaced. Personal-
+workspace settings is next, pending workday-hour policy review. Phase 1 is incomplete;
+AI, billing, desktop and full offline mode were not started.
+
+
+## Personal-workspace settings — 2026-09-09
+
+After the user selected overnight hours, implemented owner-only versioned settings,
+transactional audit/sync/outbox, persistent guarded UI and workspace-local capture,
+Today and week-calendar defaults. Existing task instants and recurrence history are
+preserved. [WORKSPACE_SETTINGS_MILESTONE.md](WORKSPACE_SETTINGS_MILESTONE.md) records
+regression-first evidence, limits and **394 tests / 43 files, 62 browser/API scenarios**,
+full local gates and zero dependency findings. No new migration was needed. The
+recurrence commit's remote CI passed. Board optimistic movement/rollback is the
+remaining focused acceptance fix in the current task-management scope.
+
+
+## Board optimistic-movement acceptance closure — 2026-09-09
+
+A focused follow-up closes the remaining §6.9 card-movement/rollback requirement
+without replacing the board. The held-request regression failed before the change;
+it now proves immediate movement, rollback, preserved destination and stable retry.
+A lost-after-commit response test proves exactly one version increment. Full gates:
+**394 tests / 43 files, 64 browser/API scenarios**, zero audit findings. See
+[BOARD_OPTIMISTIC_ACCEPTANCE.md](BOARD_OPTIMISTIC_ACCEPTANCE.md). The separately
+pushed recurrence/workspace commits passed remote CI. All currently requested
+workflows are functional within documented bounds; Phase 1 remains incomplete.
+
+
+## Expanded online-workflow continuation: notifications/reminders — 2026-09-09
+
+The user expanded authorization to remaining non-AI/non-billing online MVP gaps,
+retaining the desktop/full-offline exclusions. The next bounded milestone fixes
+reminder poison-batch failure, retry/identity/lifecycle and tenant/deletion guards,
+and delivers an in-app notification center with real status/read/snooze/cancel and
+paginated history. Legacy notification export references are privacy-filtered;
+linked notification/read/reminder account purge is verified.
+
+[NOTIFICATION_DELIVERY_MILESTONE.md](NOTIFICATION_DELIVERY_MILESTONE.md) records
+regression-first failures, timestamp/refresh fixes and acceptance boundaries. Final
+local gates: **405 tests / 44 files, 69 browser/API scenarios**, lint, types, coverage,
+build, migration 0012/replay and zero dependency findings. Native/background browser
+notifications, enabled reminder SMTP, general outbox consumers and the remainder of
+Phase 1 are explicitly open. Durable tracking/freshness is next; no AI, billing,
+desktop or full offline feature was started.
+
+
+## Durable tracking and freshness — 2026-09-09
+
+Implemented the next user-selected online milestone without changing the PRD,
+mathematical score weights or existing UTC/current-task reporting cohorts.
+[TRACKING_DURABILITY_MILESTONE.md](TRACKING_DURABILITY_MILESTONE.md) records the
+pipeline, API/UI contracts, regression evidence, deployment bounds and remaining
+M4/operational gaps.
+
+Highlights: shared DB calculation engine version 2; transactional invalidation for
+web and standalone producers; per-consumer outbox receipts; leased, fenced work
+with an initial attempt plus five retries; due-time/cohort/version reconciliation;
+complete scoped event hashes and immutable source snapshots/history; result-event
+publication atomic with result/checkpoint; freshness notices and resumable evidence;
+audited CAS/idempotent single-task recovery with lost-acknowledgement protection.
+
+Regression-first tests exposed foreign-workspace skip contamination, tied-time
+source-event loss and a held-poll recovery race. All were fixed without weakening
+existing assertions. A real standalone worker is killed mid-calculation in an
+isolated migrated database and a new process recovers its persisted claim safely.
+
+Final local gates: **422 tests / 46 files and 75 browser/API scenarios**, lint,
+types, coverage and build passed. Frozen install, migrations 0013/0014/replay and
+zero-finding dependency audit passed. Remote CI is verified against the pushed
+milestone commit, separately from local evidence.
+
+Date-range corrections/backfill, workspace-local reporting, reviewed controls,
+TR-03 policy, routed alerts/load SLOs and wider Phase 1 integrations remain open.
+No AI, billing, desktop or full offline feature was started.
+
+## M2 capture/mutation instrumentation + collection-scale performance acceptance — 2026-09-10
+
+Implemented the next M2 increment without changing the PRD, the existing
+APIs or any verified milestone.
+[M2_INSTRUMENTATION_MILESTONE.md](M2_INSTRUMENTATION_MILESTONE.md) records the
+PRD requirements, design decisions, test evidence, measured baseline and the
+remaining operational gate.
+
+Highlights: typed metric events over the existing structured-log sink
+(`task.created`/`task.create_failed`, `task.mutated`/`task.mutation_failed`,
+`workspace.active_tasks` gauge, `task.capture`) with one instrumentation seam
+covering HTTP, bulk and sync (channel-tagged via the actor); a strict,
+content-free `POST /api/v1/telemetry/capture` endpoint fed by
+client-measured open→save latency in QuickCapture (fire-and-forget, never
+blocks capture); 1,000-task inbox E2E proving full cursor pagination, bounded
+virtualized DOM and exact deep-page order; and a repeatable API latency
+baseline (`scripts/perf-baseline.mjs`) measuring all seven read/write
+operations at 1,000 seeded tasks — every p95 within the PRD §19.4 budgets
+(read 9.7–15.4 ms vs 300 ms; write 21.0–27.3 ms vs 500 ms) as a local
+reference, with the staging load test itself remaining an operational
+qualification.
+
+Final local gates: **51 test files / 498 unit+integration tests** and
+**105/105 browser/API scenarios** (baseline 50/492 and 102), lint (0
+warnings), types, coverage (87.41% statements) and build passed. Remote CI is
+verified against the pushed milestone commit, separately from local evidence.
+
+The only remaining M2 completion work is the PRD §19.4 staging load test
+execution (staging environment + load generator), plus deployment-side
+collector/alerting wiring for the new events. No M3, provider, billing,
+desktop or full-offline work was started.
+
+Implemented the next M3 increment without changing the PRD, the existing
+APIs or any verified milestone.
+[M3_CAPACITY_PLANNING_MILESTONE.md](M3_CAPACITY_PLANNING_MILESTONE.md) records
+the PRD requirements, design decisions, test evidence and the remaining
+deferred work.
+
+Highlights: a pure, timezone-free core capacity engine (`planDayCapacity`)
+enforcing the PRD §5.2 rule — no feasibility/overload claim is possible
+while a connected calendar has not synced through the day
+(`CAPACITY_UNKNOWN`, §8.6 "calendar sync delayed"); the Today screen now
+shows the server-computed full-collection workload against the configured
+overnight-aware workday with a warning banner (50 loaded tasks, banner
+reports all 60 — never moves tasks automatically); plan-gated calendar
+connections (FREE: 1, `ENTITLEMENT_LIMIT_REACHED` at the limit) with
+suspend/reactivate on plan change (never delete) and real "1 of 1" usage in
+Settings; tenant-scoped `GET /v1/calendar/connections`,
+`DELETE /v1/calendar/connections/:id` and the new
+`GET /v1/calendar/capacity` seam (401/403/404 isolation, no token leakage);
+workday configuration changes recompute capacity per request (E2E-verified
+480→120-minute flip to `OVERLOADED`). Provider OAuth/sync, offline timers
+and real push/email delivery remain deferred.
+
+Final local gates: **54 test files / 524 unit+integration tests** and
+**110/110 browser/API scenarios** (baseline 51/498 and 105), lint (0
+warnings), types, coverage (87.85% statements, baseline 87.41%), build and
+migration replay passed. Remote CI is verified against the pushed milestone
+commit, separately from local evidence.
+## M4 score corrections and date-range recalculation — 2026-09-10
+
+Implemented the next M4 slice without changing the PRD, the existing score
+math/weights, append-only event semantics, historical results or any verified
+milestone (including TR-03 semantics, which remain explicitly unresolved).
+[M4_SCORE_CORRECTIONS_MILESTONE.md](M4_SCORE_CORRECTIONS_MILESTONE.md) records
+the PRD requirements, design decisions, test evidence and the remaining work.
+
+Highlights: four typed, immutable correction kinds
+(`DUE_DATE_CORRECTED`, `EXTERNALLY_BLOCKED`, `UNTRACKED_COMPLETION`,
+`EXCLUDED_FROM_ANALYTICS`) with actor + reason + audit row on every correction,
+latest-row effective state, undo-as-new-CLEAR-row and no-op re-apply;
+correction-aware scoring that folds to Unmeasured/weight-normalised without
+fabricating values (`EXTERNALLY_BLOCKED` in core timing, weight .25 excluded;
+`UNTRACKED_COMPLETION` scores completion absent); due-date corrections applied
+through the normal update path with the in-transaction fast path suppressed so
+the durable worker path writes the single new result marked `recalculated`
+(TR-05: ON_TIME → LATE with the original superseded, never mutated, events
+intact); `EXCLUDED_FROM_ANALYTICS` removed from day/week summary cohorts only
+(numeric `excludedCount` reported, drill-down preserved, note visible even when
+every task in the window is excluded); bounded date-range recalculation
+(default 90 days, ≤366, `to` ≤ today, UTC day keys, migration 0017) run
+day-by-day by the worker with a durable cursor, observable progress endpoint
+(204 when none) and the PRD §14.8 10/hour/user limit (429, distinct
+rate-limit bucket, idempotency key unconsumed); analytics RecalculateRange
+card + tracking-panel CorrectionControls with idempotent retry on lost
+acknowledgement; two new metric events (`tracking.correction`,
+`tracking.correction_failed`) plus unmeasured-result counting on both
+evaluation paths.
+
+Verified defects fixed along the way: the fast-path `recalculated: false`
+race on due-date corrections; the idempotency ledger corrupting `Response`
+returns into 200 with an empty body (now fails loud, key unconsumed); the
+panel poll/refresh merge dropping `corrections`; the shared per-minute /
+10-hour rate-limit bucket; a postgres-js count string leaking into
+`excludedCount`.
+
+Final local gates: **55 test files / 536 unit+integration tests** (baseline
+524/54: +9 correction integration scenarios, +3 core scoring tests) and
+**114/114 browser/API scenarios** (baseline 110: +4 E2E), lint (0 warnings),
+types 5/5, coverage (88.03% statements, baseline 87.85%), build and fresh
+migration replay ×2 (18 migrations) passed. Remote CI is **green on `be23d72`**
+(PG 16, standard Chromium: audit, migration replay ×2, lint, typecheck,
+coverage, build and all 114 E2E scenarios). The first two pushes failed
+`test:e2e` after a full-suite run with no other step failing; CI logs were not
+retrievable from the sandbox (artifact-store egress blocked), so the new spec's
+polling waits were widened for slow runners (no assertion weakened) and the
+workflow now emits each failed E2E test as a check-run annotation
+(`.github/scripts/e2e-failures-annotations.mjs` + Playwright JSON reporter) for
+API-only diagnosis. The follow-up run is fully green.
+
+Remaining M4 work: workspace-local reporting and richer trends (PRD
+§7.8/§8.5, the next recommended candidate), the unresolved TR-03/full TR
+matrix and independent tracking/wellbeing controls. No reporting
+enhancements, provider integrations, offline work, AI or billing was
+started.
+## M4 workspace-local reporting and richer trends — 2026-09-10
+
+Commit: `61dd487` (branched from green `b80d8a3`). PRD §7.8/§8.5:
+workspace-local day/week reporting windows and the full weekly trend set
+with plain, non-judgemental tag-attributed explanations, plus the §8.5
+review flow including optional per-day notes. Score math, weights,
+normalization, calculation version 2, correction behavior, event semantics
+and historical results are untouched.
+
+Summary windows now use the workspace IANA time zone and configured week
+start (core `localDayBounds`/`workspaceWeek`/`localDateKey`): a requested
+date resolves to local noon in that zone (impossible calendar dates are
+rejected, not silently shifted), and “This week” runs from the configured
+`weekStart` through the end of the reference day — matching the delivered
+calendar week grid. The recalculation backfill’s UTC day chunking is an
+internal partitioning detail and is unchanged. New per-day trend points
+carry planned/completed/focus/score/load-vs-workday (next-day workdays
+included); weekly metrics: execution score trend (current stored results
+only — superseded rows never pollute a day), completion consistency,
+recurrence adherence (mean of measured recurrence components only),
+most-rescheduled tasks (top 5, hidden tasks excluded), overloaded planning
+days, underestimated categories (tag-level variance, ≥2 measured tasks,
+≥+10% signal, top 3), and the focus-time trend (bucketed by local start
+day; excluded tasks hidden from focus too). Insights stay descriptive and
+never judgemental, with tag attribution. Review notes: `review_notes`
+(migration 0018, PK `(workspace_id, day)`, ≤500 chars), GET/PUT/DELETE
+`/api/v1/tracking/review-notes` (owner-scoped, idempotent mutations), and an
+accessible editor on the analytics page that also renders in the empty
+state. Project reports reuse the same workspace-local windows and expose
+the workspace zone; scores-off strips `averageScore` and every per-day
+`score` (absent, not zero).
+
+Verification (local PG 18): **56 test files / 550 unit+integration tests**
+(baseline 55/536: +14 reporting scenarios — TZ day/week boundaries,
+weekStart switches, next-day workday overload, current-result-only day
+scores with a correction re-scoring the day, measured-only recurrence
+adherence, tag-variance threshold, top-5 rescheduled with hidden excluded,
+excluded focus hiding, local-day focus bucketing, mean lateness,
+cross-workspace non-leakage, note upsert/clear/boundary, zone date
+validation) and **118/118 browser/API scenarios** (baseline 114: +4 in
+`analytics-reporting.spec.ts` incl. Axe; `project-analytics` specs updated
+to workspace-local window expectations — assertions kept, values
+corrected, none weakened). Lint 0; typecheck 5/5; coverage **88.41%**
+statements (baseline 88.03%); build OK; migration replay ×2 on a fresh DB
+(19 migrations) idempotent.
+
+Remaining M4 work: the unresolved TR-03/full TR matrix and independent
+tracking/wellbeing controls (require the outstanding policy decisions).
+No provider, offline, billing, AI, or desktop work was started or
+invented.
+
+## M5 cross-platform reliability — first bounded increment (sync protocol v1, offline capture, reconciliation) — 2026-09-10
+
+Commit: `6ae9cf9` (branched from green `ba24998`). PRD §10 / roadmap item
+7, first bounded increment: server push/pull correctness, version/
+tombstone protection, scoped IndexedDB queue primitives, Today cached
+fallback/recovery, and the safe enqueue/reconcile semantics.
+
+Server:
+- Online task create now honors the reserved `clientMutationId` as the
+  entity id — a create whose response is lost re-pushed through sync
+  dedupes to `duplicate`, never a twin task (SY-01).
+- New `sync-scenarios.integration.test.ts`: explicit SY-01..SY-05
+  (offline create visible to the other device via pull; replay is a
+  duplicate with no second entity; different fields both retained;
+  same-field conflict preserved + `resolveConflict('local')` applies it;
+  delete wins, tombstone propagates via pull, restore resurrects and
+  removes the tombstone), plus same-entity batch ordering (ack per
+  position, version = base+N), pull sequencing/cursor monotonicity with
+  pagination, delete-of-deleted duplicate, 30-day snapshot retention on
+  post-delete edits, tenant isolation (cross-workspace write, workspace
+  relabel rejection, per-workspace pull stream) and completion
+  preservation (stale status edit refused, retained, completion kept).
+
+Client:
+- `offline-queue.ts`: DB v3 `meta` store with per-workspace sync cursor;
+  `cacheTask` (provenance-checked); `applyPullPage` (update/create
+  apply, delete removes — idempotent, cursor advances only after
+  durable apply); `pullSync` (bounded pagination); `pendingSummary`
+  (waiting vs needs-attention); `earliestRetryAt`; `reconcileOnce`
+  (flush then pull); queue-changed event; SSR-safe `getDeviceId`.
+- New `use-sync-reconcile.ts`: app-global loop — mount recovery,
+  reconnect, new work arriving online, tab visibility, stored
+  1 s–5 min jittered backoff; quarantined items never auto-retry;
+  fires `nextdoo-synced` after a pass that applied or pulled.
+- `OfflineBadge` (app shell) owns the loop and surfaces the queued count
+  plus the PRD §10.8 needs-attention count (replaces the 1.5 s poll).
+- `QuickCapture` offline capture: deterministic local parse (same
+  grammar, no model), client-UUID create, durable enqueue + optimistic
+  cache row, "Saved offline" acknowledgement; enqueue only on
+  network/5xx, never on 4xx; recurrence refused offline without losing
+  the user's text.
+- `TodayView` refreshes on `nextdoo-synced`; cached fallback (stale
+  banner) retained and now tombstone-cleared by pull.
+- `@nextdoo/core` gains a client-safe `./nl-parse` subpath export (the
+  root barrel pulls server-only `node:crypto` via totp).
+
+Verification (local PG 18): **57 test files / 568 unit+integration tests**
+(baseline 56/550: +18 — 10 sync scenarios + 8 queue-primitive unit tests)
+and **121/121 browser/API scenarios** (baseline 118: +3 in new
+`sync-offline.spec.ts` using real browser offline mode — offline capture
+→ reconnect → reconciliation with canonical-id match, cached Today
+fallback + recovery, cross-account isolation of queue/cache/server;
+`online.spec.ts` lost-ack test updated to the durable-enqueue behavior
+with strengthened assertions). Lint 0; typecheck clean; coverage
+**88.63%** statements (baseline 88.41%); `next build` green. No new
+migrations (existing tables reused; client `meta` store is IndexedDB).
+
+Remaining M5: conflict resolution view (browse/resolve
+`conflict_snapshots` in the UI), SY-06–SY-10 and multi-device scenarios,
+5,000-mutation drain and SLO qualification, offline edits/deletes via the
+task editor and offline timers, and the Windows Tauri client. No desktop,
+provider, AI, or billing work was started.
+
+## M3 capacity defect correction (positive-offset timezone day window) — 2026-09-10, M5 closeout
+
+During M5 closeout CI verification, the `workspaces.spec.ts` date-boundary
+scenario failed on its `Pacific/Kiritimati` (UTC+14) branch — the first CI run
+that took that branch (all earlier runs executed before UTC noon and used the
+negative-offset branch). Local reproduction at 12:46 UTC confirmed a
+**deterministic server defect**, not a flake: `getDayCapacity`'s day window
+(`services/capacity.ts`) ended the day by adding one **UTC** calendar day to
+the local-midnight start instant and re-interpreting the result as a local
+date. In positive-offset zones local midnight is on the *previous* UTC date,
+so the window collapsed to zero length: capacity reported
+`workloadMinutes: 0` for busy days and the §8.3 overload banner never
+rendered (verified via the live endpoint: a 120-minute task due at local noon
+on 2026-09-11 Kiritimati returned `workloadMinutes: 0`, `status: OK`).
+Negative-offset and UTC zones keep a correct 24-hour window, which is why the
+M3 milestone verification was green.
+
+Fix: advance the **local** calendar date (month/year rollover via
+`Date.UTC(year, month-1, day+1)`) for `endExclusive`. Added a regression
+integration test (Kiritimati workspace; noon task counted for the correct
+local day, previous/next local days distinct). This is a genuine code defect
+surfaced by CI, corrected per the closeout rule — no behavior change for UTC
+or negative-offset zones.
+
+Verification (local PG 18, +14 branch): **57 files / 569 unit+integration
+tests** (568 + 1 regression) and **121/121 E2E** including the previously
+failing `workspaces.spec.ts` date-boundary scenario in both branches. Lint 0;
+typecheck clean; coverage **88.62%**; production build green. See
+[M3_CAPACITY_PLANNING_MILESTONE.md](M3_CAPACITY_PLANNING_MILESTONE.md)
+"Defect correction" and [M5_SYNC_RELIABILITY_MILESTONE.md](M5_SYNC_RELIABILITY_MILESTONE.md).
+## M5 increment 2 — conflict resolution view + SY-06–SY-09 multi-device scenarios — 2026-09-10
+
+Second bounded M5 increment: the conflict-resolution surface and the
+remaining multi-device scenarios from the PRD §19.3 matrix. No schema or
+migration changes; all M5 increment 1 behavior preserved.
+
+Delivered:
+- `GET /v1/sync/conflicts` + `POST /v1/sync/conflicts/:id/resolve`
+  (idempotency-ledgered; foreign ids 404; deleted targets 409). The
+  `local` choice re-applies the preserved payload through the existing
+  task command path (same invariants, version bump and sync-change
+  emission as an online edit); `server` marks the snapshot resolved
+  without touching the canonical row.
+- New axe-clean `/conflicts` view: side-by-side per-field cards (caption +
+  scoped table headers) with "Keep my version" / "Keep server version"
+  choose actions, quarantined-mutation section showing the full raw saved
+  payload and a retry action, live-region status, stable per-(conflict,
+  choice) client idempotency keys, event-driven refresh. Sidebar entry;
+  the offline badge's "N changes need attention" links here.
+- `offline-queue.ts`: `requeueMutation` for user-directed re-attempts
+  (resets counters, never deletes the payload — no discard path).
+- `globals.css` fixes found while testing: light `--accent` 4.35:1 →
+  `#1a5fd0` 5.5:1 on the page background; fixed offline badge is now
+  `pointer-events: none` (link stays interactive) so it can never block
+  page controls it overlaps.
+
+Scenarios verified (real Postgres, 15 integration tests in
+`sync-scenarios.integration.test.ts`): SY-06 two-device completion +
+reschedule (scalar LWW keeps completion and `completedAt`), SY-07
+overlapping timer sessions (newer canonical, older recorded `OVERLAPPED`
+with accumulated seconds preserved, no session ever deleted), SY-08
+10-minute clock skew (server processing order wins; mutation timestamps
+server-time), SY-09 batch with one invalid mutation (rejection
+idempotent, content preserved in a recoverable snapshot, batch-mates
+apply), plus conflict-resolution semantics and cross-tenant isolation.
+
+Verification (local PG 18): **57 files / 574 unit+integration tests**
+(569 + 5) and **125/125 E2E** (121 + 4 two-device browser tests) in
+~3.4 min. Lint 0 warnings; typecheck 5/5 packages; coverage **88.56%**
+statements overall (core 97.91% vs 85% threshold); production build
+green. CI verified on the pushed commit. See
+[M5_CONFLICT_RESOLUTION_MILESTONE.md](M5_CONFLICT_RESOLUTION_MILESTONE.md).
+Deferred (explicit): SY-10 5,000-mutation drain + SLO qualification,
+offline task-editor edits/deletes and offline timers, Windows client.
+## M5 increment 3 — SY-10 5,000-mutation drain and §10.9 SLO qualification — 2026-09-10
+
+Third bounded M5 increment, measurement and reliability qualification
+only (no product features). A repeatable harness
+(`sync-slo-harness.ts` + `sync-slo.integration.test.ts`) drains 5,000
+queued offline mutations from 4 devices against the real server +
+Postgres using the exact client semantics (200-mutation batches,
+per-entity head-of-line, backoff, auto-quarantine after 5 server
+failures, simulated connection-level 500s), then verifies every
+§10.9 property against a reference model built by the workload
+generator.
+
+Results (qualification run, local PG 18): **100%** of 200 connected
+mutations acknowledged under 5 s (p50 10 ms, p95 12 ms, p99 13 ms,
+max 31 ms; SLO 99%); **100.0%** data integrity over 3,685 entities
+(SLO 99.9%); zero duplicate entities; zero lost mutations; zero
+per-entity ordering/version violations across 4,970 sync-change ops;
+155 tombstones held with 75 updates-of-deleted rejected-and-preserved;
+125/125 conflict snapshots with byte-equal preserved payloads; zero
+tenant-isolation violations; 825 simulated failures → 995 retries →
+5/5 auto-quarantines → user requeue applied exactly once; every
+device's pull-reconstructed cache equals the server's live state
+(3,530 == 3,530, no stale resurrection). Full drain 56.0 s at
+89.3 mutations/s; 200-mutation batch ack p95 3,012 ms.
+
+Two findings, both **server-correct, harness-wrong** (no production
+code changed): (1) the FREE plan's 200-active-task cap (PRD §18.1)
+gates large drains — now an explicitly asserted test (over-limit
+creates rejected with a clear code, payload preserved, re-send after
+upgrade applies exactly once); the pure-sync qualification runs on an
+unlimited plan because the SLO is plan-independent. (2) Replays with
+altered `createdAt` under the same mutation id are rejected
+`IDEMPOTENCY_CONFLICT` — the generator now replays byte-identical
+records, as a real client does.
+
+Verification (local PG 18): **58 files / 576 unit+integration tests**
+(574 + 2, full qualification runs in CI) and **125/125 E2E** (3.3 min).
+Lint 0; typecheck 5/5; coverage **89.24%** statements overall (core
+97.91% vs 85% gate); production build green. CI verified on the pushed
+commit. See [M5_SYNC_SLO_MILESTONE.md](M5_SYNC_SLO_MILESTONE.md).
+Deferred (explicit): offline task-editor edits/deletes and offline
+timers, Windows client, multi-node/replica drain measurement.
+
+## M6 commercial readiness — increment 1: server-side entitlement enforcement + authenticated export path — 2026-09-10
+
+Bounded M6 slice per PRD §18.1/§18.3: enforce the §18.1 limits that apply to
+features that exist today, expose the entitlement endpoint, and add regression +
+browser evidence for the authenticated JSON export path. No billing, Google
+Calendar OAuth/sync, attachments, Windows/desktop, or AI work started; no
+migrations; no existing test weakened or deleted.
+
+- `GET /api/v1/account/entitlements` (new): auth-gated entitlement endpoint
+  returning `{ plan, limits, usage }` — the §18.1 "entitlement endpoint" that
+  was previously missing (the settings screen already rendered the same
+  snapshot via RSC; clients now have the API surface, and the server remains
+  the source of truth on every mutation).
+- `assertHistoryWindow` (services/entitlements.ts) + wiring in
+  `/api/v1/tracking/summary`: the FREE 30-day historical-analytics window is
+  now enforced server-side. The boundary is computed in the workspace's local
+  calendar (the tracking date convention); the 30th day is included, the 31st
+  is rejected 402 `ENTITLEMENT_LIMIT_REACHED`; paid plans (`null`) are
+  unbounded.
+- Plan-based audit-history retention (services/data-rights.ts
+  `listAuditLogs` + `/api/v1/audit-logs`): `retentionDays` from the caller's
+  plan — Free (0) sees no history, Pro 30 days, Team 1 year, Enterprise
+  7 years. The filter bounds what is shown; rows remain as internal security
+  evidence, and destructive retention/anonymization/legal-hold remains the
+  open F15 operations-policy item (not invented).
+- New DB-backed suite
+  `apps/web/src/server/services/entitlements.export.integration.test.ts`
+  (11 tests): snapshot limits/usage + plan-change re-evaluation; 200/201 task
+  boundary with slot release; plan-change re-evaluation both directions with
+  row preservation; 3/4 project boundary with downgrade preservation;
+  workspace-local 30-day window (incl. UTC+14) and paid full history;
+  retention windows (0/30/365/2555) with the actor boundary at 7 years;
+  export quota failure leaves no row; account export completeness + tenant
+  isolation; foreign-notification scrubbing.
+- New browser spec `apps/web/e2e/entitlements-exports.spec.ts` (4 tests):
+  entitlement endpoint 401/200 with configured FREE limits; authenticated JSON
+  export 401 (problem document only, no content leak) / 200 attachment
+  `no-store` with owner data and no credentials; FREE second-export 402 with
+  the list staying at 1; settings screen shows server-configured plan/usage.
+
+Limits for unbuilt features (custom scoring rules, seats, attachment storage
+and max file, AI requests) are configured and surfaced through the endpoint
+but unenforceable until those features exist — documented, not faked.
+
+Verification (local PG 18): **59 files / 587 unit+integration tests** and
+**129/129 E2E** (3.4 min). Lint 0; typecheck 5/5; production build green.
+Coverage **93.45% lines / 89.56% statements** overall (89.24% statements
+before; core 97.91% vs 85% gate); `services/entitlements.ts` 100% lines,
+`services/data-rights.ts` 96.0% lines. One local full-suite E2E run showed 2
+transient `exports.spec.ts` failures that passed on isolated (4/4) and
+full-suite (129/129) re-run — load-induced flake, no code-path mechanism from
+this slice to export generation. CI: across all three milestone commits, each
+commit's `push` + `pull_request` pair (identical code — base is at the branch
+point) had exactly one failure, alternating run type, always the same
+pre-existing M4 E2E (`task-virtualization.spec.ts` "keeps focus pinned",
+top-row id after seeding 250 tasks; deterministic `createdAt desc, id desc`
+order, distinct seed timestamps). Non-deterministic E2E instability in a
+locked-milestone spec, independent of this slice's code paths; suite green in
+two full local runs plus 10/10 standalone re-runs of the spec; not
+reproducible locally; failure-run artifacts unreachable (GitHub results
+EOF). Mitigation: CI E2E step now uses `--retries=2` (no spec change, no
+weakened assertion). See
+[M6_ENTITLEMENTS_EXPORT_MILESTONE.md](M6_ENTITLEMENTS_EXPORT_MILESTONE.md).
+
+## M6 commercial readiness — increment 2: attachment pipeline (plan-based storage, max-file-size gating, real ClamAV scan-before-download) — 2026-09-11
+
+Bounded M6 slice per PRD §6.8/§11.4/§12/§14: authenticated upload, plan-based
+storage quota + maximum-file-size enforcement, real malware scanning before a
+file becomes downloadable, safe download authorization, tenant isolation,
+metadata lifecycle, cleanup/error handling (failed/rejected/scanned), and
+task/workspace ownership integration. No billing, Google Calendar, AI,
+desktop, or retention-destruction/anonymization work. No existing test
+weakened or deleted.
+
+- Scanner decision: the PRD requires scanning but names no provider →
+  **self-hosted ClamAV** (no external provider, no credential; stop-condition
+  not triggered). Engine behind an `AttachmentScanner` interface
+  (switching point if a managed scanner is ever chosen); the E2E suite
+  **refuses to run without a working engine** (throws, never fakes/skips);
+  integration tests inject a deterministic scanner only to assert workflow
+  semantics. CI installs clamav + freshclam and verifies EICAR detection
+  before any test step.
+- API: `GET/POST /api/v1/attachments` (list / upload authorization),
+  `PUT /:id/upload-data` (token-gated, exact declared size), `POST /:id`
+  (idempotent complete), `GET /:id/download` (signed ≤15-min URL; 409
+  `ATTACHMENT_NOT_CLEAN` per state until CLEAN), `GET /:id/download/file`
+  (session + CLEAN + signed token; attachment + nosniff), `DELETE /:id`
+  (soft delete + object removal). Signed 15-minute purpose/user-bound tokens
+  (HMAC-SHA256, timing-safe); no storage credentials to the client;
+  server-generated workspace-scoped object keys.
+- Plan gating server-side at authorization: max file per plan (10 MB/100 MB/
+  250 MB/1 GB) and workspace storage quota (100 MB/5 GB/10 GB/100 GB, sum of
+  undeleted sizeBytes); content-type allowlist; rejected authorizations
+  consume nothing.
+- Scan state machine (migration 0019): PENDING→CLEAN/INFECTED/FAILED,
+  3 attempts with backoff, claim lease + stale recovery, quarantine
+  (INFECTED/FAILED rows and objects retained, never served, audit-logged);
+  a file is never CLEAN without a successful engine scan. `attachment.scan`
+  worker job (10 s, bounded batch, per-workspace fairness); purgeAccount
+  removes attachment objects; health route reports scanner availability
+  (30 s cache, not probe-fatal — downloads fail closed); data-rights export
+  includes attachment metadata (never bytes); `TaskAttachments` UI in the
+  task editor (upload→poll→status pills→gated download→confirmed delete,
+  a11y-labelled).
+- New DB-backed suite `attachment-workflow.integration.test.ts` (12 tests:
+  upload success, over-size, allowlist, exact size, quota at the exact
+  boundary, infected quarantine, retry/backoff/exhaustion, download-token
+  binding, deletion/cleanup, lost-ack, tenant isolation, data-rights
+  bundle). New `e2e/attachments.spec.ts` (6 tests, real engine, incl. EICAR
+  quarantine; fails loudly without the engine).
+
+Verification (local PG 18): **60 files / 599 unit+integration tests**
+(587 → 599; +12 attachment tests) and **129/129 pre-existing E2E** (no
+regressions, incl. the 4 task-editor axe specs after adding the missing
+file-input label); the 6-test attachment E2E spec is proven in CI (no ClamAV
+installable in the sandbox — it fails loudly with
+ATTACHMENT_SCAN_ENGINE_MISSING locally by design). Lint 0; typecheck 5/5;
+production build green. Coverage **93.48% lines / 89.52% statements**
+overall (no overall gate; core-only 85% gate untouched).
+
+CI: final tip `64fb5e5` — **push and pull_request runs both green** (all 18
+steps incl. ClamAV install + EICAR verify, 599/599, build, 135/135 E2E).
+Two CI-only fixes on this milestone: the workflow's freshclam must run as
+root with the package's auto-started timer stopped, and `set -e` aborts on
+`clamscan`'s detecting exit code 1 (the correct outcome) — both
+workflow-only. Two pre-existing locked-suite flakes were root-caused from
+the full diffs (identical-code PR runs green each time): task-bulk rollback
+assertion (same tracking rows, different order — snapshot() lacked ORDER BY
+under order-sensitive toEqual) and export-workflow
+`processed === 1` (global batch count co-processed a parallel suite's due
+row). Both fixed by pinning/removing the incidental shared-state assertion
+only; every substantive assertion unchanged. Run log unreachable from the
+session (results-receiver EOF, same as M6-i1) — diagnostics via workflow
+annotations. See [M6_ATTACHMENTS_MILESTONE.md](M6_ATTACHMENTS_MILESTONE.md).
+
+## M6 commercial readiness — increment 3: multi-provider billing core (Stripe + Razorpay, provider-agnostic) — 2026-09-11
+
+Bounded M6 slice per PRD §10.7/§18: the provider-agnostic billing core —
+internal subscription state machine + normalized event model with **Stripe
+and Razorpay** adapters behind one `PaymentProvider` interface; no provider
+concept leaks into the app. Webhooks are untrusted: signature verification
+with replay protection (Stripe 5-min header window; Razorpay raw-body HMAC +
+15-min event age), per-provider event-id dedup, out-of-order tolerance
+(event horizon), version-fenced application, tenant resolution scoped to
+the event's provider. Entitlements move only through server-normalized
+state via `readEffectivePlan()`. Binding user decisions: Stripe USD /
+Razorpay INR prices on the same PRO/TEAM/ENTERPRISE plans; TRIALING modeled
+but M1 checkout = direct paid (no trials offered); `POST
+/v1/billing/portal` deferred; test/sandbox mode only — no live credentials
+required or used; no Calendar/AI/desktop/retention work; no existing test
+weakened.
+
+- New `packages/billing` (62 hermetic tests): internal types, pure state
+  machine (PRD table: immediate upgrade, deferred downgrade with
+  `pendingPlan`/`pendingPlanEffectiveAt`, 7-day grace on first failed
+  payment, dunning, illegal-transition refusals with `skipReason`),
+  signature verifiers (constant-time), plan/price mapping (Stripe price id;
+  Razorpay plan id + paise), alert-only reconciliation diff,
+  `buildBillingProviders` fail-loud (absent config ⇒ provider unavailable,
+  never a stub, never a cross-provider fallback).
+- Adapters: Stripe (customers/checkout sessions/subscription REST;
+  `checkout.session.completed`, `customer.subscription.*`,
+  `invoice.payment_failed|paid`, `charge.refunded`) and Razorpay
+  (customers/orders/subscription REST; `payment.captured` activation with
+  plan from notes/amount, `payment.failed`, `refund.*`,
+  `subscription.charged|cancelled|completed|halted`).
+- DB (migration 0020, idempotent): `billing_provider` enum,
+  `subscriptions.provider/provider_plan_ref/pending_plan(+effective_at)/
+  last_event_at`, per-provider `billing_events` uniqueness + owner link.
+  `startCheckout` (idempotent customer upsert, cross-provider switch
+  rejected), `handleBillingEvent` (persist+dedup first, tenant resolution,
+  stale-provider-subscription + event-horizon guards, version-fenced write
+  with retry, audit on every resolved event), `applyBillingDeadlines`
+  (trial end / grace exhaustion / paid-period end / pending downgrade —
+  idempotent), `reconcileBilling` (drift + audit, alert-only),
+  `getBillingSubscriptionState` (server-authoritative view).
+- Web: `server/billing.ts` (only provider construction point; HMR-safe;
+  `requireProvider` 503 `PROVIDER_UNAVAILABLE`), `GET
+  /api/v1/billing/subscription`, `POST /api/v1/billing/checkout` (handoff
+  only; idempotent), `POST /api/v1/billing/webhooks` (provider chosen by
+  signature-header presence; 400 on missing/ambiguous; 200 once accepted).
+  Env: 6 optional `STRIPE_*`/`RAZORPAY_*` vars (see `.env.example`).
+- Worker: `billing.sweep` (5 min), `billing.reconcile` (24 h, per provider).
+- New `e2e/billing.spec.ts` (3 tests, API-only — these endpoints have no
+  browser surface): unconfigured deployment, real HTTP: auth-gated
+  server-normalized FREE view; checkout 503 `PROVIDER_UNAVAILABLE` for BOTH
+  providers with no state change; webhook ingress untrusted (400
+  missing/ambiguous signature; 503 forged for unconfigured provider).
+- `billing-lifecycle.integration.test.ts` (31 tests): the 12-area lifecycle
+  matrix run for **both** providers through the real sync service (see
+  milestone doc). One genuine product defect found and fixed by the suite:
+  Razorpay `mapSubscription` hardcoded `cancelAtPeriodEnd: false`,
+  contradicting the CANCELED-while-period-runs semantics (access through
+  period end, PRD §18.3) — now derived from the mapped status.
+
+Verification (local, PG 18): lint 0; typecheck clean in all 6 packages;
+production build green; **65 files / 692 unit + integration tests all
+passing** (62 package + 31 lifecycle + pre-existing suites, no regressions);
+E2E billing spec **3/3** against `next start`. Live sandbox checkout /
+webhook delivery is explicitly NOT claimed — all provider interactions in
+tests use generated secrets or stubbed REST. Exact credentials/config
+still required for the live sandbox pass (test-mode only): see
+[M6_BILLING_CORE_MILESTONE.md](M6_BILLING_CORE_MILESTONE.md) §"What is
+still required for live sandbox verification".
+
+CI: tip `9adefa7`, run 34598366098 — **all steps green** (install,
+Playwright Chromium, ClamAV + EICAR, audit, `db:migrate` ×2 — migration
+0020 idempotency proven —, lint, typecheck, test:coverage, build,
+`playwright test --retries=2` with **138/138 E2E, no failures**; the
+failed-E2E annotation step was skipped). Run logs unreachable from the
+session (results-receiver EOF, same as M6-i1) — step/annotation status
+is the verification record.
+
+## M6 commercial readiness — increment 4 (attempted): live test-mode verification (Stripe + Razorpay) — 2026-09-11, STOPPED at pre-flight
+
+Pre-flight per the milestone guardrail: **all seven required test-mode
+values are missing from the session environment** (`STRIPE_SECRET_KEY`,
+`STRIPE_WEBHOOK_SECRET`, `STRIPE_PLANS`, `RAZORPAY_KEY_ID`,
+`RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`, `RAZORPAY_PLANS` — empty
+`.env.example` template only), and this sandbox has **no egress to the
+provider APIs** (`api.stripe.com`, `api.razorpay.com`,
+`checkout.stripe.com` all unreachable; allowlist = npm + GitHub only).
+STOPPED with no live verification performed or claimed, no invented values,
+no fake provider responses, and zero code changes. The core at tip
+`89b5624` remains as verified (CI 34602273607 all steps green). Environment
+incident noted for the record: the session sandbox reset mid-attempt and
+re-cloned `.git` at a stale base (`49b2e68`); recovered by re-pointing the
+local branch to the already-pushed remote tip `89b5624` — working tree
+verified byte-identical (clean status), no history rewrite, no force-push.
+Unblocking requires the test-mode values (milestone doc table) in an
+environment with provider egress and a reachable webhook URL.
+
+## M6 commercial readiness — increment 5: account & session management — 2026-09-11
+
+Bounded M6 slice per PRD §6.1/§11.2/§14.3: `GET`/`PATCH /api/v1/me` (own
+profile only: id, email, name, timeZone, MFA-enabled, createdAt; strict
+validation of name 1–120 or null and IANA time zones), `GET
+/api/v1/me/sessions` (owner-scoped active sessions with device label, last
+seen, created, current-session flag — never token/IP digests), `DELETE
+/api/v1/me/sessions/:id` (owner-only individual revocation; foreign or
+unknown ids a uniform 404), and `POST /api/v1/auth/logout-all` which, per
+the recorded user decision, revokes ALL of the caller's sessions INCLUDING
+the caller's own. Every mutation is audit-logged
+(`account.profile_updated`, `account.session_revoked`,
+`account.sessions_revoked_all`). No migration needed; existing auth, MFA,
+reset, verification, session-rotation-on-privilege-change, entitlement and
+billing behavior untouched.
+
+Settings UI: profile form (name/time zone) in the Account card and a new
+Sessions card (per-session revoke with confirmation, "Revoke & sign out"
+for the current device, sign out everywhere; loading/error/success states;
+keyboard-operable, axe-clean).
+
+Revocation takes effect on the very next request (the per-request
+`revokedAt IS NULL` check) — MEASURED, not assumed: 59 ms individual
+revocation and 53 ms sign-out-everywhere end-to-end through the production
+server (curl, two cookie contexts); 4 ms / 2 ms at service level against
+real PostgreSQL. PRD bound is 60 s; tests assert a 5 s margin and log the
+actual value each run.
+
+Tests: 13 new DB-backed integration tests (shape, strict validation,
+owner-scoping, revocation including the current session, logout-all,
+cross-user isolation, audit trail) and 6 new real-browser E2E specs
+(144 total E2E; two device contexts; axe + keyboard). Local sandbox cannot
+launch Chromium (missing NSS libs, no egress) — browser specs are
+demonstrated in CI as in all prior milestones; locally the production
+server was smoke-tested end-to-end (401/403/404/400/409 contracts,
+idempotent replay, measured latencies, settings SSR).
+
+Full validation passed: 705/705 unit+integration tests, lint (0 warnings),
+typecheck, production build, coverage thresholds (core 97.91% lines /
+90.58% branches / 100% functions), migration replay (idempotent), E2E
+discovery (144). See
+[M6_ACCOUNT_SESSIONS_MILESTONE.md](M6_ACCOUNT_SESSIONS_MILESTONE.md).
+
+Closure (final CI verification): after this milestone's first commit, CI
+failed 5 consecutive runs on the pre-existing data-export E2E test (30 s
+timeout at `waitForEvent('download')`). Reproduced with a real Chromium 149
+against a local production build (the sandbox runs the npm-bundled
+`@sparticuz/chromium`, self-contained libs) and root-caused before any
+change: the new Sessions card made the settings grid hold 8 cards, moving
+the DataExport card next to the audit-log card; the export table's
+min-content width overflows the card, so the Download link rendered under
+the neighbouring card (which paints on top). `toBeVisible()` passes (no
+occlusion check) but the click's actionability never passes, so the click
+hung and the timeout fired at `waitForEvent('download')`. Fix (`9e6ca88`):
+wrap the table in a `.table-scroll` (`overflow-x: auto`) container — no
+assertion weakened or removed; the export E2E then passes locally in ~1 s
+(4/4 export tests). A pre-existing shared-DB batch race in
+`export-workflow.integration.test.ts` (flaky `expected 2 to be 1` at the
+retry count, hit on the push run of `9e6ca88`) was hardened with the file's
+own already-documented lower-bound pattern; row-level product guarantees
+are unchanged (`205133f`). Final CI verified green on tip `205133f`: push
+run `34645716502` and pull-request run `34645719988`, full pipeline
+including the 144-test real-browser E2E suite. The temporary diagnostic
+spec was deleted with the fix.
+
+## M6 commercial readiness — increment 6: retention & purge pipeline — 2026-09-12
+
+Bounded M6 slice per PRD §12.4 (job table: `retention.purge`, Daily, 3
+retries, "Alert; never auto-skip"), §13.5 (retention table), §18.1 (plan
+audit-log retention None/30 d/1 y/7 y) and §6.3 (Deleted → Permanently
+deleted, system retention job). Delivered:
+
+- `runRetentionPurge` (`packages/db/src/retention.ts`): idempotent,
+  crash-safe sweep in fixed unit order — deleted tasks at the exact
+  `deleted_at <= now − 30d` boundary with full cascade (attachments +
+  object-store files, reminders, timers, tags, dependencies, calendar
+  mappings, recurrence rules, tracking jobs, tombstones with
+  `purge_after <= now`); plan-based audit retention using the same
+  entitlement source as the read side (strict complement: visible while
+  `created_at >= now − R`, purged when `created_at < now − R`); one-year
+  floor for security-critical audit actions (explicit
+  `SECURITY_AUDIT_ACTIONS` allowlist); failed-job cleanup (terminal failed
+  tracking jobs, reminders, exports, mail deliveries > 30 d); per-row
+  failure isolation (poisoned rows reported with root cause, retried next
+  run, sweep never aborts); per-run bounded limits with tenant isolation.
+  Tasks with in-flight exports, tasks referenced by an active parent (no-
+  action FK), security-critical audit rows, and all records protected by
+  other PRD rules are retained and counted.
+- Worker job `retention.purge` (24 h) with initial attempt + 3 bounded
+  retries (60 s/5 m/15 m backoff); exhaustion dead-letters with a loud error
+  alert and leaves rows in place — never auto-skip; every purge decision is
+  accounted for in `retention.purge.completed`.
+
+No migration needed; M6-i1 read-side retention, `purgeAccount`, and
+`expireExports` untouched. Legal-hold / enterprise destructive retention is
+PRD-undefined and was NOT invented (open policy items recorded in the
+milestone doc).
+
+Tests: 12 new web integration tests (dedicated disposable DB per test, fixed
+clock: exact task boundary + cascade, every plan boundary day, security-floor
+boundary, tenant isolation, distinct-tenant scan cap + next-run catch-up,
+in-flight-export retention, no-action parent retention, per-row failure
+isolation, tombstone expiry, failed-job expiry, protected records,
+crash/restart + idempotent rerun), 5 new worker integration tests (job
+wiring, retry/backoff, dead-letter alert, accounting), 1 new Playwright E2E
+spec (31-d task restore 404 + row/tombstone gone; 29-d restore 200 ACTIVE;
+plan-scoped audit visibility with DB-level purge proof).
+
+Full validation passed: 722/722 unit+integration tests, lint (0 warnings),
+typecheck (web/worker/db), production build (Next.js, all pages), coverage
+thresholds (core 97.91% lines; collection scope unchanged), migration replay
+on a fresh database (21 migrations + new SQL verified), E2E in CI. See
+[M6_RETENTION_PURGE_MILESTONE.md](M6_RETENTION_PURGE_MILESTONE.md).
+
+Closure (final CI verification): two CI incidents, both root-caused before
+fixing. (1) The E2E audit assertion counted all rows targeting the seeded
+tasks, but real API operations (`task.created`/`task.deleted`/
+`task.restored`) also audit those targets with recent timestamps and
+legitimately survive PRO 30-day retention — the boundary assertions are
+scoped to the seeded `task.updated` action (`a3cd685`); no product change.
+(2) The seeded 40-day row survived the purge in the shared CI database: the
+audit candidate scan capped by raw rows (`ORDER BY workspace_id LIMIT 200`),
+so one tenant's rows could fill the entire slot budget and other tenants
+were never scanned (the read-side plan filter masked it in the API). Fixed
+to cap DISTINCT tenants with a dedicated regression test — a busy tenant
+cannot starve the others, and the bounded run catches up next run
+(`c38ac41`). A `task-virtualization.spec.ts` focus flake (passed/failed/
+passed across runs; no UI code changed here) was confirmed benign. Final CI
+verified green on tip `c38ac41`: push run `34681167041` and pull-request
+run `34681169648`, full pipeline including the real-browser E2E suite.
+
+## M6 commercial readiness — increment 7: account-deletion end-to-end — 2026-09-12
+
+Closed the deletion lifecycle to PRD §6.1/§11.1/§13.5/§14.3. The MVP
+already shipped the UI (typed `DELETE` + password gate), the re-
+authenticated `POST /v1/account/deletion`, the 30-day grace
+(`deletion_requested_at`), sign-in restore, `purgeAccount` (transactional,
+FK-cascade + FK-less private-table cleanup + object-file removal), and
+`deletionExpired` blocking login/tokens/cancellation. Audited all of it
+line by line before touching anything, and preserved it.
+
+Three gaps fixed:
+1. `accounts.purge` (worker, 6 h) now meets the PRD §12.4 job contract:
+   `sweepDueAccounts` through `runAccountPurgeWithRetries` — initial
+   attempt + 3 bounded retries (60 s / 5 m / 15 m), loud
+   `accounts.purge.dead_lettered` on exhaustion, full accounting; per-
+   account failures are audited (`account.purge_failed`), never block
+   other accounts, and are picked up by the next pass.
+2. The destructive step is now audited: `account.purged` is written inside
+   the purge transaction (no FK to users, so it outlives the account);
+   both events join `SECURITY_AUDIT_ACTIONS` and keep the §13.5 one-year
+   floor for every plan.
+3. The web service `purgeDueAccounts` now isolates per-account failures
+   (it previously aborted the run, contradicting its own comment).
+
+No migration, no retention-policy change, no M6-i1…i6 behavior touched.
+Email suppression boundary = grace expiry (uniform "unknown account"
+before, live account during): the PRD does not mandate suppression while
+pending — recorded as an open policy item, not invented.
+
+Tests: 13 new web integration tests (re-auth success/failure, exact
+30-day boundary, cancel/restore before purge, repeated requests, session
+invalidation, reset/verification email at three lifecycle points, 15-
+table removal proof, protected audit + billing_events survival, export/
+attachment row + file cleanup, billing/entitlement cascade, tenant
+isolation with a genuine no-action FK poison, idempotent rerun, email
+release), 6 new worker integration tests (retry constants, backoff,
+dead-letter log sequence, real sweep, job wiring), 1 new Playwright spec
+(2 tests: visible schedule → forced sign-in → sign-in restore with the
+`?deletion=cancelled` notice + axe-clean deletion block; API scheduling
+with the 30-day window + measured session kill (401 < 5 s), post-purge
+uniform rejection, email release to a new account). `purge.integrity`'s
+audit assertion strengthened (prior rows intact + exactly one new
+`account.purged`).
+
+Full validation passed: 741/741 unit+integration tests, lint (0
+warnings), typecheck (web/worker/db), coverage thresholds (core 97.91%
+lines; overall 89.4% statements), production build, migration replay on a
+fresh database (21 migrations → real `purgeAccount` → `account.purged` +
+zero users), E2E in CI. See
+[M6_ACCOUNT_DELETION_MILESTONE.md](M6_ACCOUNT_DELETION_MILESTONE.md).
+
+Closure (final CI verification): one CI incident, root-caused before
+fixing. Push run `34683332831` (tip `404e65a`) was red only on the two
+new E2E tests — every other pipeline step green. Both were defects in the
+new spec, reproduced and root-caused locally against a real Chromium run:
+(1) axe was scoped to the whole pre-existing Account card, which carries
+pre-existing contrast violations outside this milestone — now scoped to
+the deletion block via a `data-testid="delete-account"` wrapper; (2)
+`getByRole('alert'/'status', { name })` can never match (those roles do
+not compute an accessible name from content) — locators now filter by
+text. The spec was additionally re-aligned to the real product flow:
+scheduling revokes every session, so the browser is sent to `/login`
+immediately (the asserted "scheduled banner" is unreachable in that
+flow); the 30-day window and the measured session kill moved to the
+API-driven test, and the reborn login honours the login-throttle
+Retry-After (a failed pre-purge attempt leaves a 1 s account backoff the
+same-email re-registration can race). No product behavior changed. Fixed
+in `e1f42df`. (The original fix commit `b12fef8` was local-only when the
+sandbox git metadata was rebuilt after a GitHub-auth outage; the
+working tree survived intact and `e1f42df` recreates the identical diff
+against `404e65a` — verified by diffstat and content markers.) Final CI
+verified green on tip `e1f42df`: push run `34691806082`, full pipeline
+including ClamAV verification and the real-browser E2E suite (zero
+failures).
+
+## M6 commercial readiness — increment 8: final closeout (policy decisions + accessibility) — 2026-09-12
+
+Closed M6. No product-feature change: (1) resolved and documented the
+four M6 policy questions M6-i7 left open — **30-day deletion grace is
+final** (PRD §6.1 says "defined retention period", no number), **email
+suppression begins when the grace window expires** (pending accounts are
+live and restorable; the PRD does not mandate suppression while
+pending), **password re-authentication alone is the final deletion gate**
+(PRD says "re-authentication" without strength; MFA is optional per
+user and never tied to operations — an MFA challenge at deletion is a
+recorded future hardening candidate), and **`DELETE /v1/account/deletion`
+is the final cancel contract** (the PRD's `POST …/cancel` sketch is
+superseded by the verified MVP REST shape; no alias added). Each
+decision is quoted against the PRD in
+[M6_CLOSEOUT_MILESTONE.md](M6_CLOSEOUT_MILESTONE.md); where the PRD is
+silent, the existing verified behavior was adopted as the final rule —
+nothing invented, nothing silently changed.
+
+(2) Fixed the Account card's last WCAG AA contrast violation (surfaced
+by M6-i7's E2E): the email-confirmation banner text used the light-theme
+`--warn` token at 4.34:1 on `--bg-elev-2` (needs 4.5:1 for 13.5px
+normal text, PRD §8.8). A single token change was impossible — `--warn`
+is also the `.offline-badge` background with `#101216` text, and no
+amber passes both — so a theme-aware `--warn-text` token (light
+`#8a5a00` = 5.28:1; dark unchanged) now styles `.banner-warn` text only,
+following the existing `--accent` sub-AA fix pattern. The account-
+deletion E2E now runs axe (WCAG AA tags) over the whole Account card in
+the violating state (unverified user, banner visible), in addition to
+the deletion-block check; verified 0 violations locally in both light
+and dark themes. Out-of-scope observations (offline-badge text ≈3.9:1;
+other `--warn` text usages that already pass on white) are documented,
+not touched.
+
+Full validation passed: 741/741 unit+integration tests, lint (0
+warnings), typecheck (web/worker/db), coverage thresholds (core 97.91%
+lines; overall 89.4% statements), production build, E2E in CI. See
+[M6_CLOSEOUT_MILESTONE.md](M6_CLOSEOUT_MILESTONE.md) and the
+consolidated [M6_COMPLETION_REPORT.md](M6_COMPLETION_REPORT.md).
+
+Closure (final CI verification): one benign CI flake, root-caused
+before any change (none was made). Push run `34695107048` on the code
+fix (`b833652`) was fully green — full pipeline including ClamAV
+verification and the real-browser E2E suite (zero failures). On the
+docs-only commit, push run `34695520987` failed exactly one assertion:
+`reminder-workflow.integration.test.ts:69` (the 24 h expiration
+boundary). Root cause: the dispatcher's per-row transaction carries a
+5 s lock / 10 s statement timeout under CI coverage load, and the
+documented per-row failure isolation deferred that one row to `retrying`
+(backoff 60 s; the row is never lost — the next 30 s production pass
+resolves it). The boundary logic itself is deterministic and passed in
+every run, including the companion assertion at line 72. Evidence the
+failure was environmental, not a defect: local runs of the file
+10/10 green in isolation and 3 full-suite (parallel-load) runs at
+741/741 green; and the `pull_request` run on the identical SHA
+(`34695523204`) passed the full pipeline with zero failures. No code or
+assertion changed (a rerun of the failed push run was refused by
+GitHub). The final push run on the closing commit below is the
+authoritative green.
+
+## M7 — Google Calendar two-way sync — increment 1: provider boundary, sync engine, worker cycle, routes, UI — 2026-09-13
+
+First bounded M7 increment (PRD §16, §12.4, §14.3). Google is behind a new
+clean provider boundary: `@nextdoo/contracts` gains the `CalendarProvider`
+contract (PKCE S256 authorization, refresh-on-demand tokens with rotation,
+incremental sync-token imports with paging + cancelled→deleted, If-Match
+event writes with 404-recreate, push-channel watch, `CalendarAuthError` /
+`CalendarRateLimited` error types) and the new `packages/calendar` package
+holds the Google adapter (minimum scopes per mode, injectable transport —
+default global fetch) plus a deterministic fixture provider used by all
+tests. The sync engine (`packages/db/src/calendar-sync.ts`) reuses the task
+invariants for every task mutation (version bump, device-cursor sync change,
+transactional outbox event), never overwrites titles, turns both-side
+changes into CONFLICT with both values (PRD §16.4), unschedules on external
+deletion with a durable notification (AC-3), exports due-time tasks as
+events idempotently via the unique (connection, task) mapping (AC-1/AC-4),
+deletes events on task deletion (AC-2), and pauses with a reconnect prompt
+on auth failure (AC-5). The worker gains the 60 s `calendar.sync` job
+(export every cycle, 10-min import poll, channel renewal, retention sweep,
+pause-after-5-consecutive-failures per PRD §12.4). Web routes:
+google/start (mode-before-auth, PRD §16.2; 503 PROVIDER_UNAVAILABLE when
+unconfigured), google/callback (single-use hashed state), :id/reconnect
+(reconnect prompt + mode change), :id/sync, /calendar/events (tenant-scoped
+window), /calendar/webhook (push channel), conflicts list/resolve
+(keep-NEXTDOO / keep-calendar / unlink, audit-logged). Disconnect now
+implements PRD §16.5 (best-effort revoke + token wipe; mappings retained
+30 days, then purged by the worker). UI: Settings → Calendar (mode radio
+before connect, sync-now, reconnect banner, conflict cards, honest
+unconfigured banner) and read-only provider-event blocks in CalendarView.
+Migration 0021: `calendar_oauth_states` + `pause_reason`,
+`channel_expires_at`, `consecutive_failures`, event `etag`. Recurring
+events are imported as instances in the sync window (PRD §16.3 has no
+recurrence field). One disclosed pre-existing test update: the M4
+disconnect test asserted tokens were retained; PRD §16.5 requires token
+deletion, so the assertion now matches the PRD (no other assertion
+changed).
+
+Scope decisions, acceptance criteria, and the external blocker for live
+Google verification are recorded in
+[M7_GOOGLE_CALENDAR_SYNC_MILESTONE.md](M7_GOOGLE_CALENDAR_SYNC_MILESTONE.md).
+
+Validation (local): 781/781 unit+integration (was 741; +40 new), coverage
+thresholds pass (calendar package 90.2% stmts / 80.4% branches; overall
+88.8% statements), typecheck all packages, lint 0 warnings, production
+build clean, E2E 147 passed (only local exception: attachments.spec
+refuses to run without ClamAV, by design — CI has it).
+
+**Live Google verification: EXTERNALLY BLOCKED** — no
+`GOOGLE_CLIENT_ID/SECRET` in this environment and no egress to
+`accounts.google.com` / `oauth2.googleapis.com` / `www.googleapis.com`
+(verified connection failure; only github.com / codeload.github.com /
+registry.npmjs.org reachable). No Google API call was faked; the adapter is
+verified against a deterministic transport and the full behavior against
+the fixture provider. Unblock = credentials + egress + redirect-URI
+allow-list; the feature gates on presence and degrades to 503 until then.
+
+Closure (final CI verification): one benign CI flake, root-caused before
+any change (none was made). On the code commit `d58bf1e`, push run
+`34780588514` failed exactly the `pnpm test:coverage` step — one
+timing-sensitive test under CI coverage load on the shared runner. The
+`pull_request` run on the identical SHA (`34780590428`) passed the full
+pipeline (migrations, lint, typecheck, test:coverage 781/781, build,
+ClamAV verification, full real-browser E2E suite) minutes later, and the
+local suite ran 781/781 twice consecutively (73 files). A rerun of the
+failed push run was refused by GitHub ("workflow file may be broken"),
+same as the M6-i8 docs-run incident. No product or test behavior was
+changed; the push run on the closing commit below is the additional
+authoritative green.
+
+## M7 — Google Calendar two-way sync — increment 2 (planning): import-correctness review — 2026-09-14
+
+Review-only increment (no product code changed). Scope: PRD §16.2–§16.7
+(+ §7 planning capability and Phase-2 references), the M7-i1
+implementation, the recurrence normalization decision, and the
+`calendar_events` schema.
+
+Conclusions (full detail in
+[M7_GOOGLE_CALENDAR_SYNC_MILESTONE.md](M7_GOOGLE_CALENDAR_SYNC_MILESTONE.md) §7):
+(1) **Recurrence fidelity** (full rule preservation / series-level
+editing) is **not explicitly required for the MVP** — the PRD's only
+recurrence statement is the word "recurrence" in §16.1's imported-data
+list; §16.3's normalization contract carries no recurrence field and the
+§16.6 acceptance criteria test none — so it is **deferred as a future
+enhancement**, not MVP scope. (2) **Availability display is explicit as
+the purpose of the read-only mode** (§16.2) and its surface (external
+event import + read-only rendering) was already delivered in M7-i1; it is
+not an independent §16.6 AC. (3) **Neither is explicitly Phase 2** —
+§16.7's Phase 2 entries are other providers (Outlook, Apple/CalDAV).
+(4) The **written MVP acceptance criteria (§16.6, all five) are fully
+satisfied** at `2cdd528`. (5) The review found **two hidden correctness
+gaps in the M7-i1 import path**: **G1** — recurring instances share
+Google's series `id`, which the adapter uses as `external_id` under
+`UNIQUE (connection_id, external_id)`, so instances of one series collapse
+into a single mirror row, an occurrence-level cancellation deletes the
+whole series (and unschedules the mapped task), and instance updates bleed
+across the series; **G2** — deleted external events leave stale mirror
+rows because the import path never deletes `calendar_events` rows for
+`deletedExternalIds`. Both corrupt the §16.2 availability display.
+**M7-i2 is therefore scoped as the bounded correctness fix for G1+G2**
+(deterministic acceptance criteria recorded in the milestone doc; no
+recurrence rule preservation, no parallel sync path, provider boundary
+preserved). Implementation follows in the next increment — deliberately
+not in this review-only turn. Live Google verification remains
+externally blocked (credentials + egress, see M7-i1 entry) and stays a
+separate later increment.
+
+Validation (this turn): documentation-only change; no product or test
+code touched; local working tree verified byte-identical to `2cdd528`
+except the two doc files (after recovering a sandbox `.git` reset at the
+stale base commit via `git fetch` + `git reset --mixed origin/…` — no
+work lost, no force-push).
+
+## M7 — CI failure root-cause + E2E date-boundary test fix (disclosed) — 2026-09-14
+
+The `a4fc47e` docs push failed CI in BOTH runs (push `34817080973`, PR
+`34817086617`), failing exactly the Playwright step. Root-caused before
+any change (CI logs were egress-blocked; annotations + local
+reproduction used instead):
+
+1. **`project-analytics.spec.ts:94` — genuine reproducible test defect
+   (date boundary), fixed.** "a delayed older report cannot replace a
+   newer period selection" asserted the initial report's `plannedCount`
+   without anchoring the report date: the default window is *today's*
+   week, so the precondition silently required "today" to fall in the
+   week of the fixture's hard-coded 2026-09-08 tasks. It held through
+   Sun 2026-09-13 (CI green at `2cdd528`) and broke on Mon 2026-09-14
+   (default week 09-14..09-20 contains none of the seeded tasks → data
+   section does not render). Reproduced 3/3 locally; fix pins the
+   initial report to the fixture's fixed date exactly like the sibling
+   tests (one anchored `fill` + `Update report` before the first
+   assertion); the test's stale-response race semantics are unchanged.
+   All other e2e specs with hard-coded dates were audited — they anchor
+   dates explicitly; this was the only date-dependent precondition.
+2. **`task-virtualization.spec.ts:194` (PR run only) — known
+   intermittent focus-pinning race in a virtualized list (documented
+   since M2; previously flaked in local full runs).** Passed 3/3
+   locally this turn; left unchanged (locked-milestone test; CI
+   `--retries=2` covers the residual flake).
+
+Validation (local, same date): E2E 147 passed (only local exception:
+attachments.spec fails loudly without ClamAV — by design, CI installs
+it), vitest 781/781 (73 files), coverage thresholds unchanged (calendar
+90.22/80.39/92.85/92.38), typecheck all 5 packages, lint 0, build
+clean. Product code unchanged; M7-i1 behavior untouched.
+
+## M7 — Google Calendar two-way sync — increment 2: import-correctness fix (G1+G2) — 2026-09-14
+
+Implemented the bounded M7-i2 increment scoped in the 2026-09-14
+planning review (M7_GOOGLE_CALENDAR_SYNC_MILESTONE.md §7/§7.2). No new
+features, no RRULE/series-level editing, no availability expansion, no
+live-provider changes.
+
+**G1 — per-occurrence identity.** New shared `deriveExternalId`
+(`packages/calendar/src/instance-key.ts`; single source of the key
+format, used by adapter + fixture): recurring instances key as
+`<recurringEventId>!<originalStartTime>` (`date` for all-day series);
+series-level and non-recurring items keep the bare `id`. `toDto` and
+the cancelled branch of `listChanges` both use it — an occurrence cancel
+reports the composite key, a series cancel the bare series id. The `!`
+convention is documented contract-level
+(`CALENDAR_INSTANCE_KEY_SEPARATOR`).
+**G2 — mirror cleanup.** Import §3b now deletes, per `deletedExternalId`
+(connection-scoped): the exact mirror row, and for a bare series id
+every `<seriesId>!%` instance row (LIKE-escaped prefix). Idempotent;
+pre-existing AC-3 mapping/unschedule/notify semantics untouched.
+
+Schema/index: **none** — `UNIQUE (connection_id, external_id)` +
+`varchar(300)` already admit composite keys.
+
+Tests: 16 new (8 unit in `google.test.ts`; 8 integration in
+`calendar-sync.integration.test.ts`) covering: two occurrences → two
+distinct rows (idempotent re-import), update isolation, occurrence
+cancel isolation, series cancel, per-occurrence mapping (update applied
+once / sibling ignored / cancel unschedules + sibling survives),
+deleted non-mapped mirror removal (idempotent), deleted MAPPED mirror
+removal (AC-3 intact), tenant isolation of series cleanup, cursor
+persistence.
+
+Validation (local): E2E 147 passed (only local exception:
+attachments.spec fails loudly without ClamAV — by design, CI installs
+it) · vitest **797/797** (73 files; was 781) · coverage gate exit 0
+(calendar package 91.33/83.47/93.33/93.75, was 90.22/80.39/92.85/92.38;
+overall 88.89% statements) · typecheck all 5 packages · lint 0 · build
+clean. No existing test was weakened or deleted; all M7-i1 AC tests
+pass unchanged.
+
+## M7 — increment 3 (preflight): live Google verification + hardening — CLOSED-BLOCKED — 2026-09-14
+
+M7-i3 began with the directive's preflight: determine exactly what is
+required for live verification and whether this environment can
+provide it. Results (measured, recorded in the M7 milestone doc §7.3):
+(1) required config = `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` (not
+set here), scopes `calendar.readonly` / `calendar`, redirect URI
+`${APP_URL}/api/v1/calendar/connections/google/callback` on a public
+host, a Google Cloud OAuth client with that URI allow-listed, and a
+long-lived public HTTPS host for the `/api/v1/calendar/webhook` push
+target; (2) egress to `accounts.google.com`,
+`oauth2.googleapis.com` and `www.googleapis.com` is blocked
+(SSL_ERROR_SYSCALL, probed at preflight); (3) Google→app webhook
+reachability cannot be verified without credentials and a long-lived
+public host. **Verdict: STOP at preflight; externally blocked; no live
+flow attempted and no live result manufactured.** No hardening was
+implemented: the directive permits only hardening "directly exposed by
+live verification," and with live verification impossible nothing is
+directly exposed (channel-token and rate-limit-backoff candidates
+remain documented for the first unblocked increment). No code changed;
+M7-i1/i2 behavior untouched (797/797 + CI green at `511941f`
+remains the verified baseline). Consolidated M7 status: i1 CLOSED,
+i2 CLOSED, i3 CLOSED-BLOCKED.
+
+## M8 — roadmap/scope audit — 2026-09-14
+
+Audit-only increment (no product code changed). Full re-read of PRD v1.1
+(22 sections), the completion ledger, all M1–M7 milestone documents, and
+the current implementation (route tree, worker job registry, schema,
+client libraries). Deliverable:
+[M8_ROADMAP_AUDIT.md](M8_ROADMAP_AUDIT.md) — a complete requirements
+matrix classifying every major PRD requirement as CLOSED+CI-verified /
+implemented-lacking-live-verification / partial / not implemented /
+explicitly deferred-Phase-2 / externally blocked, with PRD section,
+implementation location, delivering milestone/commit, validation
+evidence, and remaining gap per row.
+
+Headline findings: the core loop (capture → plan → execute → review) is
+complete and CI-verified; the material gaps are (a) **browser push
+notifications** (PRD §6.6 MVP channel — the only clearly-MVP product
+requirement that is unimplemented and not deferred), (b) advisory
+"improve" suggestions (§5.5; heuristic variant never built, AI variant
+deferred by directive), (c) minor route gaps (reminder-update,
+workspaces-list), (d) wellbeing settings panel (partial), (e)
+assurance/ops artifacts (ASVS mapping, SAST, pen test, SLO monitoring,
+restore tests, status page — release gates), and (f) the
+PRD-vs-directive divergence on **Windows desktop** (PRD Phase 1;
+deferred by standing directive — reinstatement needs an explicit
+decision). Externally blocked work inventoried separately: live Google
+(M7-i3), live billing (M6-i4), SMTP email, production reliability gates.
+
+**Recommendation: M8-i1 = browser push notification channel** (§6.6),
+bounded and fully CI-verifiable via a deterministic push-service stub;
+acceptance criteria defined in the audit doc §4.2. Not started this
+turn.
+
+## M8-i1 — browser push notification channel — 2026-09-14
+
+Implemented the bounded channel from
+[M8_ROADMAP_AUDIT.md](M8_ROADMAP_AUDIT.md) §4.2 (PRD §6.6/§9.3/§12.4/
+§13.2/§14.8): VAPID subscription lifecycle (authed, user-scoped, deduped on
+`(user, endpoint)`, validated, rate-limited), push as a durable channel in
+the **existing** reminder dispatch path (no parallel engine: scheduling,
+CANCELED/EXPIRED gating, versions, audit and the notification center are
+unchanged), a real service worker (`public/sw.js`) with explicit opt-in and
+clean degradation, and 410/gone handling (registration removed, siblings
+keep delivering). New schema: `push_subscriptions` + `push_deliveries`
+(lease-based, `UNIQUE(reminder_id, subscription_id)` no-double-delivery
+key, 5-attempt backoff, 24 h payload expiry with scrubbing); delivery
+engine in `@nextdoo/db` with a dependency-injected transport — the worker
+injects `web-push`, tests inject a deterministic stub. Registration is
+gated on VAPID configuration (503 unconfigured; no undeliverable
+accumulation; no stub fallback). Terminal outcomes surface via the existing
+reminder history (`last_error`), and account purge scrubs keys + payloads.
+Deliverable doc: [M8_i1_BROWSER_PUSH_MILESTONE.md](M8_i1_BROWSER_PUSH_MILESTONE.md)
+(files/routes/schema, AC evidence table, degradation matrix, production
+external dependencies).
+
+Validation (local): vitest **815/815** (18 new push integration tests, 2
+files; one non-reproducing clock-drift flake in a first run fixed by
+widening a test margin 1 s → 60 s and re-verified), E2E **151/151**
+(4 new real-browser push specs: SW registration + public key, opt-in →
+real API → dispatch → SENT + opt-out, unsupported-browser degradation,
+authz/ownership/validation; the browser↔push-service handshake and the
+headless notification-permission grant are doubled at the browser boundary
+and labeled in the spec header — **no real provider delivery is
+claimed**), coverage 88.88 % stmts (baseline 88.89 %), typecheck/lint/
+build clean. The attachments E2E suite's ClamAV refusal is pre-existing and
+by design (local only; CI installs ClamAV and verifies EICAR detection, so
+the attachments suite runs there).
+
+**CLOSED — CI-verified.** Final commit `162ce31` (on `83fce2f`) on
+`arena/01a085b7-nextdoo`; CI runs: push **34937801466** SUCCESS and PR
+**34937804538** SUCCESS (job `verify`: ClamAV install + EICAR check,
+`db:migrate` ×2 idempotency, lint, typecheck, full `test:coverage`,
+production build, real-browser `playwright test --retries=2` — all green).
+Consolidated M8 status: audit CLOSED (`83fce2f`), M8-i1 CLOSED; M8-i2
+(advisory "improve" suggestions, §5.5 heuristic variant) is the recommended
+next increment — not started per directive.
+
+## M8-i2 — advisory "improve" suggestions — 2026-09-15 (review only)
+
+Planning/review increment (no product code changed). Full re-read of PRD
+§5.5/§8.3/§8.5/§7.3/§7.8/§7.9/§14.3/§14.8/§17, the M8 audit (J8/N3), and
+the existing analytics/tracking/capacity/recurrence implementation
+(includes the already-delivered "What this suggests" insights card,
+`tagVariances`, `mostRescheduled`, overloaded-day data, `DayCapacity`,
+`tracking_results` components, and the `disableScores` preference pattern).
+Deliverable: [M8_i2_ADVISORY_SUGGESTIONS_REVIEW.md](M8_i2_ADVISORY_SUGGESTIONS_REVIEW.md)
+— the five §5.5 suggestion themes decoded to a closed, deterministic,
+pure-rule design (heuristic; AI/LLM explicitly deferred per §17.1 and the
+standing directive), the PRD-named `POST /v1/ai/suggestions` endpoint with
+a deterministic default provider, strictly advisory semantics (one
+confirmable S1 estimate mutation; S2 can never initiate a move per §8.3),
+15 acceptance criteria derived directly from the PRD, negative/security/
+privacy cases, test strategy, and a bounded implementation plan (~6 files
+new, ~5 touched, 0 new tables, 0 workers, 0 external services). Includes
+the §7.9 overload-warnings toggle (J6 sub-gap) as an AC-14 dependency
+because S2 is an overload warning. Implementation NOT started, per
+directive.
+
+## M8-i2 — advisory "improve" suggestions (implementation) — 2026-09-16
+
+Implemented the bounded design from
+[M8_i2_ADVISORY_SUGGESTIONS_REVIEW.md](M8_i2_ADVISORY_SUGGESTIONS_REVIEW.md)
+(PRD §5.5/§8.3/§8.5/§7.3/§7.8/§7.9/§14.3/§14.8/§17.1): deterministic
+heuristic suggestions only — no LLM/API model calls, no new external
+service, no new tables, no workers. Deliverable:
+[M8_i2_ADVISORY_SUGGESTIONS_MILESTONE.md](M8_i2_ADVISORY_SUGGESTIONS_MILESTONE.md)
+(full rule table with thresholds/rounding/caps, actions model, §7.9
+toggle semantics, security/privacy/determinism evidence).
+
+What shipped:
+
+- **Contracts** (`@nextdoo/contracts`): typed, versioned `Suggestion`
+  (id/type/ruleVersion/message/target/action/evidence),
+  `SUGGESTION_RULE_VERSION = 1`, closed five-type enum, discriminated
+  action union (exactly one confirmable action kind: `raise_estimate`),
+  `WellbeingPreferences` + strict patch schema.
+- **Pure rules** (`suggestion-rules.ts`, no DB/clock/randomness):
+  S1 larger estimates (tag else project cohort, ≥2 measured, mean
+  overrun ≥+10%, `estimate × (1+variance/100)` rounded to 5 min, cap 2),
+  S2 overloaded days (planned > workday guideline, most-overloaded first,
+  cap 2, view-only navigation), S3 earlier recurring planning (≥3
+  measured occurrences, median lateness ≥30 min or adherence <80 %,
+  earlier time = next due − rounded-to-15-min median, cap 2,
+  navigation), S4 break large tasks (ACTIVE, estimate or measured actual
+  ≥240 min, no subtasks, cap 3, navigation), S5 review rescheduled
+  (rescheduleCount ≥3, cap 3, navigation). Total cap 11 (deterministic
+  tail trim), 200-char word-boundary message clamp, stable ordering,
+  Unmeasured never treated as a number.
+- **Service** (`suggestions.ts`): strictly read-only
+  (SELECTs only — zero-row mutation proven by before/after full-table
+  counts in integration tests), workspace-scoped, reuses the analytics
+  summary cohort (same corrections-filtered population as the page),
+  `EXCLUDED_FROM_ANALYTICS` corrections hide inputs, §7.9 toggle
+  suppresses S2 only. Deterministic for identical state (two-call
+  equality tested at unit/integration/E2E level).
+- **Endpoint** `POST /api/v1/ai/suggestions`: authed, workspace-scoped,
+  idempotent read, standard rate limit, strict body
+  (`period` day/week + optional local `dateKey`); 401/400 cases tested.
+- **§7.9 toggle**: new `GET`/`PATCH /api/v1/preferences` (authed,
+  idempotent, strict booleans-only) over per-user `user_preferences`
+  rows — the same pattern as the existing `disableScores` reader
+  (AC-14). Audit `account.preferences_updated` names changed fields.
+  TodayView (§8.3) swaps the overload banner for a neutral planned-load
+  line; the server stops generating S2; all other themes unaffected.
+  The `/v1/me` profile contract is **untouched** (its exact response
+  shape stays pinned by the existing account/session tests — an earlier
+  draft of this milestone had extended `/me` with a `preferences` field,
+  which the locked `sessions` E2E correctly rejected; the toggle moved
+  to the dedicated endpoint instead).
+- **UI**: `SuggestionsCard` in Analytics (§8.5) — advisory wording
+  ("Advisory only — nothing changes until you confirm…"), S1 confirm
+  button (the only confirmable action; applies the estimate raise through
+  the normal versioned task PATCH), S2 calendar navigation, S3
+  recurrence navigation, S4/S5 task openers; Settings → Wellbeing card
+  ("Hide overload warnings"); Today banner toggle behavior. Axe
+  wcag2a/wcag2aa clean on the card.
+
+Test evidence (local): 32 rule unit tests (per-rule triggers,
+non-triggers, insufficient-data/Unmeasured, rounding, caps, total cap,
+determinism/ordering, message clamp, tone); 9 suggestions integration
+tests (five themes, determinism, zero-row mutation, corrections-hidden,
+workspace isolation, S2-only toggle, S1 confirmation path via the normal
+update, malformed/leak/fail-closed); 3 preferences integration tests
+(defaults/persistence/no-op, audit, owner-scoping); 6 E2E
+(401 unauthenticated; malformed bodies → 400; all five themes visible in
+Analytics with advisory wording + S1 explicit confirmation raising the
+estimate exactly once; Today banner + §7.9 toggle (neutral line, S2 gone
+server-side, S4 unaffected); cross-workspace isolation via a second
+request context; axe). Full vitest **859/859** (78 files; baseline 815 +
+47 new − 3 relocated), typecheck ✓, lint 0 warnings ✓, coverage gate ✓
+(exit 0), production build ✓, E2E suggestions 6/6 (×3 consecutive) and
+full E2E regression green modulo the sandbox-only items: attachments
+ClamAV refusal (pre-existing local limitation — CI installs ClamAV and
+verifies EICAR) and two load-flake tests (`sessions:98`,
+`task-virtualization:183`) that pass in isolation, plus a late-suite
+worker cutoff in this resource-constrained sandbox (the affected tail
+tests pass when run directly).
+
+**Pre-existing test-isolation defect fixed (disclosed, no product code,
+no guarantee weakened):** reminder rows leaked into the shared test
+database by `task-bulk` and `lifecycle.integrity` (SCHEDULED rows become
+dispatchable later under load, e.g. after the 5 s advisory-lock timeout
+backoff), inflating the global dispatch counters asserted by the push
+suites (`sent` 6 vs 1 / 2 vs 1 in full-suite runs only). Fix: those two
+suites now delete their own workspaces' reminders in `afterAll`, and
+`push-notifications` / `push-unconfigured` assert their own reminder's
+single `reminder.dispatch` audit row (status SENT) plus a loose
+`sent >= 1` sanity, replacing only the environment-fragile global
+equality; every originally scoped assertion (delivery rows, notification
+rows, unique-key rejection, SENT status) is retained. All four are
+locked-milestone test files; verified by repeated multi-file combos and
+the full suite.
+
+**CLOSED — CI-verified.** Commit `be02566` on `arena/01a085b7-nextdoo`
+(on `a224bc9`); CI runs **35055139843** and **35055136113** SUCCESS
+(job `verify`: ClamAV install + EICAR check, `db:migrate` ×2 idempotency,
+lint, typecheck, full `test:coverage`, production build, real-browser
+`playwright test --retries=2` — all green).
+
+Consolidated M8 status: audit CLOSED (`83fce2f`), M8-i1 CLOSED
+(`1c224b4`), M8-i2 review CLOSED (`a224bc9`), M8-i2 implementation
+CLOSED (`be02566`). Per directive, STOP after M8-i2 — M8-i3 (or any
+other increment, including the remaining §7.9 wellbeing controls and the
+model-backed suggestion variant) is NOT started; next increment
+recommendation is recorded in the milestone doc.
+
+## M8-i3 — wellbeing preference controls (PRD §7.9) — 2026-09-16
+
+Implemented the bounded design from
+[M8_i3_WELLBEING_CONTROLS_REVIEW.md](M8_i3_WELLBEING_CONTROLS_REVIEW.md)
+(§7.9/§7.2/§7.8/§7.3/§14.3, PD-03/PD-04, TR-07): the six
+independently-disableable wellbeing preferences are now the complete
+user-reachable §7.9 settings surface. Deliverable:
+[M8_i3_WELLBEING_CONTROLS_MILESTONE.md](M8_i3_WELLBEING_CONTROLS_MILESTONE.md)
+(six-key contract + default provenance, score-control behavior,
+forward-gate semantics, personal-trend guarantee, defect disclosure).
+
+What shipped:
+
+- **Six-key contract** (`@nextdoo/contracts` `preferences.ts`):
+  `disableScores`, `disableStreaks`, `disableCelebrations`,
+  `disableSounds`, `disableComparativeMetrics`,
+  `disableOverloadWarnings` — `WellbeingPreferences`,
+  `WELLBEING_PREFERENCE_DEFAULTS` (PRD-derived: scores shown, streaks on,
+  celebrations off, comparisons closed; implementation decisions: sounds
+  enabled, overload warnings shown — PRD silent), strict non-empty
+  booleans-only patch schema.
+- **Only new user-visible control: `disableScores`** (Settings "Hide numeric
+  scores"). TR-07 reflection on all covered surfaces: tracking detail empty
+  shape, summary strips per-day `score` + top-level `averageScore`,
+  Analytics shows the hidden-scores note instead of the Execution score stat
+  and Score column; untoggle restores from the same stored results.
+  `tracking_results`, score calculation, corrections, recalculation and
+  export are untouched (row-for-row verified).
+- **Four forward gates** (`disableStreaks`/`disableCelebrations`/
+  `disableSounds`/`disableComparativeMetrics`): persisted, returned,
+  audited — zero visible behavior change; no streak/celebration/sound/
+  comparative features invented; `disableComparativeMetrics` verified inert
+  to the user's own trend reporting at both values (MVP comparison
+  prohibition unchanged).
+- **Disclosed defect fix** (only closed-milestone code touched): the M8-i2
+  tracking-summary route shipped the top-level `averageScore` in the JSON
+  even with scores disabled (spread leaked it; the strip conditional was a
+  no-op). Fixed by mirroring the locked project-analytics destructuring
+  pattern; its locked `not.toHaveProperty('averageScore')` test remains the
+  shape authority.
+- **No** new tables, migrations, workers, endpoints, or external services;
+  M8-i2 auth/origin/rate-limit/idempotency/audit plumbing preserved;
+  overload-warning behavior exactly M8-i2.
+
+Verification (local, then CI): targeted 12/12 (7 service + 5 route);
+full `pnpm test:coverage` **79 files all pass**, thresholds met;
+typecheck + lint clean; production build clean; E2E `--retries=2` **162
+passed** (the only non-passes are the five ClamAV-dependent
+`attachments.spec.ts` tests — sandbox has no `clamscan`; CI installs
+ClamAV and ran them for real). Pushed at `9fe6514`; CI runs
+**35081512996** (push) and **35081517416** (pull_request) **SUCCESS**
+(full pipeline incl. ClamAV EICAR check, `db:migrate` ×2, lint, typecheck,
+`test:coverage`, build, real-browser E2E).
+
+Consolidated M8 status: audit CLOSED (`83fce2f`), M8-i1 CLOSED
+(`1c224b4`), M8-i2 review CLOSED (`a224bc9`), M8-i2 implementation
+CLOSED (`be02566`), M8-i3 review CLOSED (`5c8eede`), M8-i3
+implementation CLOSED (`9fe6514`). Per directive, STOP after M8-i3 —
+M8-i4 (next: Google Calendar two-way sync reliability hardening, or a
+§7.9 "sounds" surface review) is NOT started.
+
+## M8-i4 — Google Calendar two-way sync reliability hardening — 2026-09-19
+
+Review closed at `267a80c`
+([M8_i4_GOOGLE_CALENDAR_HARDENING_REVIEW.md](M8_i4_GOOGLE_CALENDAR_HARDENING_REVIEW.md),
+CI-verified); this entry records the approved implementation (T1 → T5 → T4 →
+T6a, one migration). Deliverable:
+[M8_i4_GOOGLE_CALENDAR_HARDENING_MILESTONE.md](M8_i4_GOOGLE_CALENDAR_HARDENING_MILESTONE.md).
+The review doc's new §9 records the as-built deltas.
+
+What shipped:
+
+- **T1 — refreshed/rotated tokens are persisted and reused (class-1
+  defect closed).** The sync cycle takes a `tokensFor(row)` opener and a
+  `sealTokens(row, tokens)` persister; after export + import + channel
+  renewal it compares `provider.currentTokens()` with the opened baseline
+  (new exported `tokensChanged` — access token, refresh token, expiry and
+  scopes) and re-seals only on a real change (`CalendarCycleResult` gains
+  `tokenUpdates`). Worker: new `openCalendarTokens` (null on missing
+  secret / no token / tampered envelope — the existing
+  "tampered → tokenless provider → pause" fall-through is preserved) and
+  `sealCalendarTokens` (both envelopes via `sealSecret`, `token_expires_at`
+  advanced, `scopes` kept via column self-reference). Web:
+  `calendarProviderTokens` becomes the single decrypt source and
+  `syncConnectionNow` re-seals a changed set through `encryptSecret`.
+  Before this change the worker re-opened the pre-refresh credentials
+  every 60 s and a rotated refresh token was lost; now the next cycle
+  serves the new set from the sealed row with zero extra token calls.
+- **T5 — invalid sync-token recovery.** The adapter maps a 400 whose body
+  matches `/sync_?token/i` to the new `CalendarSyncTokenInvalid` (generic
+  400s untouched); `runCalendarImport` retries once with a `null` token on
+  the bounded 24 h window, adopts the fresh checkpoint (never re-adopts
+  the stale token), writes the `calendar.sync_token_reset` audit in the
+  same transaction, and counts no failure, pauses nothing. Idempotent and
+  connection-scoped; a failing recovery call falls through to the existing
+  generic-failure path (no recursion).
+- **T4 — rate-limit backoff persisted across cycles (migration `0023`
+  `rate_limited_until`).** Every `CalendarRateLimited` catch point calls
+  `recordRateLimit` (`now + retryAfterSeconds`, guarded so a concurrent
+  429 extends but never shrinks a longer stored window). The worker cycle
+  checks the window **before building the provider** — zero provider calls
+  (no export, import or channel renewal) inside the window; at/after
+  expiry the marker is cleared and the pass runs. Rate limits stay skips:
+  no `consecutive_failures`, no pause, per-connection isolation. Adapter
+  `Retry-After` now parses delta-seconds (floored; `"0"` = 0 s — spec
+  change from the old `|| 60`) and HTTP-date (injectable clock, clamped ≥
+  0), defaulting to 60 s.
+- **T6a —** `calendar.sync` logs one `warn`
+  `calendar.sync.rate_limited` line per rate-limited cycle (result counts
+  only; no tokens, no logging redesign).
+
+No new endpoints, workers, or API shape changes; the `calendar.sync` job
+registry (name/60 s cadence/§12.4 contract) is unchanged. **T3
+(dedicated channel-token column) remains explicitly deferred** (audit L4);
+class-5 live-Google items remain CLOSED-BLOCKED.
+
+Testing (all deterministic; fixture provider / injected transport — zero
+network): 26 new tests — T1 ×10 (worker 8 acceptance: refresh persisted,
+rotation replaces, no plaintext at rest, expiry metadata, next-cycle reuse
+with zero refresh calls and byte-identical envelope, unchanged-set no-op,
+no spurious pause, failed-refresh semantics; web 2: manual-sync re-seal +
+no-write), T5 ×3 integration (detect/clear/re-import/fresh-checkpoint/
+audit/no-pause, tenant isolation, conflict+mirror safety) + adapter/
+fixture seam units, T4 ×5 integration (store-on-429, zero-calls-in-window,
+at/after-expiry retry + marker clear, max-window guard, multi-connection
+isolation) + 4 adapter units (both Retry-After forms, `"0"`, default),
+T6a ×1 job-level (warn line, no pause/failed noise, no token material).
+No existing test weakened or deleted.
+
+Environment: the sandbox was partially reset during the increment
+(node_modules + `/tmp` wiped; tree and HEAD survived) — recovered via pnpm
+store rehydration (10 s), a rebuilt PostgreSQL 18.4 cluster, and a
+re-inflated Chromium 153 from the npm-distributed `@sparticuz/chromium`
+binary via the documented `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` fallback
+(no browser security disabled, no API mocks). Live Google re-probed at the
+start: **all Google endpoints still unreachable — the M7 §7.3 16-point
+live verification stays CLOSED-BLOCKED**; nothing live was simulated.
+
+Verification (local): targeted calendar suites green; full `vitest run`
+(unit + integration) **79 files / 894 tests all pass**;
+`test:coverage` thresholds met (calendar package: fixture 96.8% lines,
+adapter 90.9% lines); `typecheck` + `lint` clean; production `build`
+clean; E2E **161 passed** with the only non-passes being the
+ClamAV-dependent `attachments.spec.ts` suite (sandbox has no `clamscan`;
+CI installs ClamAV and runs it for real) and one transient 30 s
+`waitForResponse` timeout in `wellbeing.spec.ts` axe (runner-load flake —
+re-run in isolation: **5/5 passed in 9 s**). Pushed at `5b3c4e9`; CI runs
+**35426643548** (push) and **35426645868** (pull_request) **SUCCESS**
+(full pipeline: ClamAV EICAR check, `db:migrate` ×2 — including the new
+`0023` — lint, typecheck, `test:coverage`, build, real-browser E2E with
+the ClamAV suite running for real).
+
+Consolidated M8 status: audit CLOSED (`83fce2f`), M8-i1 CLOSED
+(`1c224b4`), M8-i2 review CLOSED (`a224bc9`), M8-i2 implementation
+CLOSED (`be02566`), M8-i3 review CLOSED (`5c8eede`), M8-i3
+implementation CLOSED (`9fe6514`), M8-i4 review CLOSED (`267a80c`),
+M8-i4 implementation CLOSED (`5b3c4e9`). Per directive, STOP after
+M8-i4 — M8-i5 (or any other increment) is NOT started; the next
+recommended increment is recorded in the milestone doc / review §8.
+
+## M8-i5 — Google Calendar live-unblock path — 2026-09-19 (preflight)
+
+Per the M8-i5 directive, this increment starts with a preflight deciding
+whether the 16-point live Google verification is executable. **It is
+not — M8-i5 is BLOCKED at preflight** (fourth probe of this
+environment; M7-i3 2026-09-14 and M8-i4 2026-09-19 recorded the same).
+No live flow was attempted, no live result was manufactured, no product
+code was changed. Deliverable:
+[M8_i5_GOOGLE_CALENDAR_LIVE_UNBLOCK_PREFLIGHT.md](M8_i5_GOOGLE_CALENDAR_LIVE_UNBLOCK_PREFLIGHT.md)
+(six-check preflight table, the exact 16-point checklist, T3 decision
+rule, four-line unblock requirements, non-goals).
+
+Preflight (measured 2026-09-19): branch state OK (local = remote
+`90e6992`, tree clean — a 7th sandbox partial reset was recovered via
+the established refspec-fetch + `reset --mixed FETCH_HEAD` procedure
+with the tree byte-verified against the tip); GitHub auth OK;
+`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` **absent** (empty
+`.env.example` template only, no `.env`); `APP_URL`/public HTTPS
+redirect host **absent**; egress to `accounts.google.com`,
+`oauth2.googleapis.com`, `www.googleapis.com` **blocked** (all `000`);
+inbound public reachability for
+`POST /api/v1/calendar/webhook` **not available** (no long-lived public
+HTTPS ingress). 4 of 6 prerequisites unavailable → STOP at preflight
+per directive.
+
+T3 (dedicated random push-channel verification token, audit L4)
+**remains deferred**: with no live pass, no live evidence exists to
+justify the change; the evaluation criteria and decision rule are
+recorded in the preflight doc for the unblocked increment.
+
+Consolidated M8 status: audit CLOSED (`83fce2f`), M8-i1 CLOSED
+(`1c224b4`), M8-i2 CLOSED (`be02566`), M8-i3 CLOSED (`9fe6514`),
+M8-i4 CLOSED (`5b3c4e9` + `90e6992`), M8-i5 **BLOCKED at preflight**
+(no commits beyond this doc/ledger entry). Per directive, STOP after
+the preflight — no M8-i5 implementation.
+
+## M8-i6 — remaining class-3 hardening review — 2026-09-19
+
+Review/planning only; no product code changed and no M8-i6 implementation
+started. Deliverable:
+[M8_i6_REMAINING_HARDENING_REVIEW.md](M8_i6_REMAINING_HARDENING_REVIEW.md).
+
+The review re-read the full PRD, the M8 audit, M8-i4 review/milestone,
+M8-i5 preflight, and the closed M8-i1…i3 docs to avoid overlap. It then
+surveyed the current webhook, Calendar, billing, route-limiter, migration,
+restore and CI implementation/test coverage for the remaining hardening
+candidates.
+
+Recommendation: M8-i6 should be a bounded **Calendar webhook ingress
+replay/fairness hardening** increment: implement Calendar webhook redelivery
+dedupe (T2) plus token-scoped webhook bucket fairness (T6b). This is the
+remaining Calendar class-3 hardening that is implementable without live
+Google access, does not reopen M8-i5, does not implement T3, and adds no
+product feature surface. T3 remains externally blocked/deferred per M8-i5;
+optional export cleanup remains convenience only; live provider gates and
+production SLO/restore/pen-test evidence remain externally blocked. The
+review also records CI database restore smoke testing as a strong later
+release-gate hardening candidate.
+
+Per directive, STOP after the review. No implementation, no live Google
+verification retry, no T3 channel-token hardening.
+## M8-i6 — Google Calendar webhook ingress replay/fairness hardening — 2026-09-19
+
+Implemented the approved M8-i6 scope from review commit `e6eab16` only: Calendar
+webhook redelivery/replay dedupe (T2) and token-scoped webhook bucket fairness
+(T6b). Milestone deliverable:
+[M8_i6_GOOGLE_CALENDAR_WEBHOOK_INGRESS_MILESTONE.md](M8_i6_GOOGLE_CALENDAR_WEBHOOK_INGRESS_MILESTONE.md).
+The review source was updated with as-built results:
+[M8_i6_REMAINING_HARDENING_REVIEW.md](M8_i6_REMAINING_HARDENING_REVIEW.md).
+
+T2 as built: `calendar_webhook_deliveries` is a small durable ledger keyed by
+`(connection_id, message_id)` with `PROCESSING`/`SUCCEEDED`/`FAILED`, a 5-minute
+processing lease and a 24-hour TTL. `handleCalendarWebhook(token, { messageId })`
+claims the ledger before import; successful duplicates return `duplicate: true`
+and make zero provider calls; failed/stale rows are reclaimable so legitimate
+provider retries after processing failure still recover. Absent message id keeps
+the previous token-only behavior.
+
+T6b as built: `POST /api/v1/calendar/webhook` now rate-limits after safe parsing:
+per-token `300/minute` buckets for well-formed channel tokens, an IP-level
+`300/minute` invalid/missing-body guard, and a higher global IP safety bucket
+checked after token admission. Bucket keys hash the channel token, and route logs
+continue to avoid token/body material. Endpoint path and 200/no-op behavior for
+unknown well-formed tokens remain compatible.
+
+Schema/code changes: migration `0024_calendar_webhook_deliveries.sql`; schema
+export `calendarWebhookDeliveries`; Calendar retention now purges expired webhook
+ledger rows and reports `webhookDeliveries`; worker Calendar retention logging
+includes the new counter. No T3 dedicated channel-token column, no live Google
+verification, no provider abstraction, no Calendar UI/product feature.
+
+Deterministic tests added in `calendar-sync.integration.test.ts` cover first
+webhook delivery, exact and repeated duplicates, duplicate after success,
+retry-after-failure recovery, same message id across connections, distinct
+messages on one connection, tenant isolation, concurrent duplicate safety,
+retention purge, exhausted one-token bucket, unrelated token admission from the
+same IP, window rollover, and invalid/missing-token IP guarding.
+
+Local validation: `db:migrate` applied `0024` and two follow-up migration runs
+were already up to date; targeted Calendar sync/webhook integration **31 passed**;
+targeted worker Calendar integration **20 passed**; full unit/integration suite
+**79 files / 900 tests passed** before the final concurrent-fairness regression;
+final coverage gate **79 files / 901 tests passed**
+with summary 89.2% statements / 81.77% branches / 92.27% functions / 93.14%
+lines; lint clean; typecheck **7/7 packages**; production build clean. Local
+Playwright E2E was attempted but browser-launch tests were blocked by missing
+Chromium binaries; installing Chromium from `cdn.playwright.dev` failed in the
+sandbox with `ECONNRESET`, so full E2E must be verified by GitHub CI where the
+workflow installs browsers.
+
+Calendar invariants/security: dedupe remains connection-scoped, tenant isolation
+is covered by tests, polling fallback/import/export behavior and connection state
+transitions are preserved, unknown/inactive tokens remain inert no-op, and no raw
+OAuth/channel token material is stored or logged. Live Google remains externally
+blocked for the M8-i5 reasons. Per directive, STOP after M8-i6; do not start
+M8-i7.
+
+## M8-i7 — CI database restore smoke coverage review — 2026-09-19
+
+Review/planning only; no product code changed and no M8-i7 implementation started.
+M8-i6 remains closed and CI-verified at `29cdf35`; Calendar webhook replay/fairness
+behavior was not reopened or modified, and live Google verification was not retried.
+Deliverable:
+[M8_i7_CI_DATABASE_RESTORE_SMOKE_REVIEW.md](M8_i7_CI_DATABASE_RESTORE_SMOKE_REVIEW.md).
+
+Initial verification: active branch `arena/01a0ba0b-nextdoo`; local HEAD and
+remote branch HEAD both `29cdf35b9c6abddaef08a97f08467b1d43099b60`; working tree
+clean before docs edits; GitHub auth succeeded as `arena-ai-coding-agent[bot]`.
+This checkout lacked a local `origin/arena/01a0ba0b-nextdoo` tracking ref after
+fetch, so remote equality was verified with `FETCH_HEAD` and `git ls-remote`.
+
+Reviewed PRD §§11.4, 11.9, 12.2, 12.3, 12.5, 19.1, 19.2 #14, 19.4 and 21.4;
+`M8_ROADMAP_AUDIT.md`; the M8-i6 remaining-hardening H7 row; current GitHub CI;
+`runMigrations`; migration integrity tests; migration files; test database helpers;
+dev-service setup; health route; development/operations docs; and existing audit
+remediation records.
+
+Conclusion: the correct bounded M8-i7 implementation scope, if authorized later,
+is option **(b) backup → restore → migration → application smoke path** using
+native PostgreSQL logical backup tooling in CI. Option (a) would not prove the
+restored database can serve the application readiness path; option (c) would
+require real production infrastructure and would risk inventing operational
+backup capabilities. The proposed CI smoke should create disposable source/target
+databases, apply all migrations except latest to the source, seed non-secret
+representative data, `pg_dump -Fc`, `pg_restore` into the target, run the full
+migration chain so at least one real checked-in migration applies after restore,
+assert representative data/integrity/sequence/checksum survival, start the built
+web app against the restored DB, and require `/api/v1/health` database status ok.
+
+Current gap recorded: CI proves fresh migrations, idempotent migration rerun,
+checksum/concurrent migration safety, full tests, build and E2E, but it does not
+prove a database backup can be produced, restored, migrated after restore, used to
+start the app, or preserve representative data and integrity through dump/restore.
+No repo backup/restore script currently exists.
+
+External/deployment-blocked items remain explicitly out of scope: production PITR,
+daily encrypted backups, separate backup credentials/IAM, 30-day backup retention,
+monthly restore evidence, quarterly DR exercise, measured RTO/RPO, regional
+failover/cutover, attachment/object-store restore, deletion propagation through
+backup windows, SLO dashboards/status page/on-call, and GA production readiness.
+Per directive, STOP after this review; do not implement M8-i7 until separately
+authorized.
+
+## M8-i7 — CI database restore smoke coverage implementation — 2026-09-20
+
+Implemented the bounded Option (b) approved in
+[M8_i7_CI_DATABASE_RESTORE_SMOKE_REVIEW.md](M8_i7_CI_DATABASE_RESTORE_SMOKE_REVIEW.md)
+at baseline `94062ed`: CI-local PostgreSQL backup → restore → post-restore
+migration → application smoke. M8-i6 remains closed; Calendar webhook
+replay/fairness behavior was not reopened or modified; live Google verification
+was not retried. Milestone deliverable:
+[M8_i7_CI_DATABASE_RESTORE_SMOKE_MILESTONE.md](M8_i7_CI_DATABASE_RESTORE_SMOKE_MILESTONE.md).
+
+What shipped:
+
+- New `scripts/db-restore-smoke.mts` plus root `pnpm db:restore-smoke` command.
+- The script creates disposable source and target databases, applies every
+  checked-in migration except the latest to the source, seeds deterministic
+  non-secret representative data, runs real `pg_dump -Fc`, restores with real
+  `pg_restore`, runs the normal `pnpm --filter @nextdoo/db migrate` command on
+  the restored target, verifies an idempotent rerun, checks migration ledger
+  count/checksums, deterministic row counts/fingerprints, uniqueness, FK
+  enforcement, sequence continuity, and the latest-migration Calendar webhook
+  table.
+- The script starts the already-built production Next app using the CI production
+  start convention (`pnpm exec next start -H 0.0.0.0 -p 3100`) against the
+  restored database, requires `/api/v1/health` with database `ok`, and performs
+  an authenticated `/api/v1/me` read of the restored synthetic profile.
+- `.github/workflows/quality.yml` now installs PostgreSQL client tools and runs
+  `pnpm db:restore-smoke` after `pnpm build` and before the full Playwright E2E
+  suite, making the restore smoke part of the authoritative push/PR gate.
+
+The migration boundary at implementation time is source through `0023`, restored
+post-migration applies `0024_calendar_webhook_deliveries.sql`, then the second
+normal migration run must report `Already up to date`. Seeded domains include
+user/session/workspace/account data, projects/sections/tasks/tags, sync/audit/
+outbox/tracking rows, and representative Calendar connection/event/mapping data.
+All data is synthetic (`restore-smoke@example.test`, fixed test UUIDs,
+placeholder hashes) and the dump is temporary, not uploaded.
+
+Security/cleanup: PostgreSQL tool passwords are passed via `PGPASSWORD`, command
+arguments are redacted in smoke logs, no connection URL passwords or secret values
+are logged, source/target DB names are controlled quoted identifiers, the built app
+process is killed after smoke, source/target databases are dropped best-effort with
+`WITH (FORCE)`, and temp dump/migration directories are removed in `finally`.
+
+Local validation before first push: `pnpm install --frozen-lockfile` passed;
+script NodeNext compile check passed; `pnpm lint` passed; `pnpm typecheck` passed
+(7 packages); `pnpm build` passed; `pnpm test:unit` passed (10 files / 227 tests).
+Local full restore smoke could not complete because this sandbox has no live
+PostgreSQL service and no installable PostgreSQL client/server packages — Debian
+package indexes were unreachable, so `postgresql`/`postgresql-client` could not be
+installed; a dry smoke attempt reached source DB creation and failed with the
+expected `ECONNREFUSED`. Local `pnpm test:coverage`/migration integration tests
+without `DATABASE_URL` failed on the existing database-backed suites, as expected;
+GitHub CI provides PostgreSQL and is the authoritative full-suite/restore-smoke
+validation environment.
+
+CI evidence: first implementation push run `35464236805` on commit
+`919faf3a0b65f6e2bceb03969cbed09fc6034d1c` succeeded (job `verify`
+`105953402824`, ~9m08s). The new `Smoke PostgreSQL backup restore and
+post-restore migration` step was green after build and before full Playwright E2E;
+ClamAV/EICAR, audit, migration replay, lint, typecheck, coverage, build, E2E and
+artifact upload also succeeded. Production PITR, encrypted daily backups, separate
+backup IAM/credentials, monthly restore evidence, quarterly DR exercise, measured
+RTO/RPO, regional failover, attachment/object-store restore, backup deletion-window
+semantics, status page/on-call/SLO and pen-test evidence remain external
+release-gate gaps. STOP after M8-i7; M8-i8 not started.
+
+## M8-i6 — Google Calendar webhook redelivery dedupe — 2026-09-20 (review only)
+
+Per the M8-i6 directive this is a **planning/review turn only**: build the
+remaining class-3 hardening matrix and recommend the next bounded
+increment. No product code was changed; M8-i4 (`5b3c4e9` + `90e6992`) and
+M8-i5 (CLOSED-BLOCKED, `bc4fd90`) are untouched and not reopened; no live
+Google verification was retried. Deliverable:
+[M8_i6_GOOGLE_CALENDAR_WEBHOOK_DEDUPE_REVIEW.md](M8_i6_GOOGLE_CALENDAR_WEBHOOK_DEDUPE_REVIEW.md)
+(full PRD + audit + M8-i4 review/milestone + M8-i5 preflight re-read; code
+survey of the webhook path, rate-limit middleware, sync engine,
+disconnect/retention sweep, fixture seams, and all calendar test suites).
+
+Matrix (calendar class-3 candidates): **C1/T2 webhook redelivery dedupe
+(`X-Goog-Message-Id`) — class 3, RECOMMENDED for M8-i6** (§11.1 names
+"event-ID dedupe"; concrete waste/replay-control defect; zero external
+dependencies; deterministic via the fixture provider's call counter; no
+overlap — M8-i4 explicitly excluded T2). Deferred: C2/T6b webhook bucket
+fairness (closed M8-i4 deferral; no PRD anchor for the inbound webhook; no
+incident), C3/T3 channel-token column (directive: no live evidence or
+explicit PRD/security requirement; audit L4 deferral), C4/T7 opt-in export
+cleanup (feature, not hardening — Phase 2), C5 orphaned-export
+reconciliation (rare; needs a provider payload change; closed M8-i4
+trade-off), C6 proactive token bucket/batching (M8-i4: no observable
+protection at MVP scale; reactive backoff already delivered as T4), C7
+channel-state handling (current behavior is a safe superset; no defect).
+Externally blocked: C8/T8–T11 (16-point live pass etc. — M8-i5
+CLOSED-BLOCKED status stands). Non-calendar items (ASVS/SAST CI, restore
+test, k6, N2/N5/G3, X2/X3/X4) listed as not class-3 calendar hardening.
+
+Recommended M8-i6 scope (not started): migration `0024` +
+`calendar_webhook_messages` table + route reads the optional
+`X-Goog-Message-Id` header + `handleCalendarWebhook` dedupe (insert-first,
+compensating delete on import failure, no dedupe row for inert paths,
+absent header = legacy behavior) + `sweepCalendarRetention` 24 h purge.
+No endpoints, no API shape changes, no worker job-registry changes. 10
+deterministic acceptance criteria + test strategy recorded in the review
+doc. Per directive, STOP after this review — no M8-i6 implementation.
+
+Consolidated M8 status: audit CLOSED (`83fce2f`), M8-i1 CLOSED
+(`1c224b4`), M8-i2 CLOSED (`be02566`), M8-i3 CLOSED (`9fe6514`), M8-i4
+CLOSED (`5b3c4e9` + `90e6992`), M8-i5 **BLOCKED at preflight**
+(`bc4fd90`), M8-i6 **REVIEW COMPLETE** (this entry; implementation NOT
+started).
+
+## M8-i8 — remaining release-gate hardening review — 2026-09-20
+
+Review/planning only; no implementation started. M8-i7 remains closed and
+CI-verified at `09ea72e`; the database restore smoke implementation was not
+modified, and live Google verification was not retried. Deliverable:
+[M8_i8_RELEASE_GATE_HARDENING_REVIEW.md](M8_i8_RELEASE_GATE_HARDENING_REVIEW.md).
+
+Initial verification found this local checkout stale/dirty (`bc4fd90` with stale
+M8-i6/M8-i7 files) while the remote branch was the closed M8-i7 tip
+`09ea72e3b6f99d2b7c38c1b95f0bcf238b580514`; GitHub auth was OK. The workspace was
+realigned to the approved baseline with `git fetch origin refs/heads/arena/01a0ba0b-nextdoo`,
+`git reset --hard FETCH_HEAD`, and `git clean -fd`. Final verification before the
+review: active branch `arena/01a0ba0b-nextdoo`, local HEAD = remote HEAD =
+`09ea72e3b6f99d2b7c38c1b95f0bcf238b580514`, working tree clean, GitHub auth OK.
+
+Reviewed PRD §§11.4/11.8/11.9/12/19/21, `M8_ROADMAP_AUDIT.md`, M8-i5 preflight,
+M8-i6 hardening review, M8-i7 restore-smoke milestone, current CI workflow,
+package scripts, and the existing security/release documentation. The review builds
+a remaining release-gate matrix covering production PITR/backup strategy, daily
+encrypted backups, backup IAM, recurring restore evidence, RTO/RPO, regional
+failover, attachment/object-store restore, deletion-window backup semantics,
+status page, SLO/monitoring evidence, incident/on-call runbooks, ASVS mapping,
+SAST/secret scanning, container image scanning, pen-test evidence, k6/load,
+Lighthouse/performance gates, alerts, feature flags/canary/rollback, managed
+secrets/TLS, live provider verification and support documentation.
+
+Recommendation: if authorized later, M8-i8 should be the bounded **security
+assurance CI baseline**: ASVS Level 2 mapping for implemented surfaces plus a
+deterministic repo-local security scan covering secret patterns and a narrow static
+security rule set, wired into CI before expensive build/E2E work. This selects the
+parts of PRD §11.8/§19.4 that are deterministically implementable without deployed
+infrastructure. It explicitly does not claim a third-party pen test, GitHub push
+protection settings, production secrets manager/TLS evidence, container image
+scanning, status page/on-call/SLO evidence, production backup/DR evidence, k6,
+Lighthouse, or live provider verification.
+
+External/deployment-blocked items remain external: production PITR, encrypted daily
+backups, backup IAM, monthly restore evidence, quarterly DR, measured RTO/RPO,
+regional failover, object-store restore, backup deletion-window semantics, status
+page, monitoring backend and 30-day SLO evidence, on-call rotation, pen-test
+vendor evidence, container image scanning pipeline, production managed secrets/TLS,
+and live Google/billing/SMTP/S3 verification. STOP after the review; M8-i8
+implementation was not started.
+
+
+## Consolidation — main repository consolidation — 2026-09-21
+
+Per the 2026-09-21 consolidation directive (safe full-repository
+consolidation; no new feature work), GitHub `main` (pre-consolidation
+`f84d299`, backed up at `backup/pre-main-consolidation-2026-09-21`) was
+consolidated to the canonical cumulative implementation.
+
+Branch analysis: `main` (`f84d299`) held only the PRD docs commit (its
+PRD is byte-identical to the development lineages');
+`arena/01a07feb-nextdoo` (`a55c3be`) was a separate docs-only lineage
+whose content (PRD + original README) is fully contained in `main` and
+superseded by the development lineages; `feat/mvp-implementation`
+(`49b2e68`) is the development-lineage root; `arena/01a080d5-nextdoo`
+(`658c829`) is an ancestor of the canonical branch (fully contained).
+Canonical implementation: `arena/01a0ba0b-nextdoo` (`f538748`) —
+contains all work through the M8-i5 preflight (`bc4fd90`) plus the M8-i6
+webhook replay/fairness implementation (`29cdf35`, migration `0024`),
+M8-i7 CI database restore smoke (CLOSED, CI-verified at `09ea72e`), and
+the M8-i8 release-gate review (`f538748`, review only).
+`arena/01a085b7-nextdoo` (`3697de1`) contributed its one unique commit —
+the M8-i6 review doc above — merged into the canonical tip; the only
+merge conflict was this ledger (both entries preserved, chronological
+order). No implementation code from any branch was reintroduced,
+superseded, or rewritten; the merged tree differs from the canonical tip
+only by the M8-i6 review doc + this entry.
+
+Validation of the consolidated tree surfaced one genuine pre-existing
+test defect (not a merge artifact): the M8-i6 T6b
+"concurrent deliveries on independent buckets" test pushed fixture
+events with the real clock, then mocked `Date.now()` to a hardcoded
+2026-09-19 anchor and asserted inside a `[now-1h, now+24h]` window
+computed from the mock — from 2026-09-20T11:30Z UTC the real-clock
+event falls outside the mocked window and the test fails deterministically
+(reproduced: 900/901 on 2026-09-21; all other 900 green). Disclosed
+fix (`62eba62`): the mock anchor is now the actual current time; no
+assertion changed; full suite 901/901 green afterwards. No other code
+was modified during consolidation.
+
+Final consolidated M8 status: audit CLOSED (`83fce2f`), M8-i1 CLOSED
+(`1c224b4`), M8-i2 CLOSED (`be02566`), M8-i3 CLOSED (`9fe6514`), M8-i4
+CLOSED (`5b3c4e9` + `90e6992`), M8-i5 **BLOCKED at preflight**
+(`bc4fd90`), M8-i6 reviewed in two sessions (both reviews are in this
+file) and implemented at `29cdf35`, M8-i7 CLOSED at `09ea72e`, M8-i8
+**REVIEW COMPLETE at `f538748` — implementation NOT started**. M8-i8 was
+not started by the consolidation.
