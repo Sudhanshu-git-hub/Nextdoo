@@ -856,7 +856,12 @@ describe('calendar sync engine + services (integration, fixture provider)', () =
     b.provider.pushEvent({ externalId: 'fair-b-event', title: 'Fair B', startsAt: new Date(Date.now() + H).toISOString(), endsAt: new Date(Date.now() + 2 * H).toISOString() });
     const route = await import('../../app/api/v1/calendar/webhook/route');
     const svc = await import('./calendar-connections');
-    const baseNow = Date.parse('2026-09-19T12:30:00.000Z');
+    // Anchor the mocked clock to the actual current time: the fixture events
+    // above are stamped with the real clock (pushed before the spy is set),
+    // so a hardcoded anchor would eventually fall outside the
+    // [now-1h, now+24h] listing window and fail the tenant-scoped assertion
+    // (date-dependent failure found during the 2026-09-21 main consolidation).
+    const baseNow = Date.now();
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(baseNow);
     svc.setCalendarProviderFactoryForTests((row) => (row?.id === connA.id ? a.provider : b.provider));
     const req = (token: string) => new Request('http://localhost/api/v1/calendar/webhook', {
