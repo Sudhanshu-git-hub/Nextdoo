@@ -56,6 +56,8 @@ export const billingProviderEnum = pgEnum('billing_provider', ['STRIPE', 'RAZORP
 export const syncOperationEnum = pgEnum('sync_operation', ['create', 'update', 'delete']);
 export const scanStatusEnum = pgEnum('scan_status', ['PENDING', 'CLEAN', 'INFECTED', 'FAILED']);
 export const occurrenceStatusEnum = pgEnum('occurrence_status', ['PENDING', 'COMPLETED', 'SKIPPED']);
+export const goalStatusEnum = pgEnum('goal_status', ['ACTIVE', 'COMPLETED', 'ARCHIVED']);
+export const milestoneStatusEnum = pgEnum('milestone_status', ['ACTIVE', 'COMPLETED', 'ARCHIVED']);
 
 const timestamps = {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -165,7 +167,76 @@ export const workspaceMembers = pgTable(
   (t) => [primaryKey({ columns: [t.workspaceId, t.userId] }), index('workspace_members_user_idx').on(t.userId)],
 );
 
-// ----------------------------------------------------------------- projects
+// ----------------------------------------------------------------- goals
+
+/** Personal Goal Center. Human-readable identifiers are stable references, not primary keys. */
+export const goals = pgTable(
+  'goals',
+  {
+    id: uuid('id').primaryKey(),
+    workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+    parentGoalId: uuid('parent_goal_id'),
+    sequence: integer('sequence').notNull(),
+    /** Workspace-unique stable tag such as G3. */
+    identifier: varchar('identifier', { length: 40 }).notNull(),
+    title: varchar('title', { length: 300 }).notNull(),
+    description: text('description'),
+    category: varchar('category', { length: 100 }),
+    priority: taskPriorityEnum('priority').notNull().default('NONE'),
+    startAt: timestamp('start_at', { withTimezone: true }),
+    dueAt: timestamp('due_at', { withTimezone: true }),
+    status: goalStatusEnum('status').notNull().default('ACTIVE'),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    version: integer('version').notNull().default(1),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex('goals_id_workspace_unique').on(t.id, t.workspaceId),
+    uniqueIndex('goals_workspace_sequence_unique').on(t.workspaceId, t.sequence),
+    uniqueIndex('goals_workspace_identifier_unique').on(t.workspaceId, t.identifier),
+    index('goals_workspace_status_idx').on(t.workspaceId, t.status),
+    index('goals_parent_idx').on(t.parentGoalId),
+    foreignKey({ name: 'goals_parent_workspace_fkey', columns: [t.parentGoalId, t.workspaceId], foreignColumns: [t.id, t.workspaceId] }).onDelete('no action'),
+    check('goals_no_self_parent', sql`${t.parentGoalId} IS DISTINCT FROM ${t.id}`),
+    check('goals_title_len', sql`char_length(${t.title}) BETWEEN 1 AND 300`),
+    check('goals_dates_ordered', sql`${t.startAt} IS NULL OR ${t.dueAt} IS NULL OR ${t.startAt} <= ${t.dueAt}`),
+    check('goals_sequence_positive', sql`${t.sequence} > 0`),
+    check('goals_completed_at_state', sql`(${t.status} = 'COMPLETED') = (${t.completedAt} IS NOT NULL)`),
+    check('goals_archived_at_state', sql`(${t.status} = 'ARCHIVED') = (${t.archivedAt} IS NOT NULL)`),
+  ],
+);
+
+export const milestones = pgTable(
+  'milestones',
+  {
+    id: uuid('id').primaryKey(),
+    workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+    goalId: uuid('goal_id').notNull(),
+    sequence: integer('sequence').notNull(),
+    /** Stable tag such as G3.M1. */
+    identifier: varchar('identifier', { length: 60 }).notNull(),
+    title: varchar('title', { length: 300 }).notNull(),
+    description: text('description'),
+    dueAt: timestamp('due_at', { withTimezone: true }),
+    status: milestoneStatusEnum('status').notNull().default('ACTIVE'),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    version: integer('version').notNull().default(1),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex('milestones_id_workspace_unique').on(t.id, t.workspaceId),
+    uniqueIndex('milestones_goal_sequence_unique').on(t.goalId, t.sequence),
+    uniqueIndex('milestones_workspace_identifier_unique').on(t.workspaceId, t.identifier),
+    index('milestones_goal_status_idx').on(t.goalId, t.status),
+    foreignKey({ name: 'milestones_goal_workspace_fkey', columns: [t.goalId, t.workspaceId], foreignColumns: [goals.id, goals.workspaceId] }).onDelete('cascade'),
+    check('milestones_title_len', sql`char_length(${t.title}) BETWEEN 1 AND 300`),
+    check('milestones_sequence_positive', sql`${t.sequence} > 0`),
+    check('milestones_completed_at_state', sql`(${t.status} = 'COMPLETED') = (${t.completedAt} IS NOT NULL)`),
+    check('milestones_archived_at_state', sql`(${t.status} = 'ARCHIVED') = (${t.archivedAt} IS NOT NULL)`),
+  ],
+);
 
 export const projects = pgTable(
   'projects',
@@ -279,6 +350,33 @@ export const taskDependencies = pgTable(
     primaryKey({ columns: [t.taskId, t.dependsOnTaskId] }),
     check('task_deps_no_self', sql`${t.taskId} <> ${t.dependsOnTaskId}`),
   ],
+);
+
+/** Links are intentionally separate from task parentage and project membership. */
+export const goalTasks = pgTable(
+  'goal_tasks',
+  {
+    workspaceId: uuid('workspace_id').notNull(),
+    goalId: uuid('goal_id').notNull(),
+    taskId: uuid('task_id').notNull(),
+    ...timestamps,
+  },
+  (t) => [primaryKey({ columns: [t.goalId, t.taskId] }), index('goal_tasks_task_idx').on(t.taskId),
+    foreignKey({ name: 'goal_tasks_goal_workspace_fkey', columns: [t.goalId, t.workspaceId], foreignColumns: [goals.id, goals.workspaceId] }).onDelete('cascade'),
+    foreignKey({ name: 'goal_tasks_task_workspace_fkey', columns: [t.taskId, t.workspaceId], foreignColumns: [tasks.id, tasks.workspaceId] }).onDelete('cascade')],
+);
+
+export const milestoneTasks = pgTable(
+  'milestone_tasks',
+  {
+    workspaceId: uuid('workspace_id').notNull(),
+    milestoneId: uuid('milestone_id').notNull(),
+    taskId: uuid('task_id').notNull(),
+    ...timestamps,
+  },
+  (t) => [primaryKey({ columns: [t.milestoneId, t.taskId] }), index('milestone_tasks_task_idx').on(t.taskId),
+    foreignKey({ name: 'milestone_tasks_milestone_workspace_fkey', columns: [t.milestoneId, t.workspaceId], foreignColumns: [milestones.id, milestones.workspaceId] }).onDelete('cascade'),
+    foreignKey({ name: 'milestone_tasks_task_workspace_fkey', columns: [t.taskId, t.workspaceId], foreignColumns: [tasks.id, tasks.workspaceId] }).onDelete('cascade')],
 );
 
 // ----------------------------------------------------------------- recurrence

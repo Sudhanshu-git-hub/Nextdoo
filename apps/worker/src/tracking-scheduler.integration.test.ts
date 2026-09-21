@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import postgres from 'postgres';
 import { expect, it } from 'vitest';
 import { runMigrations } from '@nextdoo/db';
@@ -16,7 +16,7 @@ it('standalone scheduler recovers an interrupted calculation after a real worker
  let created=false,connection:ReturnType<typeof postgres>|undefined,child:ChildProcess|undefined;
  let output='';
  const start=()=>{
-  const worker=spawn(process.execPath,['--import',createRequire(import.meta.url).resolve('tsx'),fileURLToPath(new URL('./index.ts',import.meta.url))],{
+  const worker=spawn(process.execPath,['--import',pathToFileURL(createRequire(import.meta.url).resolve('tsx')).href,fileURLToPath(new URL('./index.ts',import.meta.url))],{
    env:{...process.env,DATABASE_URL:url.toString(),SMTP_URL:'',APP_URL:'http://localhost:3100'},stdio:['ignore','pipe','pipe'],
   });
   worker.stdout!.on('data',data=>output+=String(data));worker.stderr!.on('data',data=>output+=String(data));return worker;

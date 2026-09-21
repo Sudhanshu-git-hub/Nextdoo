@@ -233,6 +233,68 @@ export const updateProjectSchema = z.object({
 }).refine((v) => Object.entries(v).some(([key, value]) => key !== 'version' && value !== undefined), { message: 'No fields to update' });
 export type UpdateProjectInput = z.infer<typeof updateProjectSchema>;
 
+// ---------------------------------------------------------------- goals and milestones
+
+export const goalStatusSchema = z.object({ version: z.number().int().min(1), status: z.enum(['ACTIVE', 'COMPLETED', 'ARCHIVED']) }).strict();
+const goalPriority = z.enum(TASK_PRIORITY);
+const goalFields = {
+  title: z.string().trim().min(1).max(300),
+  description: z.string().max(20_000).nullable(),
+  category: z.string().trim().min(1).max(100).nullable(),
+  priority: goalPriority,
+  startAt: isoDateTime.nullable(),
+  dueAt: isoDateTime.nullable(),
+};
+
+export const createGoalSchema = z.object({
+  workspaceId: uuid,
+  ...goalFields,
+  description: goalFields.description.optional(),
+  category: goalFields.category.optional(),
+  priority: goalFields.priority.default('NONE'),
+  startAt: goalFields.startAt.optional(),
+  dueAt: goalFields.dueAt.optional(),
+  parentGoalId: uuid.nullish(),
+}).strict().refine((v) => !v.startAt || !v.dueAt || new Date(v.startAt) <= new Date(v.dueAt), { message: 'Start date must not be after the target date' });
+export type CreateGoalInput = z.infer<typeof createGoalSchema>;
+
+export const updateGoalSchema = z.object({
+  version: z.number().int().min(1),
+  title: goalFields.title.optional(),
+  description: goalFields.description.optional(),
+  category: goalFields.category.optional(),
+  priority: goalFields.priority.optional(),
+  startAt: goalFields.startAt.optional(),
+  dueAt: goalFields.dueAt.optional(),
+  parentGoalId: uuid.nullable().optional(),
+}).strict().refine((v) => Object.entries(v).some(([key, value]) => key !== 'version' && value !== undefined), { message: 'No fields to update' })
+  .refine((v) => !v.startAt || !v.dueAt || new Date(v.startAt) <= new Date(v.dueAt), { message: 'Start date must not be after the target date' });
+export type UpdateGoalInput = z.infer<typeof updateGoalSchema>;
+export const goalVersionSchema = z.object({ version: z.number().int().min(1) });
+export const goalQuerySchema = z.object({
+  includeArchived: z.preprocess((v) => v === 'true' ? true : v === 'false' ? false : v, z.boolean()).default(false),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  after: uuid.optional(),
+});
+
+export const createMilestoneSchema = z.object({
+  title: z.string().trim().min(1).max(300),
+  description: z.string().max(20_000).nullish(),
+  dueAt: isoDateTime.nullish(),
+}).strict();
+export type CreateMilestoneInput = z.infer<typeof createMilestoneSchema>;
+export const updateMilestoneSchema = z.object({
+  version: z.number().int().min(1),
+  title: z.string().trim().min(1).max(300).optional(),
+  description: z.string().max(20_000).nullable().optional(),
+  dueAt: isoDateTime.nullable().optional(),
+}).strict().refine((v) => Object.entries(v).some(([key, value]) => key !== 'version' && value !== undefined), { message: 'No fields to update' });
+export type UpdateMilestoneInput = z.infer<typeof updateMilestoneSchema>;
+export const milestoneVersionSchema = z.object({ version: z.number().int().min(1) });
+
+export const taskLinkSchema = z.object({ taskId: uuid, linked: z.boolean(), version: z.number().int().min(1) }).strict();
+export type GoalTaskLinkInput = z.infer<typeof taskLinkSchema>;
+
 const sectionPosition = z.number().finite().min(-1e12).max(1e12);
 export const createSectionSchema = z.object({
   projectId: uuid,

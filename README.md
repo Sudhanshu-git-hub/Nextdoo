@@ -11,7 +11,7 @@ Personal productivity and life-management workspace, starting on the web.
 
 ## Status
 
-Recovered implementation with substantial task, execution-tracking, sync, calendar and quality/security work. **Not a release-complete personal workspace.** Goal Center, general Tracker and Knowledge & Data are planned personal-core work, not implemented features.
+Recovered implementation with substantial task, execution-tracking, sync, calendar and quality/security work. **Not a release-complete personal workspace.** Goal Center now provides online goals, sub-goals, milestones and task-linked progress. General Tracker and Knowledge & Data remain planned personal-core work. See [Goal Center boundaries and validation](docs/GOAL_CENTER_MILESTONE.md).
 
 - [Development and verification](docs/DEVELOPMENT.md)
 - [Phase 1 completion ledger and remaining work](docs/PHASE1_COMPLETION_PLAN.md)
@@ -28,14 +28,14 @@ Recovered implementation with substantial task, execution-tracking, sync, calend
 
 The PRD remains the source of truth; routes, schemas and green unit tests alone do not establish feature completion.
 
-## Latest Phase 1 increment
+## Historical Phase 1 bulk-task increment
 
 **Browse tasks** (`/tasks`, linked from Inbox and project tasks) supports combined
 filters, six sorts, and now confirmed **all-or-nothing bulk complete/archive/reschedule**
 for up to 100 explicitly selected tasks. Versions and retry identity protect against
 partial writes or duplicate acknowledged operations. These workflows are online-only.
 
-Validation: **363 tests in 39 files, 50 browser/API scenarios**, all existing gates
+Validation at that checkpoint: **363 tests in 39 files, 50 browser/API scenarios**, all existing gates
 passing and zero dependency findings. See the bulk milestone for boundaries and
 rollout guidance. **Phase 1 remains incomplete**: the completion ledger explicitly
 tracks recurrence, offline/Windows, provider integrations and operational acceptance

@@ -103,6 +103,16 @@ h2 { font-size: 15px; margin: 0 0 10px; }
 .grid-3 { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
 .grid-2 { grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); }
 
+/* Goal Center uses the existing design tokens and remains usable on narrow screens. */
+.goals-view { min-width: 0; overflow-wrap: anywhere; }
+.goals-view > *, .goals-view section, .goals-view article { margin-bottom: 16px; }
+.goals-view .grid-2 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr)); }
+.goals-view form input, .goals-view form select, .goals-view form textarea { margin-bottom: 12px; }
+.goals-view input[type="checkbox"] { width: auto; min-height: auto; margin-right: 8px; }
+.goals-view .btn-primary { background: #1a5fd0; border-color: #1a5fd0; color: #fff; }
+.goals-view li { margin-bottom: 8px; }
+.goals-view li button { margin-right: 8px; margin-bottom: 4px; }
+
 .stat-label { color: var(--text-dim); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
 .stat-value { font-size: 26px; font-weight: 650; margin-top: 6px; letter-spacing: -.02em; }
 .stat-sub { color: var(--text-faint); font-size: 12.5px; margin-top: 2px; }

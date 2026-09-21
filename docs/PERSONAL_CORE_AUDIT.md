@@ -65,3 +65,7 @@ PRD v1.1 narrows the product to execution measurement, lists small teams as the 
 ## Validation record
 
 Baseline remote CI: successful as linked above. Local dependency setup and post-change validation are pending at this initial audit checkpoint. No runtime/schema/API/UI change has been made by this audit. Follow-up phase reports must record exact commits, tests, CI and clean-tree state.
+
+## Follow-up: PC1 implementation
+
+The table above is the preserved pre-implementation baseline at `9a4ea5f`. PRD alignment was committed as `94e1a91`, with [successful CI](https://github.com/Sudhanshu-git-hub/Nextdoo/actions/runs/35604222285). Goal Center has subsequently been added in migration `0025` and the web application; see [its milestone](GOAL_CENTER_MILESTONE.md) for current delivered boundaries and validation. The baseline's NOT IMPLEMENTED Goal Center row is historical, not a statement about that subsequent increment. Tracker and Knowledge & Data remain planned.

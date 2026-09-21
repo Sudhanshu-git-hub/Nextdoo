@@ -3,6 +3,7 @@ import { and, desc, eq, gte, inArray, isNotNull, isNull, like, lte, or } from 'd
 import { AppError } from '@nextdoo/contracts';
 import {
   purgeAccount,
+  goals, milestones, goalTasks, milestoneTasks,
   attachments,
   auditLogs,
   projects,
@@ -39,6 +40,10 @@ export interface ExportBundle {
   exportedAt: string;
   account: Record<string, unknown>;
   workspaces: unknown[];
+  goals: unknown[];
+  milestones: unknown[];
+  goalTasks: unknown[];
+  milestoneTasks: unknown[];
   projects: unknown[];
   sections: unknown[];
   tags: unknown[];
@@ -110,6 +115,12 @@ export async function buildExport(userId: string): Promise<ExportBundle> {
   ]);
 
   const taskIds = taskRows.map((t) => t.id);
+  const [goalRows, milestoneRows, goalLinkRows, milestoneLinkRows] = await Promise.all([
+    db.select().from(goals).where(inArray(goals.workspaceId, workspaceIds)),
+    db.select().from(milestones).where(inArray(milestones.workspaceId, workspaceIds)),
+    db.select().from(goalTasks).where(inArray(goalTasks.workspaceId, workspaceIds)),
+    db.select().from(milestoneTasks).where(inArray(milestoneTasks.workspaceId, workspaceIds)),
+  ]);
   const ownedTaskIds = new Set(taskIds);
   const taskTagRows = taskIds.length
     ? await db.select().from(taskTags).where(inArray(taskTags.taskId, taskIds))
@@ -139,6 +150,7 @@ export async function buildExport(userId: string): Promise<ExportBundle> {
     exportedAt: new Date().toISOString(),
     account,
     workspaces: workspaceRows,
+    goals: goalRows, milestones: milestoneRows, goalTasks: goalLinkRows, milestoneTasks: milestoneLinkRows,
     projects: projectRows,
     sections: sectionRows,
     tags: tagRows,

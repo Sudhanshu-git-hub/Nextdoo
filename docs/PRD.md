@@ -184,7 +184,9 @@ Features alone are not defensible. The defensible asset is the user's accumulate
 
 ### 2.10 Explicit Non-Goals (MVP)
 
-Documents/knowledge base · mind maps · Gantt with resource leveling · plugin marketplace · user-written scripts · shell commands · enterprise SSO/SCIM · mobile apps · real-time collaborative editing · team chat · approval workflows · public template marketplace · customer-managed encryption keys · general-purpose AI agents · automatic destructive actions · cross-user leaderboards · psychological or behavioral health claims.
+The historical task MVP excluded documents and knowledge management. Knowledge & Data is now a planned personal-core module (PC3), rather than a permanent non-goal. Advanced mind maps, Gantt with resource leveling, plugin marketplaces, user-written scripts, shell commands, enterprise SSO/SCIM, real-time collaborative editing, team chat, approval workflows, public template marketplaces, customer-managed encryption keys, general-purpose AI agents, automatic destructive actions, cross-user leaderboards, and psychological or behavioral health claims remain outside the initial personal web release. Native clients follow the platform sequence in §4.
+
+Legacy phase numbers in detailed task, pricing, and infrastructure sections describe the original task-product roadmap. They do not override the personal-core dependency order in §21: mature personal workflows precede team features, and intelligence remains future work until its data and reliability prerequisites are met.
 
 ### 2.11 Business Model
 
@@ -522,6 +524,32 @@ Default implementation is a **deterministic local parser** (chrono-style grammar
 
 ---
 
+### 6.11 Goal Center — PC1
+
+Users create and edit goals with a title, description, area of life, priority, optional start/target dates and an optional parent. Workspace-scoped identifiers (`G1`, `G2`) and milestone identifiers (`G1.M1`) remain stable through edits and archive/restore. Hierarchies reject cycles and cross-workspace relationships and have a maximum depth of 20. Milestones have a title, description, target date and independent status.
+
+Goals and milestones can link existing tasks without copying them or changing their task/project lifecycle. Completion, reopening and archiving are explicit actions. Archived descendants and milestones do not contribute to ancestor progress; restoring them includes them again. Archiving a goal preserves linked tasks. Task deletion removes its contribution, and deleted task content is not exposed by goal detail.
+
+**Measured progress:** count each nondeleted task once across the goal and its nonarchived descendants, including milestone links. A milestone with no nondeleted task contributes one manual completion unit. Divide completed units by total units and round to the nearest integer percentage. No units means **Not measured**, never an invented percentage. Empty child goals add no measurement unit. Marking a goal complete records the user's decision and does not override its measured progress or task execution scores.
+
+Acceptance requires real persisted hierarchy, milestone and task-link workflows; workspace enforcement in services and database constraints; optimistic versions and idempotent commands; atomic audit/events/sync deltas; recoverable conflict drafts; account export and deletion coverage; keyboard operation and accessibility checks. PC1 editing requires connectivity. Offline goal mutation, automatic reference tags, task-side goal selectors and additional visualizations remain follow-up work rather than implied by PC1.
+
+### 6.12 Remaining personal modules — planned
+
+Task Center remains the daily execution hub. Its planned navigation is Home, Inbox, Today, Tomorrow, Upcoming, Focus, Overdue/Backlog and Completed. Personal organization can use lists, projects, rituals, spaces and recurring habit collections. Preserve existing priority, status, tags, effort/estimate, duration and dates; extend urgency, importance and energy only with defined behavior and usable filtering. Tasks connect to goals/milestones, trackers, knowledge, calendar, attachments, recurrence, reminders and supported automations through real owned relationships.
+
+List, board and calendar are existing view foundations. Table, timeline/Gantt, cards/gallery, Eisenhower, mind-map and map views are possible later personal-product views, not simultaneous launch requirements. Goal tree/flowchart/mind-map/matrix views are likewise future extensions of the persisted hierarchy.
+
+Tracker (PC2) adds user-defined habits, routines and metrics with explicit value types, units, dated entries, corrections and clear missing-data handling. Task execution tracking remains a separate source of evidence. Knowledge & Data (PC3) adds persisted notes and structured information with relationships to goals/tasks; access, export and deletion must cover every new entity. The connected daily workspace (PC4) combines supported goals, tasks, tracker entries, knowledge and calendar data without inventing results for unavailable modules. Each increment must define its schemas, lifecycle, permissions and acceptance tests before implementation.
+
+Tracker categories include health, learning, finance, mood, routines and custom metrics. Targets, frequencies, templates, custom scoring, streaks, heatmaps, charts and reports are staged capabilities. Task completion must evaluate an explicit configured tracker condition, write an idempotent entry, recalculate relevant progress and expose its source. Replaying a completion event must never duplicate a tracker observation.
+
+Knowledge & Data should make notes, files, resources, collections and typed records understandable for ordinary users: books, courses, research, workouts, recipes and personal datasets are examples, not separate hard-coded modules. Calendar becomes the time layer for supported tasks, goal/milestone dates, tracker occurrences, record dates, deadlines, reminders and external events. Insights should combine completed/created/overdue tasks, goal progress, milestone completion, tracker consistency, focus time, time distribution, calendar workload and record activity over daily, weekly, monthly, quarterly, yearly and custom periods as those sources become available.
+
+Settings remains the home for identity, preferences, integrations, privacy and data rights. Insights must explain source data and missing data. Shared scheduling, notification, search, attachment and synchronization capabilities should be extended rather than duplicated. Future intelligence depends on this connected, reliable personal core.
+
+Planned preferences include light/dark/system appearance, density, layout and typography; default view/list/start page; notification behavior; synchronization, conflict, import/export and backup controls; and onboarding, help, feedback and changelog access. Universal relations, tagging, global search, command palette, notifications, automation/events, shared identity and resources are explicit cross-module requirements. An implemented task-specific version of one capability does not imply support across every future module.
+
 ## 7. Execution Tracking System (Primary Differentiator)
 
 ### 7.1 Objective
@@ -731,13 +759,13 @@ MVP: English, with locale-aware dates, times, numbers, and time zones. Phase 2: 
 |---|---|
 | Web | Next.js App Router |
 | UI | React + TypeScript |
-| Desktop | Future Windows client; technology selected when the web reference implementation is mature |
+| Desktop | Planned Tauri Windows client; validate packaging and OS integration after web maturity |
 | Monorepo | pnpm + Turborepo |
 | API | TypeScript modular monolith |
 | Database | PostgreSQL |
 | ORM | **Drizzle** |
-| Cache and coordination | Redis |
-| Jobs | Durable queue (BullMQ on Redis; managed queue if scale requires) |
+| Cache and coordination | Current PostgreSQL durable coordination; Redis remains an unevaluated future infrastructure option |
+| Jobs | Current interval workers with PostgreSQL leases, retries and idempotency; BullMQ is not implemented or required for personal core |
 | Object storage | S3-compatible |
 | Search | PostgreSQL full-text search initially |
 | Observability | OpenTelemetry logs, traces, metrics |
@@ -753,7 +781,7 @@ MVP: English, with locale-aware dates, times, numbers, and time zones. Phase 2: 
 
 Identity · Accounts · Workspaces · Goals · Tasks · Projects · Tracker · Knowledge & Data · Scheduling · Recurrence · Timers · Task Execution Tracking · Calendar · Notifications · Attachments · Billing · Sync · Analytics · Audit.
 
-Each module owns its database tables, domain services, validation, events, authorization checks, and tests. Cross-module access goes through published service interfaces and events — never direct table reads.
+Each module owns its database tables, domain services, validation, events, authorization checks, and tests. Mutations use owning services and transactional events. Explicit workspace-scoped read projections may join modules within the modular monolith, as Goal Center progress does; they must preserve authorization and deletion semantics.
 
 ### 9.3 Service Responsibilities
 
@@ -781,18 +809,14 @@ A module may become a separate service only when: independent scaling is require
 ```
 nextdoo/
 ├─ apps/
-│  ├─ web/           # Next.js App Router
-│  ├─ desktop/       # Tauri shell
-│  ├─ api/           # modular monolith HTTP API
-│  └─ worker/        # queue consumers
+│  ├─ web/           # Next.js App Router, HTTP API and server services
+│  └─ worker/        # interval workers with durable PostgreSQL jobs
 ├─ packages/
 │  ├─ core/          # domain logic, pure and testable
 │  ├─ db/            # Drizzle schema + migrations
-│  ├─ sync/          # shared sync protocol + client repositories
-│  ├─ nlp/           # deterministic capture parser
-│  ├─ ui/            # design system
-│  ├─ contracts/     # zod schemas, OpenAPI, event catalog
-│  └─ config/        # eslint, tsconfig, tailwind presets
+│  ├─ billing/       # billing provider integration
+│  ├─ calendar/      # calendar provider integration
+│  └─ contracts/     # validation schemas, types and event catalog
 └─ docs/
 ```
 
@@ -808,7 +832,7 @@ The client stores cached entities, pending mutations, received server changes, t
 
 ### 10.2 Local Database
 
-Desktop uses **SQLite** via a Tauri-compatible layer; web uses **IndexedDB** through a shared TypeScript repository abstraction. Structured task data must never live in browser local storage.
+Future desktop clients are planned to use **SQLite** via a Tauri-compatible layer; the current web task queue uses **IndexedDB**. Goal Center mutations are online-only in PC1; publishing goal sync deltas does not imply offline editing support. Structured task data must never live in browser local storage.
 
 ### 10.3 Mutation Format
 
@@ -1952,7 +1976,7 @@ The following milestone descriptions record prior execution-loop work and remain
 | AD-04 | Mutation queue, not CRDTs, for MVP | Scalar-dominant model; CRDT cost unjustified before collaborative editing |
 | AD-05 | SQLite (desktop) + IndexedDB (web) behind one repository abstraction | Shared sync logic, platform-appropriate storage |
 | AD-06 | Transactional outbox for events | Guarantees event and state consistency |
-| AD-07 | Redis-backed durable queue for jobs | Operational simplicity; managed queue only if throughput demands |
+| AD-07 | PostgreSQL-backed durable jobs in the current implementation | Leases, retries and transactional consistency; reconsider queue infrastructure only against measured requirements |
 | AD-08 | Billing provider with webhook-driven entitlements | Never rebuild billing; integrity from server-verified events |
 
 ### 22.2 Product Decisions

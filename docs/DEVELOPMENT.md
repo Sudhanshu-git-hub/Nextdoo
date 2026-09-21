@@ -91,7 +91,7 @@ Turbo explicitly passes the declared application configuration to package tasks.
 Do not put production secrets in checked-in env files.
 
 Optional names (`REDIS_URL`, `SMTP_URL`, `GOOGLE_*`, `STRIPE_*`, `S3_*`) are **not
-proof of integrations**. Currently:
+proof of integrations**. The following notes describe the early recovered baseline; consult the personal-core audit and later milestones for current provider, notification and security implementations:
 
 - Login account/IP backoff and export quotas are durable in PostgreSQL; other
   route throttles remain in-process. Redis is not wired.
@@ -278,7 +278,7 @@ workspace transaction and idempotency ledger, not partial-result sync behavior.
 Selections are bounded to 100 explicit IDs/versions; reschedule must provide a new
 date or explicit null. Deploy API support before enabling the controls.
 
-Current full validation: **363 tests across 39 files and 50 browser/API scenarios**,
+Historical bulk-task checkpoint validation: **363 tests across 39 files and 50 browser/API scenarios**,
 all existing gates green, zero dependency findings. No migrations or dependencies
 added. New regression files: `services/task-bulk.integration.test.ts` (14 tests)
 and `e2e/task-bulk.spec.ts` (6 scenarios).
