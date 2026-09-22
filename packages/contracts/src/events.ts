@@ -2,6 +2,11 @@ import { z } from 'zod';
 
 /** PRD §15.1 — every domain event shares this envelope. */
 export const DOMAIN_EVENT_TYPE = [
+  'tracker.created',
+  'tracker.updated',
+  'tracker_entry.created',
+  'tracker_entry.updated',
+  'tracker_entry.deleted',
   'section.created',
   'section.updated',
   'project.created',

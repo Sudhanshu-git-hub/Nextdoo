@@ -10,7 +10,8 @@
     "./calendar": "./src/calendar.ts",
     "./capacity": "./src/capacity.ts",
     "./description": "./src/description.ts",
-    "./nl-parse": "./src/nl-parse.ts"
+    "./nl-parse": "./src/nl-parse.ts",
+    "./personal-tracker": "./src/personal-tracker.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

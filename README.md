@@ -11,7 +11,7 @@ Personal productivity and life-management workspace, starting on the web.
 
 ## Status
 
-Recovered implementation with substantial task, execution-tracking, sync, calendar and quality/security work. **Not a release-complete personal workspace.** Goal Center now provides online goals, sub-goals, milestones and task-linked progress. General Tracker and Knowledge & Data remain planned personal-core work. See [Goal Center boundaries and validation](docs/GOAL_CENTER_MILESTONE.md).
+Recovered implementation with substantial task, execution-tracking, sync, calendar and quality/security work. **Not a release-complete personal workspace.** Goal Center provides online goals, sub-goals, milestones and task-linked progress. Tracker adds configurable tracking tables, automatic task evidence, rules, star scores, reports and templates. Knowledge & Data remains planned personal-core work. See [Goal Center boundaries and validation](docs/GOAL_CENTER_MILESTONE.md) and [Tracker boundaries and validation](docs/TRACKER_MILESTONE.md).
 
 - [Development and verification](docs/DEVELOPMENT.md)
 - [Phase 1 completion ledger and remaining work](docs/PHASE1_COMPLETION_PLAN.md)

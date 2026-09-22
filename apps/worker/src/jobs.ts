@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { ingestPersonalTrackerEvents, schedulePersonalTrackerReports } from '@nextdoo/db';
 import { deliverMail } from './mail-delivery';
 import { and, eq, isNotNull, isNull, lt, lte, sql as raw } from 'drizzle-orm';
 import { authTokens, auditLogs, calendarConnections, idempotencyKeys, reminders, users, purgeAccount, deliverDueReminders, runRecurrenceGeneration, relayTrackingOutbox, reconcileTracking, runTrackingEvaluation, runTrackingBackfill, createDurableFileExportStore, expireExports, runExportGeneration, createDurableFileAttachmentStore, createClamavScanner, defaultClamavBin, runAttachmentScan, applyBillingDeadlines, reconcileBilling, runRetentionPurge, runCalendarSyncCycle, openSecret, sealSecret } from '@nextdoo/db';
@@ -580,6 +581,8 @@ const deliverPush: Job = {
 };
 
 export const JOBS: Job[] = [
+  { name: 'personal_trackers.ingest', intervalMs: 10000, run: async () => { const result = await ingestPersonalTrackerEvents(db); return { processed: result.processed, details: result }; } },
+  { name: 'personal_trackers.reports', intervalMs: 60000, run: async () => { const result = await schedulePersonalTrackerReports(db, { smtpConfigured: Boolean(process.env.SMTP_URL), authSecret: process.env.AUTH_SECRET ?? '', mailFrom: process.env.MAIL_FROM ?? 'NEXTDOO <noreply@nextdoo.local>', appUrl: process.env.APP_URL ?? 'http://localhost:3100' }); return { processed: result.queued, details: result }; } },
   { name: 'recurrence.generate', intervalMs: 60000, run: async () => { const result = await runRecurrenceGeneration(db); if (result.details.failed) logger.warn('recurrence.generation_failed', result.details); return result; } },
   purgeAuthenticationAttempts,
   { name: 'mail.deliver', intervalMs: 10000, run: () => deliverMail(1) },

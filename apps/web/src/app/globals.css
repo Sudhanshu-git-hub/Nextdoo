@@ -92,7 +92,7 @@ a { color: var(--accent); }
 .nav-link[aria-current="page"] { background: var(--bg-elev-2); color: var(--text); font-weight: 600; }
 .nav-icon { width: 18px; text-align: center; opacity: .9; }
 
-.main { padding: 22px 26px 60px; max-width: 1180px; width: 100%; }
+.main { padding: 22px 26px 60px; max-width: 1180px; width: 100%; min-width: 0; }
 .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
 h1 { font-size: 21px; margin: 0 0 4px; letter-spacing: -.01em; }
 h2 { font-size: 15px; margin: 0 0 10px; }
@@ -291,3 +291,11 @@ th { color: var(--text-dim); font-weight: 550; font-size: 12px; text-transform: 
 
 .bulk-selection { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
 .bulk-selection input { width: auto; margin: 0; }
+.tracker-table-wrap { max-width: 100%; overflow-x: auto; margin: 1rem 0; }
+.tracker-table-wrap table { width: 100%; border-collapse: collapse; }
+.tracker-table-wrap th, .tracker-table-wrap td { padding: .75rem; text-align: left; vertical-align: top; border-bottom: 1px solid #bcc7d8; min-width: 100px; overflow-wrap: anywhere; }
+.tracker-view fieldset { min-width: 0; margin: 1rem 0; }
+.tracker-view details { margin: 1rem 0; }
+.tracker-view summary { cursor: pointer; font-weight: 600; }
+.tracker-trend { max-height: 360px; overflow-y: auto; }
+.tracker-trend meter { width: min(180px, 35vw); }

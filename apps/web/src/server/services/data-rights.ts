@@ -4,6 +4,7 @@ import { AppError } from '@nextdoo/contracts';
 import {
   purgeAccount,
   goals, milestones, goalTasks, milestoneTasks,
+  personalTrackers, personalTrackerEntries, personalTrackerLinks, personalTrackerSources, personalTrackerReports,
   attachments,
   auditLogs,
   projects,
@@ -44,6 +45,11 @@ export interface ExportBundle {
   milestones: unknown[];
   goalTasks: unknown[];
   milestoneTasks: unknown[];
+  personalTrackers: unknown[];
+  personalTrackerEntries: unknown[];
+  personalTrackerLinks: unknown[];
+  personalTrackerSources: unknown[];
+  personalTrackerReports: unknown[];
   projects: unknown[];
   sections: unknown[];
   tags: unknown[];
@@ -115,11 +121,16 @@ export async function buildExport(userId: string): Promise<ExportBundle> {
   ]);
 
   const taskIds = taskRows.map((t) => t.id);
-  const [goalRows, milestoneRows, goalLinkRows, milestoneLinkRows] = await Promise.all([
+  const [goalRows, milestoneRows, goalLinkRows, milestoneLinkRows, trackerRows, trackerEntryRows, trackerLinkRows, trackerSourceRows, trackerReportRows] = await Promise.all([
     db.select().from(goals).where(inArray(goals.workspaceId, workspaceIds)),
     db.select().from(milestones).where(inArray(milestones.workspaceId, workspaceIds)),
     db.select().from(goalTasks).where(inArray(goalTasks.workspaceId, workspaceIds)),
     db.select().from(milestoneTasks).where(inArray(milestoneTasks.workspaceId, workspaceIds)),
+    db.select().from(personalTrackers).where(inArray(personalTrackers.workspaceId, workspaceIds)),
+    db.select().from(personalTrackerEntries).where(inArray(personalTrackerEntries.workspaceId, workspaceIds)),
+    db.select().from(personalTrackerLinks).where(inArray(personalTrackerLinks.workspaceId, workspaceIds)),
+    db.select().from(personalTrackerSources).where(inArray(personalTrackerSources.workspaceId, workspaceIds)),
+    db.select().from(personalTrackerReports).where(inArray(personalTrackerReports.workspaceId, workspaceIds)),
   ]);
   const ownedTaskIds = new Set(taskIds);
   const taskTagRows = taskIds.length
@@ -151,6 +162,8 @@ export async function buildExport(userId: string): Promise<ExportBundle> {
     account,
     workspaces: workspaceRows,
     goals: goalRows, milestones: milestoneRows, goalTasks: goalLinkRows, milestoneTasks: milestoneLinkRows,
+    personalTrackers: trackerRows, personalTrackerEntries: trackerEntryRows,
+    personalTrackerLinks: trackerLinkRows, personalTrackerSources: trackerSourceRows, personalTrackerReports: trackerReportRows,
     projects: projectRows,
     sections: sectionRows,
     tags: tagRows,

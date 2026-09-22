@@ -80,3 +80,5 @@ export {
   type AttachmentScanResult,
   type AttachmentScanFailure,
 } from './attachment-work';
+export { recordPersonalTrackerChange, personalTrackerScore, ingestPersonalTrackerEvents } from './personal-tracker-engine';
+export { schedulePersonalTrackerReports, previousTrackerMonth } from './personal-tracker-reports';

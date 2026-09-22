@@ -317,7 +317,7 @@ Requirements use these labels:
 
 **Current, with implementation-specific boundaries documented in the completion ledger:** authentication/account recovery · personal workspace · task lifecycle, projects, sections, tags, estimates, recurrence, reminders, focus/time tracking, task execution analytics · calendar foundations · offline task capture/sync/conflict handling · attachments · exports/deletion/retention · billing scaffolding · browser push · Google Calendar integration code and reliability hardening.
 
-**Planned in dependency order:** Goal Center; Tracker; Knowledge & Data; general cross-module relations; broader Task Center navigation and personal collections; cross-module Calendar layers; cross-module Insights; global search/command palette; remaining settings/onboarding/accessibility/release evidence. Existing functionality must be preserved while these modules are introduced.
+**Personal-core implementation:** Goal Center and configurable Tracker have bounded online implementations; see their milestone documents for validation and limitations. **Remaining dependency order:** Knowledge & Data; general cross-module relations; broader Task Center navigation and personal collections; cross-module Calendar layers; cross-module Insights; global search/command palette; remaining settings/onboarding/accessibility/release evidence. Existing functionality must be preserved while these modules are introduced.
 
 **Explicitly deferred:** native clients · collaboration · enterprise administration · public API · plugin platform · marketplace · automatic destructive automation · broad AI agents.
 
@@ -549,6 +549,22 @@ Knowledge & Data should make notes, files, resources, collections and typed reco
 Settings remains the home for identity, preferences, integrations, privacy and data rights. Insights must explain source data and missing data. Shared scheduling, notification, search, attachment and synchronization capabilities should be extended rather than duplicated. Future intelligence depends on this connected, reliable personal core.
 
 Planned preferences include light/dark/system appearance, density, layout and typography; default view/list/start page; notification behavior; synchronization, conflict, import/export and backup controls; and onboarding, help, feedback and changelog access. Universal relations, tagging, global search, command palette, notifications, automation/events, shared identity and resources are explicit cross-module requirements. An implemented task-specific version of one capability does not imply support across every future module.
+
+### 6.13 PC2 Tracker — configurable tracking tables
+
+The Tracker specification supersedes the earlier simple check-in/numeric-log draft. Tracker is a user-created tracking table with typed observations, automatic task data, user-defined conditions, configurable statuses, 0–5-star scoring, tracker-specific reports, templates and independent monthly report settings. It is not a second task system or merely a habit checkbox.
+
+Default semantic columns are Date, Linked Task, Input / Observation, Status, Stars and Notes. Labels and visibility can be customized independently of stable semantic identifiers; Date remains visible. Typed input fields can be added/removed and renamed: number, text, checkbox, select, duration in minutes, date and date/time. Report and Settings are separate tracker-level panels. Trackers store a start date and time zone, goal reference, linked existing tasks, frequency, active/paused/archive state, definition and delivery settings.
+
+**Day and score contract:** one persisted scored record per actual tracker day; multiple accepted task completion events contribute source evidence to that record. No rows are generated for missing days. Numeric star values are stored independently of labels, bounded to 0–5. Total stars is the sum of stored daily stars. Average stars is total stars divided by inclusive calendar days from tracking start to report end (intersected with an explicit report range). Relative stars uses distinct actual tracked days. Zero denominators return no value, not infinity. A real observation with missing scoring inputs counts as tracked but has an unmeasured score, reported separately. Frequency does not silently change either denominator.
+
+Rules are ordered, deterministic all/any condition groups. First matching rule wins; rules refer to stable typed field IDs and configured statuses. Statuses have user-chosen names and integer star mappings. Unmatched complete inputs use the configured fallback status; missing rule inputs remain unmeasured. No dynamic scripts or expression evaluation. Definitions are snapshotted on records so changing settings cannot silently rewrite historical interpretations; source updates and manual edits evaluate against that record's definition. New records use the latest settings.
+
+Task ingestion consumes durable completion identities after explicit linking and while active. It preserves existing task execution/history, rejects foreign-workspace links, deduplicates source events and does not overwrite manually entered fields or notes. Task-derived inputs include completion, count, known recorded duration and completion time. Missing duration remains missing. Pause/archive and deletion must have explicit ingestion behavior, and failed processing must remain retryable without duplicate records.
+
+Every tracker has total/average/relative stars, tracked/non-tracking days, tracking completion rate, status distribution, actual-day trend, weekly/monthly totals, best/worst scored days and linked-task evidence. Reports explain denominator/range, missing inputs and source freshness. Templates (Exercise, Water, Reading, Study, Sleep, Meditation, Weight, Learning, Finance, Mood and Custom Score) can be previewed, downloaded and copied into independent personal definitions. Example thresholds are editable examples, not health or financial recommendations.
+
+Monthly reports are independently enabled per tracker, with channel and supported local day/time settings. Email uses durable existing SMTP infrastructure when configured. WhatsApp and Telegram configuration/delivery boundaries must be explicit: unavailable credentials/adapters cannot produce fake sent states. Monthly scheduling, deduplication, delivery status and account deletion/export need tests. Acceptance includes real manual and task-driven table workflows, typed columns/rules/status/star validation, exact report mathematics, template independence, conflicts, tenant isolation, browser accessibility and existing CI gates. No unrelated module work precedes completion and validation of this Tracker increment.
 
 ## 7. Execution Tracking System (Primary Differentiator)
 
@@ -1064,8 +1080,11 @@ UUIDv7-compatible identifiers · all tables carry `created_at`/`updated_at` · m
 | task_tags | task_id, tag_id | composite unique |
 | goal_task_links (planned) | goal_id, task_id | unique composite |
 | milestone_task_links (planned) | milestone_id, task_id | unique composite |
-| trackers (planned) | id, workspace_id, name, kind, unit, frequency, target, goal_id, status, version | (workspace, status), goal_id |
-| tracker_entries (planned) | id, tracker_id, occurred_at, value, source, task_id, idempotency_key | (tracker, occurred_at), unique idempotency_key |
+| personal_trackers | id, workspace_id, name, description, start_date, time_zone, goal_id, frequency, state, definition, delivery, ingest_after, version | (workspace, id), unique (id, workspace) |
+| personal_tracker_links | tracker_id, workspace_id, task_id, created_at | unique (tracker, task), owned task/tracker FKs |
+| personal_tracker_entries | id, workspace_id, tracker_id, day, definition, input_values, status_id/name, stars, rule_id, missing_fields, notes, version, deleted_at | unique (tracker, day), owned tracker FK |
+| personal_tracker_sources | id, workspace_id, tracker_id, entry_id, task_id, task_identity, source_event_id, completed_at, duration_minutes | unique (tracker, source event), owned entry/tracker FK |
+| personal_tracker_reports | id, workspace_id, tracker_id, period, channel, status, summary, reason, mail_delivery_id | unique (tracker, month), owned tracker FK |
 | knowledge_collections (planned) | id, workspace_id, name, kind, version | (workspace, name) |
 | knowledge_records (planned) | id, workspace_id, collection_id, title, body, properties, version | (workspace, collection) |
 | entity_relations (planned) | workspace_id, source_type/id, target_type/id, relation_type | unique typed relation |
@@ -1832,7 +1851,7 @@ The plan assumes a small team and prioritizes modular architecture over parallel
 |---|---|---|
 | 0: Alignment and evidence | Keep PRD, code, migrations, tests and milestone evidence honest | Authoritative personal-first PRD and an implementation audit; no historical completion claim is widened by documentation |
 | 1: Goal Center | Parent/sub-goals, milestones, stable identifiers, task links and derived progress | Tenant-safe, versioned lifecycle and progress calculations with API/UI/integration evidence |
-| 2: Tracker | Manual trackers, targets, frequencies, metric entries, task-completion triggers, streak/scoring boundaries | Idempotent logging and reporting that does not alter task-execution history |
+| 2: Tracker | Configurable tables, typed observations, linked task events, rules/statuses/0–5 stars, distinct calendar/tracked averages, reports, templates, monthly delivery settings | Idempotent source ingestion and correct tracker-specific reporting without altering task-execution history; see §6.13 and Tracker milestone |
 | 3: Knowledge & Data | Notes, resources, collections, records and bounded relations | Usable personal data without a speculative Notion clone; deletion/export/authorization decisions tested |
 | 4: Connected daily workspace | Task Center navigation/collections, calendar layers, cross-module insights, search and preferences | Users can move from goal to task to tracker/data/calendar/report through real links |
 | 5: Web quality and release hardening | Accessibility, performance, security assurance, migration/recovery and operational evidence | Deterministic CI gates plus explicit external release blockers; no claim that CI proves production operations |

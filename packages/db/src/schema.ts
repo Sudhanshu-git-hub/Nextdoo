@@ -167,6 +167,55 @@ export const workspaceMembers = pgTable(
   (t) => [primaryKey({ columns: [t.workspaceId, t.userId] }), index('workspace_members_user_idx').on(t.userId)],
 );
 
+// ---------------------------------------------------------- personal trackers
+
+export const personalTrackers = pgTable('personal_trackers', {
+  id: uuid('id').primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  name: varchar('name', { length: 200 }).notNull(), description: text('description'), startDate: date('start_date').notNull(), timeZone: varchar('time_zone', { length: 64 }).notNull(),
+  goalId: uuid('goal_id'), frequency: varchar('frequency', { length: 16 }).notNull().default('DAILY').$type<'DAILY' | 'WEEKLY' | 'CUSTOM'>(),
+  state: varchar('state', { length: 16 }).notNull().default('ACTIVE').$type<'ACTIVE' | 'PAUSED' | 'ARCHIVED'>(),
+  definition: jsonb('definition').notNull().$type<import('@nextdoo/contracts').TrackerDefinition>(),
+  delivery: jsonb('delivery').notNull().$type<{ enabled: boolean; channel: 'EMAIL' | 'WHATSAPP' | 'TELEGRAM'; dayOfMonth: number; hour: number; minute: number }>(),
+  ingestAfter: timestamp('ingest_after', { withTimezone: true }).notNull().defaultNow(), version: integer('version').notNull().default(1), ...timestamps,
+}, (t) => [uniqueIndex('personal_trackers_id_workspace_unique').on(t.id, t.workspaceId), index('personal_trackers_workspace_idx').on(t.workspaceId, t.id),
+  foreignKey({ name: 'personal_trackers_goal_workspace_fkey', columns: [t.goalId, t.workspaceId], foreignColumns: [goals.id, goals.workspaceId] }),
+]);
+export const personalTrackerLinks = pgTable('personal_tracker_links', {
+  workspaceId: uuid('workspace_id').notNull(), trackerId: uuid('tracker_id').notNull(), taskId: uuid('task_id').notNull(), createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.trackerId, t.taskId] }), index('personal_tracker_links_task_idx').on(t.taskId),
+  foreignKey({ columns: [t.trackerId, t.workspaceId], foreignColumns: [personalTrackers.id, personalTrackers.workspaceId] }).onDelete('cascade'),
+  foreignKey({ columns: [t.taskId, t.workspaceId], foreignColumns: [tasks.id, tasks.workspaceId] }).onDelete('cascade'),
+]);
+export const personalTrackerEntries = pgTable('personal_tracker_entries', {
+  id: uuid('id').primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  trackerId: uuid('tracker_id').notNull(), day: date('day').notNull(), definition: jsonb('definition').notNull().$type<import('@nextdoo/contracts').TrackerDefinition>(),
+  inputValues: jsonb('input_values').notNull().default({}).$type<Record<string, import('@nextdoo/contracts').TrackerValue>>(),
+  statusId: varchar('status_id', { length: 40 }), statusName: varchar('status_name', { length: 80 }), stars: integer('stars'), ruleId: varchar('rule_id', { length: 40 }),
+  missingFields: jsonb('missing_fields').notNull().default([]).$type<string[]>(), notes: text('notes'),
+  version: integer('version').notNull().default(1), deletedAt: timestamp('deleted_at', { withTimezone: true }), ...timestamps,
+}, (t) => [uniqueIndex('personal_tracker_entries_id_workspace_unique').on(t.id, t.workspaceId), uniqueIndex('personal_tracker_entries_tracker_workspace_unique').on(t.id, t.trackerId, t.workspaceId), uniqueIndex('personal_tracker_entries_day_unique').on(t.trackerId, t.day), index('personal_tracker_entries_range_idx').on(t.workspaceId, t.trackerId, t.day, t.id),
+  foreignKey({ name: 'personal_tracker_entries_tracker_workspace_fkey', columns: [t.trackerId, t.workspaceId], foreignColumns: [personalTrackers.id, personalTrackers.workspaceId] }).onDelete('cascade'),
+  check('personal_tracker_entries_stars_check', sql`${t.stars} BETWEEN 0 AND 5`),
+]);
+export const personalTrackerSources = pgTable('personal_tracker_sources', {
+  id: uuid('id').primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  trackerId: uuid('tracker_id').notNull(), entryId: uuid('entry_id').notNull(), taskId: uuid('task_id'), taskIdentity: uuid('task_identity').notNull(), sourceEventId: uuid('source_event_id').notNull(),
+  completedAt: timestamp('completed_at', { withTimezone: true }).notNull(), durationMinutes: numeric('duration_minutes', { precision: 16, scale: 6 }), createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [uniqueIndex('personal_tracker_sources_event_unique').on(t.trackerId, t.sourceEventId), index('personal_tracker_sources_entry_idx').on(t.entryId),
+  foreignKey({ columns: [t.trackerId, t.workspaceId], foreignColumns: [personalTrackers.id, personalTrackers.workspaceId] }).onDelete('cascade'),
+  foreignKey({ columns: [t.entryId, t.workspaceId], foreignColumns: [personalTrackerEntries.id, personalTrackerEntries.workspaceId] }).onDelete('cascade'),
+  foreignKey({ name: 'personal_tracker_sources_entry_tracker_fkey', columns: [t.entryId, t.trackerId, t.workspaceId], foreignColumns: [personalTrackerEntries.id, personalTrackerEntries.trackerId, personalTrackerEntries.workspaceId] }).onDelete('cascade'),
+  // Migration uses PostgreSQL's column-specific SET NULL to retain workspace identity.
+  foreignKey({ columns: [t.taskId, t.workspaceId], foreignColumns: [tasks.id, tasks.workspaceId] }),
+]);
+export const personalTrackerReports = pgTable('personal_tracker_reports', {
+  id: uuid('id').primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }), trackerId: uuid('tracker_id').notNull(),
+  period: varchar('period', { length: 7 }).notNull(), channel: varchar('channel', { length: 16 }).notNull(), status: varchar('status', { length: 24 }).notNull(),
+  summary: jsonb('summary').notNull().$type<Record<string, unknown>>(), reason: varchar('reason', { length: 80 }), mailDeliveryId: uuid('mail_delivery_id'), ...timestamps,
+}, (t) => [uniqueIndex('personal_tracker_reports_period_unique').on(t.trackerId, t.period),
+  foreignKey({ columns: [t.trackerId, t.workspaceId], foreignColumns: [personalTrackers.id, personalTrackers.workspaceId] }).onDelete('cascade'),
+]);
+
 // ----------------------------------------------------------------- goals
 
 /** Personal Goal Center. Human-readable identifiers are stable references, not primary keys. */

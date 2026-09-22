@@ -359,7 +359,7 @@ async function completeTaskCore(
       actorId: actor.userId,
       occurredAt: when,
       deviceId: actor.deviceId ?? null,
-      payload: { dueAt: current.dueAt?.toISOString() ?? null },
+      payload: { dueAt: current.dueAt?.toISOString() ?? null, actualSeconds: updated.actualMinutes > 0 || updated.actualSecondsRemainder > 0 ? updated.actualMinutes * 60 + updated.actualSecondsRemainder : null },
       // Deterministic: replaying the same completion cannot create a second event.
       idempotencyKey: `complete:${taskId}:${updated.version}:${when.toISOString()}`,
     });

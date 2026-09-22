@@ -153,11 +153,14 @@ describe('account deletion lifecycle (integration)', () => {
     await ctx!.rights.requestAccountDeletion(user.userId, PASSWORD);
 
     // The owner asks again 20 days later.
-    await requestAt(user.userId, -20 * DAY);
+    // Keep the repeat inside the real authorization grace window as the
+    // calendar advances; the boundary/purge tests below use their fixed clock.
+    const originalRequest = new Date(Date.now() - 20 * DAY);
+    await ctx!.db.update(ctx!.schema.users).set({ deletionRequestedAt: originalRequest }).where(eq(ctx!.schema.users.id, user.userId));
     const second = await ctx!.rights.requestAccountDeletion(user.userId, PASSWORD);
 
-    expect(second.requestedAt).toBe(new Date(NOW.getTime() - 20 * DAY).toISOString());
-    expect(second.purgeAfter).toBe(new Date(NOW.getTime() + 10 * DAY).toISOString());
+    expect(second.requestedAt).toBe(originalRequest.toISOString());
+    expect(second.purgeAfter).toBe(new Date(originalRequest.getTime() + 30 * DAY).toISOString());
     await destroy(user.userId);
   });
 
