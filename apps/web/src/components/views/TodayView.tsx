@@ -1,6 +1,7 @@
 'use client';
 import { localDayBounds, localDateKey } from '@nextdoo/core/calendar';
 import { useWorkspace } from '@/components/WorkspaceContext';
+import { ConnectedToday } from '@/components/ConnectedContext';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTaskPages } from '@/lib/use-task-pages';
@@ -35,6 +36,7 @@ export function TodayView({ workspaceId }: { workspaceId: string }) {
   const page = useTaskPages(workspaceId, filters, true);
   const { tasks, loading, stale, reload: load } = page;
   const [capacity, setCapacity] = useState<DayCapacityData | null>(null);
+  const [connectedRevision,setConnectedRevision]=useState(0);
   // §7.9: the user can hide overload warnings; the banner becomes a neutral
   // planned-load line (and S2 suggestions stop being generated).
   const [overloadWarningsEnabled, setOverloadWarningsEnabled] = useState(true);
@@ -66,6 +68,7 @@ export function TodayView({ workspaceId }: { workspaceId: string }) {
   }, [loadCapacity]);
 
   const reload = useCallback(() => {
+    setConnectedRevision(v=>v+1);
     void load();
     void loadCapacity();
   }, [load, loadCapacity]);
@@ -151,6 +154,7 @@ export function TodayView({ workspaceId }: { workspaceId: string }) {
         />
       </section>
       <TaskPagination {...page} error={page.tasks.length ? page.error : null} count={tasks.length} onMore={page.loadMore} onRetry={tasks.length ? page.loadMore : load} />
+      <ConnectedToday revision={connectedRevision}/>
     </>
   );
 }

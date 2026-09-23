@@ -2,6 +2,7 @@
 import { localParts, localDateKey, zonedTimeToUtc, workspaceWeek, workspaceMonthGrid, localDayBounds, workdayDescription, workdayMinutes } from '@nextdoo/core/calendar';
 import { useWorkspace } from '@/components/WorkspaceContext';
 import { TaskEditor } from '@/components/TaskEditor';
+import { useConnectedCalendar,ConnectedCalendarItems } from '@/components/ConnectedCalendar';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError, type Task } from '@/lib/api';
@@ -62,6 +63,7 @@ export function CalendarView({ workspaceId }: { workspaceId: string }) {
     const m = workspaceMonthGrid(anchor, timeZone, weekStart);
     return { from: m.start, to: m.end, days: m.cells };
   }, [view, anchor, timeZone, weekStart]);
+  const connected=useConnectedCalendar(win.from.toISOString(),win.to.toISOString());
 
   const load = useCallback(async () => {
     requestRef.current?.abort();
@@ -286,6 +288,7 @@ export function CalendarView({ workspaceId }: { workspaceId: string }) {
       </div>
 
       <p>Calendar time zone: {timeZone}</p>
+      {connected.controls}
       <p>Configured workday: {workdayDescription(workspace.workdayStartMinute, workspace.workdayEndMinute)}</p>
       {error && (
         <div className="banner banner-error" role="alert">
@@ -362,6 +365,7 @@ export function CalendarView({ workspaceId }: { workspaceId: string }) {
               {loading && <div className="skeleton" style={{ height: view === 'month' ? 22 : 30 }} />}
 
               {dayTasks.map((task) => chip(task, view === 'month'))}
+              <ConnectedCalendarItems items={connected.items.filter(item=>item.day===localDateKey(day,timeZone))}/>
 
               {(externalByDay.get(localDateKey(day, timeZone)) ?? []).map((event) => (
                 <div key={event.id} className="cal-chip cal-external" aria-label={`Calendar event: ${event.title}`}>

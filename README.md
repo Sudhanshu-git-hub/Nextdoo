@@ -8,6 +8,7 @@ Personal productivity and life-management workspace, starting on the web.
 
 - [Product Requirements Document & Technical Blueprint](docs/PRD.md) — authoritative strategy, scope labels, requirements, architecture and roadmap.
 - [Personal-first reconciliation audit](docs/PERSONAL_CORE_AUDIT.md) — inspected baseline, current boundaries, risks and next implementation order.
+- [Connected daily workflows](docs/CONNECTED_WORKFLOWS_MILESTONE.md) — shared search, contextual references, Today and Calendar projections over the existing personal core.
 
 ## Status
 

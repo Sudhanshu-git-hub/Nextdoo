@@ -317,3 +317,11 @@ th { color: var(--text-dim); font-weight: 550; font-size: 12px; text-transform: 
 .knowledge-view dt { font-weight: 600; }
 .knowledge-view li { margin-block: 10px; }
 .knowledge-view input[type=checkbox] { width: auto; min-height: 0; display: inline-block; }
+.connected-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,270px),1fr)); gap: 16px; }
+.connected-today { margin-top: 28px; min-width: 0; }
+.connected-today .row, .connected-layers { flex-wrap: wrap; gap: 12px; }
+.connected-links { padding-left: 20px; }
+.connected-links li { margin-block: 10px; overflow-wrap: anywhere; }
+.connected-layers input[type=checkbox] { width: auto; display: inline; }
+.cal-connected { margin: 6px 0; padding: 6px; border-left: 3px solid var(--accent); overflow-wrap: anywhere; }
+.cal-connected small { display: block; }

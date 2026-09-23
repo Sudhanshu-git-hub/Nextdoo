@@ -28,7 +28,7 @@ export function useKnowledgeCommand() {
   return {send,busy,error};
 }
 export function KnowledgeStatus({error,loading}:{error?:string;loading?:boolean}) {return <>{loading&&<p role="status">Loading…</p>}{error&&<p role="alert">{error}</p>}</>;}
-export function KnowledgePager({offset,nextOffset,setOffset}:{offset:number;nextOffset:number|null;setOffset:(value:number)=>void}) {return <nav className="row" aria-label="Knowledge pages"><button type="button" disabled={!offset} onClick={()=>setOffset(Math.max(0,offset-40))}>Previous page</button><span>Page {Math.floor(offset/40)+1}</span><button type="button" disabled={nextOffset===null} onClick={()=>setOffset(nextOffset!)}>Next page</button></nav>;}
+export function KnowledgePager({offset,nextOffset,setOffset,label='Knowledge pages'}:{offset:number;nextOffset:number|null;setOffset:(value:number)=>void;label?:string}) {return <nav className="row" aria-label={label}><button type="button" disabled={!offset} onClick={()=>setOffset(Math.max(0,offset-40))}>Previous page</button><span>Page {Math.floor(offset/40)+1}</span><button type="button" disabled={nextOffset===null} onClick={()=>setOffset(nextOffset!)}>Next page</button></nav>;}
 export function KnowledgeHeader() {return <><Link href="/knowledge">Knowledge &amp; Data</Link><p className="muted">Notes, files and structured records connected to your work. Online connection required; changes are saved to your account.</p></>;}
 export function ValueInput({property,value,onChange}:{property:Property;value:KnowledgeValue|undefined;onChange:(value:KnowledgeValue)=>void}) {
   const {type,name,config}=property;
@@ -40,6 +40,19 @@ export function ValueInput({property,value,onChange}:{property:Property;value:Kn
 }
 export function displayValue(value:KnowledgeValue|undefined){return value===null||value===undefined?'—':Array.isArray(value)?value.join(', '):typeof value==='boolean'?value?'Yes':'No':String(value);}
 export function KnowledgeBacklinks({kind,id}:{kind:string;id:string}) {
-  const [offset,setOffset]=useState(0);const read=useKnowledgeRead<Page<{id:string;title:string;href:string}>>(`/knowledge/backlinks?kind=${kind}&id=${id}&offset=${offset}`);
-  return <section className="card" aria-label="Knowledge references"><h3>Knowledge references</h3><KnowledgeStatus error={read.error} loading={read.loading}/>{read.data?.data.length===0&&<p className="muted">No linked notes or records yet. Add a relation from Knowledge &amp; Data.</p>}<ul>{read.data?.data.map(r=><li key={r.id}><Link href={r.href}>{r.title}</Link></li>)}</ul>{read.data&&<KnowledgePager offset={offset} nextOffset={read.data.nextOffset} setOffset={setOffset}/>}</section>;
+  const [offset,setOffset]=useState(0),[linking,setLinking]=useState(false);const read=useKnowledgeRead<Page<{id:string;title:string;href:string}>>(`/knowledge/backlinks?kind=${kind}&id=${id}&offset=${offset}`);
+  return <section className="card" aria-label="Knowledge references"><h3>Knowledge references</h3>{['task','goal','milestone','tracker'].includes(kind)&&<button type="button" onClick={()=>setLinking(v=>!v)}>{linking?'Close reference picker':'Link Knowledge'}</button>}{linking&&<ContextKnowledgeLink kind={kind} id={id} onSaved={()=>{setLinking(false);read.refresh();}}/>}<KnowledgeStatus error={read.error} loading={read.loading}/>{read.data?.data.length===0&&<p className="muted">No linked notes or records yet.</p>}<ul>{read.data?.data.map(r=><li key={r.id}><Link href={r.href}>{r.title}</Link></li>)}</ul>{read.data&&<KnowledgePager offset={offset} nextOffset={read.data.nextOffset} setOffset={setOffset}/>}</section>;
+}
+
+/** Commands go to the existing PC3 relation endpoint; there is no new relationship store. */
+export function ContextKnowledgeLink({kind,id,onSaved}:{kind:string;id:string;onSaved:()=>void}) {
+  const [source,setSource]=useState('record'),[draft,setDraft]=useState(''),[q,setQ]=useState(''),[offset,setOffset]=useState(0),[error,setError]=useState(''),[loading,setLoading]=useState(false);
+  const read=useKnowledgeRead<Page<{id:string;label:string}>>(`/knowledge/targets?kind=${source}&q=${encodeURIComponent(q)}&offset=${offset}`),command=useKnowledgeCommand();
+  async function link(sourceId:string) {
+    setLoading(true);setError('');
+    try {const detail=await api<{record?:{version:number};note?:{version:number}}>(`/knowledge/${source}s/${sourceId}`);const version=(detail.record??detail.note)!.version;
+      if(await command.send(`/knowledge/${source}s/${sourceId}/relations`,{version,kind,targetId:id,linked:true}))onSaved();
+    } catch(e){setError(errorMessage(e));}finally{setLoading(false);}
+  }
+  return <div><form className="row" aria-label="Link Knowledge" onSubmit={e=>{e.preventDefault();setQ(draft);setOffset(0);}}><label>Knowledge type<select aria-label="Knowledge type" value={source} onChange={e=>{setSource(e.target.value);setOffset(0);}}><option value="record">Record</option><option value="note">Note</option></select></label><label>Find Knowledge<input maxLength={200} value={draft} onChange={e=>setDraft(e.target.value)}/></label><button>Find references</button></form><KnowledgeStatus loading={read.loading} error={read.error||error||command.error}/>{read.data?.data.length===0&&<p className="muted">No matching references. Try another search or create a note or record in Knowledge &amp; Data.</p>}<ul>{read.data?.data.map(item=><li key={item.id}>{item.label} <button type="button" disabled={loading||command.busy} onClick={()=>void link(item.id)}>Link reference {item.label}</button></li>)}</ul>{read.data&&<KnowledgePager offset={offset} nextOffset={read.data.nextOffset} setOffset={setOffset}/>}</div>;
 }

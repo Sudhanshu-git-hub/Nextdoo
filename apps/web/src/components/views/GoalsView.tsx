@@ -179,10 +179,11 @@ export function GoalDetailView({ workspaceId, goalId }: { workspaceId: string; g
     </section>
     <section aria-label="Milestones"><h2>Milestones</h2>
       {!detail.milestones.length && <p>Add a milestone for the next meaningful step.</p>}
-      {detail.milestones.map((m) => <article className="card" key={m.id} aria-label={`${m.identifier} ${m.title}`}>
+      {detail.milestones.map((m) => <article className="card" key={m.id} id={`milestone-${m.id}`} aria-label={`${m.identifier} ${m.title}`}>
         <h3>{m.identifier} · {m.title}</h3><p>{m.status.toLowerCase()}</p><p>{m.description}</p>
         {m.dueAt && <p>Target: <time dateTime={m.dueAt}>{new Date(m.dueAt).toLocaleString()}</time></p>}
         <ProgressText value={m.progress} /><StatusButtons entity={m} path={`/milestones/${m.id}`} onSaved={() => void load()} />
+        <KnowledgeBacklinks kind="milestone" id={m.id} />
         <details><summary>Edit milestone</summary><MilestoneForm initial={m} goalId={goal.id} onSaved={() => void load()} /></details>
         <TaskLinks workspaceId={workspaceId} entity={m} path={`/milestones/${m.id}`} taskIds={m.taskIds} tasks={detail.linkedTasks} onOpen={(id) => void openTask(id)} onSaved={() => void load()} canLink={goal.status === 'ACTIVE'} />
       </article>)}

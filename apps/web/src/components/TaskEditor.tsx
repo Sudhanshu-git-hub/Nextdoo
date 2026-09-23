@@ -1,6 +1,7 @@
 'use client';
 import { TaskAttachments } from './TaskAttachments';
 import { KnowledgeBacklinks } from './knowledge/shared';
+import { TaskConnectedContext } from './ConnectedContext';
 import { TaskLifecycleActions } from './TaskLifecycleActions';
 import { TaskRecurrenceActions } from './TaskRecurrenceActions';
 import { TaskRelations } from './TaskRelations';
@@ -160,6 +161,7 @@ function TaskEditorForm({ task, onClose, onSaved, onNavigate, onBack }: {
     {draft && <div style={{ marginTop: 20 }}>
       <TaskAttachments taskId={task.id} disabled={busy || relationsBusy || lifecycleBusy || recurrenceBusy || relationDraft || recurrenceDraft || !!conflict} />
       <KnowledgeBacklinks kind="task" id={task.id} />
+      <TaskConnectedContext id={task.id} />
     </div>}
     {draft && <div style={{ marginTop: 20 }}><h3>Task lifecycle</h3>
       <TaskLifecycleActions task={{ id: task.id, title: draft.title, version, status: taskStatus }}

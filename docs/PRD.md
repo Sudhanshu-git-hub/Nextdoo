@@ -339,7 +339,7 @@ Shared workspaces, assignment, comments, team permissions, organizational admini
 
 ## 5. Core Product Loop
 
-The personal architecture connects Goal → Milestone → Task. Tasks branch into Tracker and Knowledge/Data. Knowledge/Data contains Notes, Files, Records and Relations. These sources feed the Calendar time layer and Reports as each supported projection is implemented. A relation is a reference to an existing entity; it does not duplicate task execution, goal progress or tracker scoring. PC3 establishes the knowledge and relation layer. Combined calendar overlays and cross-module reports remain PC4 work.
+The personal architecture connects Goal → Milestone → Task. Tasks branch into Tracker and Knowledge/Data. Knowledge/Data contains Notes, Files, Records and Relations. These sources feed the Calendar time layer and Reports as each supported projection is implemented. A relation is a reference to an existing entity; it does not duplicate task execution, goal progress or tracker scoring. PC3 establishes the knowledge and relation layer. PC4 adds contextual links, shared search, compact Today summaries and Calendar overlays for existing deadlines, recorded Tracker activity and Knowledge date fields. Full cross-module Insights remains later scope; existing goal progress, Tracker reports and task analytics retain ownership of their calculations. See [PC4 boundaries and validation](CONNECTED_WORKFLOWS_MILESTONE.md).
 
 ### 5.1 Capture
 

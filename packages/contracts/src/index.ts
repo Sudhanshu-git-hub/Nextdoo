@@ -11,3 +11,4 @@ export * from './preferences';
 export * from './calendar-provider';
 export * from './trackers';
 export * from './knowledge';
+export * from './connected';

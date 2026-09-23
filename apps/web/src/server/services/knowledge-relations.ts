@@ -25,7 +25,7 @@ export async function knowledgeTarget(workspaceId: string, kind: KnowledgeKind, 
   const rows = await getDb().execute<{ id: string; title: string; goal_id?: string; database_id?: string; unavailable: boolean }>(sql`select id,${sql.raw(target.title)} title,not (${sql.raw(target.active)}) unavailable ${kind === 'milestone' ? sql`,goal_id` : kind === 'record' ? sql`,database_id` : sql``} from ${sql.raw(target.table)} where id=${id} and workspace_id=${workspaceId} ${active ? sql`and (${sql.raw(target.active)})` : sql``}`);
   const row = rows[0]; if (!row) throw notFound('linked item', id);
   return { id, kind, label: row.unavailable ? 'Unavailable ' + kind : row.title ?? 'Calendar event', databaseId: row.database_id ?? null, unavailable: row.unavailable,
-    href: row.unavailable || !target.path ? null : kind === 'milestone' ? '/goals/' + row.goal_id : kind === 'calendar' ? '/calendar' : target.path + id };
+    href: row.unavailable || !target.path ? null : kind === 'milestone' ? '/goals/' + row.goal_id + '#milestone-' + id : kind === 'calendar' ? '/calendar' : target.path + id };
 }
 export async function searchKnowledgeTargets(workspaceId: string, data: unknown) {
   const input = z.object({ kind: knowledgeTargetKind, q: z.string().max(200).default(''), databaseId: uuid.optional(), offset: z.coerce.number().int().min(0).max(1000000).default(0) }).strict().parse(data);

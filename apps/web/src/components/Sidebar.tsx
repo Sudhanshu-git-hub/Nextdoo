@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 
 /** Navigation mirrors the core loop, not a feature catalogue (PRD §8.1). */
 const LINKS = [
+  { href: '/search', label: 'Search', icon: '⌕' },
   { href: '/today', label: 'Today', icon: '◎' },
   { href: '/inbox', label: 'Inbox', icon: '▤' },
   { href: '/goals', label: 'Goals', icon: '◇' },
