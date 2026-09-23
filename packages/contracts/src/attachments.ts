@@ -54,16 +54,17 @@ export function isAllowedAttachmentContentType(contentType: string): contentType
 const sizeBytes = z.number().int().min(1).max(2_147_483_647);
 
 export const attachmentUploadSchema = z.object({
-  taskId: uuid,
+  taskId: uuid.optional(), recordId: uuid.optional(), noteId: uuid.optional(), goalId: uuid.optional(),
   fileName: z.string().min(1).max(300),
   contentType: z.string().min(3).max(120),
   sizeBytes,
-});
+}).strict().refine((v) => [v.taskId,v.recordId,v.noteId,v.goalId].filter(Boolean).length===1, 'Choose exactly one attachment owner.');
 export type AttachmentUploadInput = z.infer<typeof attachmentUploadSchema>;
 
 export const attachmentListQuerySchema = z.object({
-  taskId: uuid,
-});
+  taskId: uuid.optional(), recordId: uuid.optional(), noteId: uuid.optional(), goalId: uuid.optional(),
+}).strict().refine((v) => [v.taskId,v.recordId,v.noteId,v.goalId].filter(Boolean).length===1, 'Choose exactly one attachment owner.');
+export type AttachmentOwner = z.infer<typeof attachmentListQuerySchema>;
 
 /** Signed upload/download tokens are short-lived (PRD §11.4: ≤ 15 minutes). */
 export const ATTACHMENT_TOKEN_TTL_MS = 15 * 60 * 1000;

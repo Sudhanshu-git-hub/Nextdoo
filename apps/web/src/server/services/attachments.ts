@@ -7,6 +7,7 @@ import {
   isAllowedAttachmentContentType,
   limitsFor,
   type AttachmentUploadInput,
+  type AttachmentOwner, attachmentUploadSchema, attachmentListQuerySchema,
 } from '@nextdoo/contracts';
 import { attachments, createDurableFileAttachmentStore } from '@nextdoo/db';
 import { getEnv } from '../env';
@@ -15,6 +16,9 @@ import { getDb, withTransaction } from '../db';
 import { getPlan } from './accounts';
 import { loadTask } from './tasks';
 import { writeAuditLog } from './events';
+import { loadKnowledgeRecord, loadKnowledgeNote, loadKnowledgeDatabase } from './knowledge';
+import { loadGoal } from './goals';
+import { withWorkspaceTransaction } from './transactions';
 
 /**
  * Attachment lifecycle (PRD §6.8, §11.4, §14):
@@ -33,7 +37,7 @@ import { writeAuditLog } from './events';
 
 export type AttachmentView = {
   id: string;
-  taskId: string;
+  taskId: string | null;
   fileName: string;
   contentType: string;
   sizeBytes: number;
@@ -93,7 +97,7 @@ function verifyAttachmentToken(token: string | null, kind: 'upload' | 'download'
 }
 
 function toView(row: {
-  id: string; taskId: string; fileName: string; contentType: string; sizeBytes: number;
+  id: string; taskId: string | null; fileName: string; contentType: string; sizeBytes: number;
   scanStatus: 'PENDING' | 'CLEAN' | 'INFECTED' | 'FAILED'; uploadedAt: Date | null; createdAt: Date;
 }, userId: string): AttachmentView {
   const clean = row.scanStatus === 'CLEAN';
@@ -130,12 +134,23 @@ async function loadAttachmentRow(userId: string, workspaceId: string, id: string
     .where(and(eq(attachments.id, id), eq(attachments.workspaceId, workspaceId), eq(attachments.uploaderId, userId), isNull(attachments.deletedAt)))
     .limit(1);
   if (!row) throw new AppError('NOT_FOUND', 'Attachment not found.');
+  // New owners retain the existing download scan/token gate and add parent visibility.
+  if (row.recordId || row.noteId || row.goalId) await authorizeAttachmentOwner({ userId, workspaceId }, { recordId: row.recordId ?? undefined, noteId: row.noteId ?? undefined, goalId: row.goalId ?? undefined });
   return row;
 }
 
+export async function authorizeAttachmentOwner(auth: { userId: string; workspaceId: string }, owner: AttachmentOwner, mutable=false) {
+  attachmentListQuerySchema.parse(owner);
+  if (owner.taskId) await loadTask(auth.workspaceId,owner.taskId);
+  if (owner.recordId) { const record=await loadKnowledgeRecord(auth.workspaceId,owner.recordId); await loadKnowledgeDatabase(auth.workspaceId,record.databaseId,mutable); }
+  if (owner.noteId) { const note=await loadKnowledgeNote(auth.workspaceId,owner.noteId); if(note.databaseId)await loadKnowledgeDatabase(auth.workspaceId,note.databaseId,mutable); if(note.recordId){const record=await loadKnowledgeRecord(auth.workspaceId,note.recordId);await loadKnowledgeDatabase(auth.workspaceId,record.databaseId,mutable);} }
+  if (owner.goalId) { const goal=await loadGoal(auth.workspaceId,owner.goalId); if(mutable && goal.status==='ARCHIVED')throw new AppError('VALIDATION_FAILED','Restore this goal before uploading.'); }
+}
+
 export async function authorizeAttachmentUpload(auth: AuthContext, input: AttachmentUploadInput) {
-  // Tenant boundary: the task must exist in the caller's own workspace.
-  await loadTask(auth.workspaceId, input.taskId);
+  input=attachmentUploadSchema.parse(input);
+  return withWorkspaceTransaction(auth.workspaceId, async () => {
+  await authorizeAttachmentOwner(auth,{taskId:input.taskId,recordId:input.recordId,noteId:input.noteId,goalId:input.goalId},true);
 
   if (!isAllowedAttachmentContentType(input.contentType)) {
     throw new AppError('VALIDATION_FAILED', 'This file type is not supported for attachments.');
@@ -165,6 +180,7 @@ export async function authorizeAttachmentUpload(auth: AuthContext, input: Attach
     id,
     workspaceId: auth.workspaceId,
     taskId: input.taskId,
+    recordId: input.recordId, noteId: input.noteId, goalId: input.goalId,
     uploaderId: auth.userId,
     objectKey,
     fileName: sanitizeFileName(input.fileName),
@@ -179,6 +195,7 @@ export async function authorizeAttachmentUpload(auth: AuthContext, input: Attach
     uploadUrl: `/api/v1/attachments/${id}/upload-data?token=${signAttachmentToken('upload', id, auth.userId, input.sizeBytes)}`,
     expiresIn: Math.floor(ATTACHMENT_TOKEN_TTL_MS / 1000),
   };
+  });
 }
 
 /** Reads a request body with a hard cap; enforces the exact declared size. */
@@ -242,12 +259,13 @@ export async function completeAttachment(auth: AuthContext, id: string): Promise
   return toView(fresh, auth.userId);
 }
 
-export async function listAttachments(auth: AuthContext, taskId: string): Promise<AttachmentView[]> {
-  await loadTask(auth.workspaceId, taskId);
+export async function listAttachments(auth: AuthContext, owner: string | AttachmentOwner): Promise<AttachmentView[]> {
+  const parent=typeof owner==='string'?{taskId:owner}:attachmentListQuerySchema.parse(owner);
+  await authorizeAttachmentOwner(auth,parent);
   const db = getDb();
   const rows = await db.select().from(attachments)
     .where(and(
-      eq(attachments.taskId, taskId),
+      parent.taskId?eq(attachments.taskId,parent.taskId):parent.recordId?eq(attachments.recordId,parent.recordId):parent.noteId?eq(attachments.noteId,parent.noteId):eq(attachments.goalId,parent.goalId!),
       eq(attachments.workspaceId, auth.workspaceId),
       eq(attachments.uploaderId, auth.userId),
       isNull(attachments.deletedAt),

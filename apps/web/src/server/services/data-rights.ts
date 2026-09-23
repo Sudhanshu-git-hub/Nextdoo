@@ -2,6 +2,7 @@ import { logger } from '../observability';
 import { and, desc, eq, gte, inArray, isNotNull, isNull, like, lte, or } from 'drizzle-orm';
 import { AppError } from '@nextdoo/contracts';
 import {
+  knowledgeDatabases, knowledgeProperties, knowledgeRecords, knowledgeValues, knowledgeNotes, knowledgeNoteTags, knowledgeRelations, knowledgeFiles,
   purgeAccount,
   goals, milestones, goalTasks, milestoneTasks,
   personalTrackers, personalTrackerEntries, personalTrackerLinks, personalTrackerSources, personalTrackerReports,
@@ -37,6 +38,14 @@ import { absoluteUrl, sendMail } from '../mailer';
 const DELETION_GRACE_DAYS = 30;
 
 export interface ExportBundle {
+  knowledgeDatabases: unknown[];
+  knowledgeProperties: unknown[];
+  knowledgeRecords: unknown[];
+  knowledgeValues: unknown[];
+  knowledgeNotes: unknown[];
+  knowledgeNoteTags: unknown[];
+  knowledgeRelations: unknown[];
+  knowledgeFiles: unknown[];
   formatVersion: 1;
   exportedAt: string;
   account: Record<string, unknown>;
@@ -121,6 +130,7 @@ export async function buildExport(userId: string): Promise<ExportBundle> {
   ]);
 
   const taskIds = taskRows.map((t) => t.id);
+  const knowledgeRows = await Promise.all([knowledgeDatabases, knowledgeProperties, knowledgeRecords, knowledgeValues, knowledgeNotes, knowledgeNoteTags, knowledgeRelations, knowledgeFiles].map(table => db.select().from(table).where(inArray(table.workspaceId, workspaceIds))));
   const [goalRows, milestoneRows, goalLinkRows, milestoneLinkRows, trackerRows, trackerEntryRows, trackerLinkRows, trackerSourceRows, trackerReportRows] = await Promise.all([
     db.select().from(goals).where(inArray(goals.workspaceId, workspaceIds)),
     db.select().from(milestones).where(inArray(milestones.workspaceId, workspaceIds)),
@@ -158,6 +168,7 @@ export async function buildExport(userId: string): Promise<ExportBundle> {
 
   return {
     formatVersion: 1 as const,
+    knowledgeDatabases: knowledgeRows[0]!, knowledgeProperties: knowledgeRows[1]!, knowledgeRecords: knowledgeRows[2]!, knowledgeValues: knowledgeRows[3]!, knowledgeNotes: knowledgeRows[4]!, knowledgeNoteTags: knowledgeRows[5]!, knowledgeRelations: knowledgeRows[6]!, knowledgeFiles: knowledgeRows[7]!,
     exportedAt: new Date().toISOString(),
     account,
     workspaces: workspaceRows,

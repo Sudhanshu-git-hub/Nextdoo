@@ -19,6 +19,10 @@ import { getDb } from '../db';
 import type { AuthContext } from '../auth';
 import { registerUser } from './accounts';
 import { createTask } from './tasks';
+import { createGoal } from './goals';
+import { createKnowledgeDatabase, createKnowledgeRecord, createKnowledgeNote, setKnowledgeRecordDeleted } from './knowledge';
+import { linkKnowledgeFile } from './knowledge-relations';
+import { knowledgeRecordDetail, knowledgeResources } from './knowledge-query';
 import {
   authorizeAttachmentUpload,
   completeAttachment,
@@ -110,6 +114,35 @@ async function expectAppError(fn: () => Promise<unknown>, code: string, detailPa
 }
 
 const freeLimits = limitsFor('FREE');
+
+it('reuses upload, scan and download authorization for Knowledge records, notes and goal resources', async () => {
+  const {actor}=await fixture(), other=await fixture();
+  const database=await createKnowledgeDatabase(actor,{name:'Resources',properties:[{name:'Title',type:'TITLE'},{name:'Files',type:'FILE'}]});
+  const record=await createKnowledgeRecord(actor,database.id,{title:'Research'}),note=await createKnowledgeNote(actor,{title:'Notes',recordId:record.id});
+  const goal=await createGoal(actor,{workspaceId:actor.workspaceId,title:'Learning',priority:'NONE'});
+  const field=database.properties.find(p=>p.type==='FILE')!.id;
+  let version=record.version;
+  for(const owner of [{recordId:record.id},{noteId:note.id},{goalId:goal.id}]) {
+    const upload=await authorizeAttachmentUpload(actor,{...owner,fileName:'source.txt',contentType:'text/plain',sizeBytes:4});
+    await writeAttachmentData(actor,upload.attachment.id,extractToken(upload.uploadUrl),new Response('data').body!);
+    await completeAttachment(actor,upload.attachment.id);
+    await expect(requestAttachmentDownload(actor,upload.attachment.id)).rejects.toMatchObject({code:'ATTACHMENT_NOT_CLEAN'});
+    await expect(linkKnowledgeFile(actor,record.id,{version,propertyId:field,attachmentId:upload.attachment.id,linked:true})).rejects.toMatchObject({code:'VALIDATION_FAILED'});
+    await runAttachmentScan(getDb(),{store,scanner:fakeScanner()});
+    expect((await listAttachments(actor,owner))[0]!.scanStatus).toBe('CLEAN');
+    await expect(listAttachments(other.actor,owner)).rejects.toMatchObject({code:'NOT_FOUND'});
+    await expect(requestAttachmentDownload(other.actor,upload.attachment.id)).rejects.toMatchObject({code:'NOT_FOUND'});
+    const linked=await linkKnowledgeFile(actor,record.id,{version,propertyId:field,attachmentId:upload.attachment.id,linked:true});version=linked.version;
+    const dl=await requestAttachmentDownload(actor,upload.attachment.id);
+    expect((await streamAttachmentDownload(actor,upload.attachment.id,extractToken(dl.downloadUrl))).data.byteLength).toBe(4);
+  }
+  const detail=await knowledgeRecordDetail(actor.workspaceId,record.id);expect(detail.files).toHaveLength(3);
+  expect((await knowledgeResources(actor.workspaceId,actor.userId,{q:'source'})).data).toHaveLength(3);
+  await setKnowledgeRecordDeleted(actor,record.id,version,true);
+  expect((await knowledgeResources(actor.workspaceId,actor.userId,{q:'source'})).data).toHaveLength(1);
+  const attached=await getDb().select().from(attachments).where(eq(attachments.recordId,record.id));
+  await expect(requestAttachmentDownload(actor,attached[0]!.id)).rejects.toMatchObject({code:'NOT_FOUND'});
+});
 
 // ---------------------------------------------------------------------------
 // Upload success + metadata lifecycle

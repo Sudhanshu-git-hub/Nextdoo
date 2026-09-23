@@ -2,6 +2,14 @@ import { z } from 'zod';
 
 /** PRD §15.1 — every domain event shares this envelope. */
 export const DOMAIN_EVENT_TYPE = [
+  'knowledge_database.created',
+  'knowledge_database.updated',
+  'knowledge_record.created',
+  'knowledge_record.updated',
+  'knowledge_record.deleted',
+  'knowledge_note.created',
+  'knowledge_note.updated',
+  'knowledge_note.deleted',
   'tracker.created',
   'tracker.updated',
   'tracker_entry.created',

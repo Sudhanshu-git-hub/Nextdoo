@@ -40,7 +40,11 @@ function humanSize(bytes: number): string {
   return `${Math.max(1, Math.ceil(bytes / 1024))} KB`;
 }
 
-export function TaskAttachments({ taskId, disabled }: { taskId: string; disabled?: boolean }) {
+export function TaskAttachments({ taskId, recordId, noteId, goalId, disabled }: { taskId?: string; recordId?: string; noteId?: string; goalId?: string; disabled?: boolean }) {
+  const ownerKey = taskId ? 'taskId' : recordId ? 'recordId' : noteId ? 'noteId' : 'goalId';
+  const ownerId = taskId ?? recordId ?? noteId ?? goalId;
+  const inputId = taskId ? 'task-attachment-file' : `${ownerKey}-${ownerId}-file`;
+  const helpId = taskId ? 'task-attachment-help' : `${ownerKey}-${ownerId}-help`;
   const [items, setItems] = useState<AttachmentView[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -50,7 +54,7 @@ export function TaskAttachments({ taskId, disabled }: { taskId: string; disabled
 
   const load = useCallback(async (signal?: AbortSignal) => {
     try {
-      const page = await api<AttachmentPage>(`/attachments?taskId=${taskId}`, { signal });
+      const page = await api<AttachmentPage>(`/attachments?${ownerKey}=${ownerId}`, { signal });
       setItems(page.data);
       return page.data;
     } catch (caught) {
@@ -59,7 +63,7 @@ export function TaskAttachments({ taskId, disabled }: { taskId: string; disabled
       setItems(null);
       return null;
     }
-  }, [taskId]);
+  }, [ownerKey, ownerId]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -90,7 +94,7 @@ export function TaskAttachments({ taskId, disabled }: { taskId: string; disabled
     try {
       const auth = await api<{ attachment: AttachmentView; uploadUrl: string }>(
         '/attachments',
-        { method: 'POST', body: JSON.stringify({ taskId, fileName: file.name, contentType: file.type, sizeBytes: file.size }) },
+        { method: 'POST', body: JSON.stringify({ [ownerKey]: ownerId, fileName: file.name, contentType: file.type, sizeBytes: file.size }) },
       );
       const put = await fetch(auth.uploadUrl, {
         method: 'PUT',
@@ -132,16 +136,16 @@ export function TaskAttachments({ taskId, disabled }: { taskId: string; disabled
   return (
     <div data-testid="task-attachments">
       <h3>Attachments</h3>
-      <label htmlFor="task-attachment-file">Upload a file</label>
+      <label htmlFor={inputId}>Upload a file</label>
       <input
         ref={fileRef}
         type="file"
-        id="task-attachment-file"
-        aria-describedby="task-attachment-help"
+        id={inputId}
+        aria-describedby={helpId}
         disabled={disabled || busy}
         onChange={(e) => { const file = e.target.files?.[0]; if (file) void uploadFile(file); }}
       />
-      <p id="task-attachment-help" className="muted">
+      <p id={helpId} className="muted">
         Files are scanned for malware before they can be downloaded. Downloads are blocked until the scan is clean.
       </p>
       {error && <p role="alert" style={{ color: 'var(--danger, #b00020)' }}>{error}</p>}
@@ -166,7 +170,7 @@ export function TaskAttachments({ taskId, disabled }: { taskId: string; disabled
               </span>
               <span className="row" style={{ gap: 8 }}>
                 {item.downloadUrl && <a className="btn-ghost btn-sm" href={item.downloadUrl} download={item.fileName}>Download</a>}
-                <button type="button" className="btn-ghost btn-sm" disabled={busy || uploading !== null} onClick={() => void remove(item)}>Delete</button>
+                <button type="button" className="btn-ghost btn-sm" disabled={disabled || busy || uploading !== null} onClick={() => void remove(item)}>Delete</button>
               </span>
             </li>
           ))}

@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 /** Metadata for the task's attachments (PRD §6.8). */
 export const GET = authedRoute({ routeName: 'attachments.list', rateLimitPerMinute: 600 }, async (request, ctx) => {
   const query = parseQuery(request, attachmentListQuerySchema);
-  return { data: await listAttachments(ctx.auth, query.taskId) };
+  return { data: await listAttachments(ctx.auth, query) };
 });
 
 /**

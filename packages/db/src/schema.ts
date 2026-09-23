@@ -4,6 +4,8 @@ import {
   boolean,
   check,
   date,
+  doublePrecision,
+  unique,
   foreignKey,
   index,
   integer,
@@ -329,7 +331,7 @@ export const tags = pgTable(
     color: varchar('color', { length: 7 }),
     ...timestamps,
   },
-  (t) => [uniqueIndex('tags_workspace_name_unique').on(t.workspaceId, t.name)],
+  (t) => [uniqueIndex('tags_workspace_name_unique').on(t.workspaceId, t.name), uniqueIndex('tags_id_workspace_unique').on(t.id,t.workspaceId)],
 );
 
 // ----------------------------------------------------------------- tasks
@@ -753,7 +755,8 @@ export const attachments = pgTable(
   {
     id: uuid('id').primaryKey(),
     workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
-    taskId: uuid('task_id').notNull().references(() => tasks.id, { onDelete: 'cascade' }),
+    taskId: uuid('task_id').references(() => tasks.id, { onDelete: 'cascade' }),
+    recordId: uuid('record_id'), noteId: uuid('note_id'), goalId: uuid('goal_id'),
     uploaderId: uuid('uploader_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     objectKey: varchar('object_key', { length: 400 }).notNull(),
     fileName: varchar('file_name', { length: 300 }).notNull(),
@@ -772,7 +775,13 @@ export const attachments = pgTable(
     ...timestamps,
   },
   (t) => [
-    index('attachments_task_idx').on(t.taskId),
+      index('attachments_task_idx').on(t.taskId),
+      uniqueIndex('attachments_id_workspace_unique').on(t.id,t.workspaceId),
+      index('attachments_record_idx').on(t.recordId), index('attachments_note_idx').on(t.noteId),
+      check('attachments_single_owner',sql`num_nonnulls(${t.taskId},${t.recordId},${t.noteId},${t.goalId})=1`),
+      foreignKey({columns:[t.recordId,t.workspaceId],foreignColumns:[knowledgeRecords.id,knowledgeRecords.workspaceId]}).onDelete('cascade'),
+      foreignKey({columns:[t.noteId,t.workspaceId],foreignColumns:[knowledgeNotes.id,knowledgeNotes.workspaceId]}).onDelete('cascade'),
+      foreignKey({columns:[t.goalId,t.workspaceId],foreignColumns:[goals.id,goals.workspaceId]}).onDelete('cascade'),
     uniqueIndex('attachments_object_key_unique').on(t.objectKey),
     check('attachments_size_positive', sql`${t.sizeBytes} > 0`),
     index('attachments_scan_idx').on(t.nextAttemptAt).where(sql`${t.scanStatus} = 'PENDING' AND ${t.uploadedAt} IS NOT NULL AND ${t.claimToken} IS NULL AND ${t.attempts} < 3`),
@@ -856,7 +865,8 @@ export const calendarEvents = pgTable(
     ...timestamps,
   },
   (t) => [
-    uniqueIndex('calendar_events_unique').on(t.connectionId, t.externalId),
+      uniqueIndex('calendar_events_unique').on(t.connectionId, t.externalId),
+      uniqueIndex('calendar_events_id_workspace_unique').on(t.id,t.workspaceId),
     index('calendar_events_ws_time_idx').on(t.workspaceId, t.startsAt),
   ],
 );
@@ -1184,3 +1194,75 @@ export const reviewNotes = pgTable('review_notes', {
  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [primaryKey({ columns: [t.workspaceId, t.day] }),
  index('review_notes_workspace_idx').on(t.workspaceId, t.day)]);
+
+ // ----------------------------------------------------------------- knowledge and structured data
+export const knowledgeDatabases = pgTable('knowledge_databases', {
+ id: uuid('id').primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+ name: varchar('name', { length: 200 }).notNull(), description: text('description'), icon: varchar('icon', { length: 8 }), color: varchar('color', { length: 7 }),
+ favorite: boolean('favorite').notNull().default(false), archived: boolean('archived').notNull().default(false), version: integer('version').notNull().default(1), ...timestamps,
+}, (t) => [uniqueIndex('knowledge_databases_id_workspace_unique').on(t.id,t.workspaceId), index('knowledge_databases_list_idx').on(t.workspaceId,t.archived,t.updatedAt,t.id)]);
+export const knowledgeProperties = pgTable('knowledge_properties', {
+ id: uuid('id').primaryKey(), workspaceId: uuid('workspace_id').notNull(), databaseId: uuid('database_id').notNull(),
+ name: varchar('name', { length: 80 }).notNull(), type: varchar('type', { length: 24 }).notNull().$type<import('@nextdoo/contracts').KnowledgePropertyInput['type']>(),
+ position: integer('position').notNull().default(0), hidden: boolean('hidden').notNull().default(false),
+ config: jsonb('config').notNull().$type<import('@nextdoo/contracts').KnowledgePropertyInput['config']>().default({ options: [], relationKind: 'record', relationDatabaseId: null }),
+ relatedDatabaseId: uuid('related_database_id'), version: integer('version').notNull().default(1), ...timestamps,
+}, (t) => [uniqueIndex('knowledge_properties_owned_unique').on(t.id,t.databaseId,t.workspaceId), uniqueIndex('knowledge_properties_type_unique').on(t.id,t.databaseId,t.workspaceId,t.type),
+ uniqueIndex('knowledge_title_unique').on(t.databaseId).where(sql`${t.type}='TITLE'`), index('knowledge_properties_order_idx').on(t.databaseId,t.position,t.id),
+ foreignKey({columns:[t.databaseId,t.workspaceId],foreignColumns:[knowledgeDatabases.id,knowledgeDatabases.workspaceId]}).onDelete('cascade'),
+ foreignKey({columns:[t.relatedDatabaseId,t.workspaceId],foreignColumns:[knowledgeDatabases.id,knowledgeDatabases.workspaceId]})]);
+export const knowledgeRecords = pgTable('knowledge_records', {
+ id: uuid('id').primaryKey(), workspaceId: uuid('workspace_id').notNull(), databaseId: uuid('database_id').notNull(),
+ title: varchar('title', { length: 500 }).notNull(), content: text('content').notNull().default(''), version: integer('version').notNull().default(1), deletedAt: timestamp('deleted_at', {withTimezone:true}), ...timestamps,
+}, (t) => [uniqueIndex('knowledge_records_owned_unique').on(t.id,t.workspaceId), uniqueIndex('knowledge_records_database_unique').on(t.id,t.databaseId,t.workspaceId),
+ index('knowledge_records_page_idx').on(t.workspaceId,t.databaseId,t.deletedAt,t.updatedAt,t.id),
+ foreignKey({columns:[t.databaseId,t.workspaceId],foreignColumns:[knowledgeDatabases.id,knowledgeDatabases.workspaceId]}).onDelete('cascade')]);
+export const knowledgeValues = pgTable('knowledge_values', {
+ recordId: uuid('record_id').notNull(), propertyId: uuid('property_id').notNull(), databaseId: uuid('database_id').notNull(), workspaceId: uuid('workspace_id').notNull(),
+ type: varchar('type', {length:24}).notNull().$type<import('@nextdoo/contracts').KnowledgePropertyInput['type']>(),
+ textValue: text('text_value'), numberValue: doublePrecision('number_value'), booleanValue: boolean('boolean_value'), dateValue: date('date_value'), optionsValue: text('options_value').array(),
+}, (t) => [primaryKey({columns:[t.recordId,t.propertyId]}),
+ foreignKey({columns:[t.recordId,t.databaseId,t.workspaceId],foreignColumns:[knowledgeRecords.id,knowledgeRecords.databaseId,knowledgeRecords.workspaceId]}).onDelete('cascade'),
+ foreignKey({columns:[t.propertyId,t.databaseId,t.workspaceId,t.type],foreignColumns:[knowledgeProperties.id,knowledgeProperties.databaseId,knowledgeProperties.workspaceId,knowledgeProperties.type]}),
+ index('knowledge_values_number_idx').on(t.propertyId,t.numberValue,t.recordId), index('knowledge_values_date_idx').on(t.propertyId,t.dateValue,t.recordId),
+ check('knowledge_values_one_value', sql`num_nonnulls(${t.textValue},${t.numberValue},${t.booleanValue},${t.dateValue},${t.optionsValue})=1`)]);
+export const knowledgeNotes = pgTable('knowledge_notes', {
+ id: uuid('id').primaryKey(), workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id,{onDelete:'cascade'}),
+ databaseId: uuid('database_id'), recordId: uuid('record_id'), title: varchar('title',{length:500}).notNull(), content: text('content').notNull().default(''),
+ version: integer('version').notNull().default(1), deletedAt: timestamp('deleted_at',{withTimezone:true}), ...timestamps,
+}, (t) => [uniqueIndex('knowledge_notes_owned_unique').on(t.id,t.workspaceId), index('knowledge_notes_page_idx').on(t.workspaceId,t.updatedAt,t.id), index('knowledge_notes_record_idx').on(t.recordId),
+ foreignKey({columns:[t.databaseId,t.workspaceId],foreignColumns:[knowledgeDatabases.id,knowledgeDatabases.workspaceId]}).onDelete('cascade'),
+ foreignKey({columns:[t.recordId,t.workspaceId],foreignColumns:[knowledgeRecords.id,knowledgeRecords.workspaceId]}).onDelete('cascade'),
+ check('knowledge_notes_one_parent',sql`num_nonnulls(${t.databaseId},${t.recordId})<=1`)]);
+export const knowledgeNoteTags = pgTable('knowledge_note_tags', {
+ noteId: uuid('note_id').notNull(), tagId: uuid('tag_id').notNull(), workspaceId: uuid('workspace_id').notNull(),
+}, (t) => [primaryKey({columns:[t.noteId,t.tagId]}), foreignKey({columns:[t.noteId,t.workspaceId],foreignColumns:[knowledgeNotes.id,knowledgeNotes.workspaceId]}).onDelete('cascade'),
+ foreignKey({columns:[t.tagId,t.workspaceId],foreignColumns:[tags.id,tags.workspaceId]}).onDelete('cascade')]);
+export const knowledgeRelations = pgTable('knowledge_relations', {
+ propertyType: varchar('property_type',{length:16}).generatedAlwaysAs(sql`'RELATION'::varchar`),
+ id: uuid('id').primaryKey(), workspaceId: uuid('workspace_id').notNull(), recordId: uuid('record_id'), noteId: uuid('note_id'), databaseId: uuid('database_id'), propertyId: uuid('property_id'),
+ kind: varchar('kind',{length:16}).notNull().$type<import('@nextdoo/contracts').KnowledgePropertyInput['config']['relationKind']>(), targetId: uuid('target_id').notNull(),
+ targetRecordId: uuid('target_record_id'), targetDatabaseId: uuid('target_database_id'), targetNoteId: uuid('target_note_id'), taskId: uuid('task_id'), goalId: uuid('goal_id'), milestoneId: uuid('milestone_id'), trackerId: uuid('tracker_id'), calendarEventId: uuid('calendar_event_id'),
+ createdAt: timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
+}, (t) => [unique('knowledge_relations_identity').on(t.recordId,t.noteId,t.propertyId,t.kind,t.targetId).nullsNotDistinct(),
+ foreignKey({name:'knowledge_relations_property_type_fk',columns:[t.propertyId,t.databaseId,t.workspaceId,t.propertyType],foreignColumns:[knowledgeProperties.id,knowledgeProperties.databaseId,knowledgeProperties.workspaceId,knowledgeProperties.type]}),
+ foreignKey({columns:[t.recordId,t.databaseId,t.workspaceId],foreignColumns:[knowledgeRecords.id,knowledgeRecords.databaseId,knowledgeRecords.workspaceId]}).onDelete('cascade'),
+ foreignKey({columns:[t.noteId,t.workspaceId],foreignColumns:[knowledgeNotes.id,knowledgeNotes.workspaceId]}).onDelete('cascade'),
+ foreignKey({columns:[t.propertyId,t.databaseId,t.workspaceId],foreignColumns:[knowledgeProperties.id,knowledgeProperties.databaseId,knowledgeProperties.workspaceId]}),
+ foreignKey({columns:[t.targetRecordId,t.workspaceId],foreignColumns:[knowledgeRecords.id,knowledgeRecords.workspaceId]}).onDelete('cascade'),
+ foreignKey({columns:[t.targetDatabaseId,t.workspaceId],foreignColumns:[knowledgeDatabases.id,knowledgeDatabases.workspaceId]}).onDelete('cascade'),
+ foreignKey({columns:[t.targetNoteId,t.workspaceId],foreignColumns:[knowledgeNotes.id,knowledgeNotes.workspaceId]}).onDelete('cascade'),
+ foreignKey({columns:[t.taskId,t.workspaceId],foreignColumns:[tasks.id,tasks.workspaceId]}).onDelete('cascade'),
+ foreignKey({columns:[t.goalId,t.workspaceId],foreignColumns:[goals.id,goals.workspaceId]}).onDelete('cascade'),
+ foreignKey({columns:[t.milestoneId,t.workspaceId],foreignColumns:[milestones.id,milestones.workspaceId]}).onDelete('cascade'),
+ foreignKey({columns:[t.trackerId,t.workspaceId],foreignColumns:[personalTrackers.id,personalTrackers.workspaceId]}).onDelete('cascade'),
+ foreignKey({columns:[t.calendarEventId,t.workspaceId],foreignColumns:[calendarEvents.id,calendarEvents.workspaceId]}).onDelete('cascade'),
+ index('knowledge_relations_target_idx').on(t.workspaceId,t.kind,t.targetId,t.id), index('knowledge_relations_source_record_idx').on(t.recordId), index('knowledge_relations_source_note_idx').on(t.noteId)]);
+export const knowledgeFiles = pgTable('knowledge_files', {
+ propertyType: varchar('property_type',{length:16}).generatedAlwaysAs(sql`'FILE'::varchar`),
+ recordId: uuid('record_id').notNull(), propertyId: uuid('property_id').notNull(), databaseId: uuid('database_id').notNull(), workspaceId: uuid('workspace_id').notNull(), attachmentId: uuid('attachment_id').notNull(),
+}, (t) => [primaryKey({columns:[t.recordId,t.propertyId,t.attachmentId]}),
+ foreignKey({name:'knowledge_files_property_type_fk',columns:[t.propertyId,t.databaseId,t.workspaceId,t.propertyType],foreignColumns:[knowledgeProperties.id,knowledgeProperties.databaseId,knowledgeProperties.workspaceId,knowledgeProperties.type]}),
+ foreignKey({columns:[t.recordId,t.databaseId,t.workspaceId],foreignColumns:[knowledgeRecords.id,knowledgeRecords.databaseId,knowledgeRecords.workspaceId]}).onDelete('cascade'),
+ foreignKey({columns:[t.propertyId,t.databaseId,t.workspaceId],foreignColumns:[knowledgeProperties.id,knowledgeProperties.databaseId,knowledgeProperties.workspaceId]}),
+ foreignKey({columns:[t.attachmentId,t.workspaceId],foreignColumns:[attachments.id,attachments.workspaceId]}).onDelete('cascade')]);

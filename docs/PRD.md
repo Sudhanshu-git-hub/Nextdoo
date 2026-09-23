@@ -4,7 +4,7 @@
 |---|---|
 | Document status | Authoritative product and technical blueprint |
 | Version | 1.2 |
-| Last updated | 2026-09-21 |
+| Last updated | 2026-09-23 |
 | Product | NEXTDOO |
 | Initial platform | Web |
 | Client sequence | Web → Windows → Android → iOS/macOS |
@@ -338,6 +338,8 @@ Shared workspaces, assignment, comments, team permissions, organizational admini
 ---
 
 ## 5. Core Product Loop
+
+The personal architecture connects Goal → Milestone → Task. Tasks branch into Tracker and Knowledge/Data. Knowledge/Data contains Notes, Files, Records and Relations. These sources feed the Calendar time layer and Reports as each supported projection is implemented. A relation is a reference to an existing entity; it does not duplicate task execution, goal progress or tracker scoring. PC3 establishes the knowledge and relation layer. Combined calendar overlays and cross-module reports remain PC4 work.
 
 ### 5.1 Capture
 

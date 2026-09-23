@@ -1,4 +1,5 @@
 'use client';
+import { KnowledgeBacklinks } from '@/components/knowledge/shared';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { TrackerDefinition, TrackerValue } from '@nextdoo/contracts';
@@ -135,6 +136,7 @@ export function TrackerDetailView({ workspaceId, id }: { workspaceId: string; id
       </td>)}<td>{row.deletedAt ? <button disabled={command.busy || detail.tracker.state !== 'ACTIVE'} onClick={() => void restore(row)}>Restore record</button> : <><button disabled={detail.tracker.state !== 'ACTIVE'} onClick={() => { setEditEntry(row); setNewEntry(false); }}>Edit record</button><button disabled={command.busy} onClick={() => void remove(row)}>Delete record</button></>}</td></tr>)}</tbody></table></div>
       {!detail.entries.length && <p>No records in this range. Missing days are not fabricated as rows.</p>}{detail.nextCursor && <button disabled={loading} onClick={() => void load(detail.nextCursor!)}>Load more records</button>}
       {report && <TrackerReport detail={detail} />}
+      <KnowledgeBacklinks kind="tracker" id={id} />
     </>}{task && <TaskEditor task={task} onClose={() => { setTask(null); void load(); }} onSaved={() => void load()} />}</div>;
 }
 

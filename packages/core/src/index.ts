@@ -8,3 +8,4 @@ export * from './calendar';
 export * from './capacity';
 export * from './description';
 export * from './personal-tracker';
+export * from './knowledge';

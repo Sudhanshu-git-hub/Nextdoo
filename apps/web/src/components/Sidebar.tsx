@@ -10,6 +10,7 @@ const LINKS = [
   { href: '/inbox', label: 'Inbox', icon: '▤' },
   { href: '/goals', label: 'Goals', icon: '◇' },
   { href: '/trackers', label: 'Tracker', icon: '◷' },
+  { href: '/knowledge', label: 'Knowledge & Data', icon: '▥' },
   { href: '/projects', label: 'Projects', icon: '❏' },
   { href: '/calendar', label: 'Calendar', icon: '▦' },
   { href: '/notifications', label: 'Notifications', icon: '♧' },

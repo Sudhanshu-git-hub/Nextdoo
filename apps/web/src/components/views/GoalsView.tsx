@@ -1,4 +1,6 @@
 'use client';
+import { KnowledgeBacklinks } from '@/components/knowledge/shared';
+import { TaskAttachments } from '@/components/TaskAttachments';
 
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -158,6 +160,8 @@ export function GoalDetailView({ workspaceId, goalId }: { workspaceId: string; g
   return <div className="goals-view">
     <Link href="/goals">Back to goals</Link>{detail.parent && <> · <Link href={`/goals/${detail.parent.id}`}>Parent: {detail.parent.title}</Link></>}
     <p className="muted">{goal.identifier} · {goal.status.toLowerCase()}</p><h1>{goal.title}</h1>
+    <KnowledgeBacklinks kind="goal" id={goal.id} />
+    <TaskAttachments goalId={goal.id} disabled={goal.status==='ARCHIVED'} />
     <p>{goal.description}</p><p>{goal.category} · Priority: {goal.priority.toLowerCase()}</p>
     {goal.startAt && <p>Start: <time dateTime={goal.startAt}>{new Date(goal.startAt).toLocaleString()}</time></p>}
     {goal.dueAt && <p>Target: <time dateTime={goal.dueAt}>{new Date(goal.dueAt).toLocaleString()}</time></p>}

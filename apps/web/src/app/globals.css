@@ -299,3 +299,21 @@ th { color: var(--text-dim); font-weight: 550; font-size: 12px; text-transform: 
 .tracker-view summary { cursor: pointer; font-weight: 600; }
 .tracker-trend { max-height: 360px; overflow-y: auto; }
 .tracker-trend meter { width: min(180px, 35vw); }
+
+.knowledge-view { max-width: 1200px; min-width: 0; }
+.knowledge-view > *, .knowledge-view .card, .knowledge-view fieldset { min-width: 0; max-width: 100%; }
+.knowledge-view .card { margin-block: 16px; overflow-wrap: anywhere; }
+.knowledge-view .row { flex-wrap: wrap; gap: 10px; }
+.knowledge-view h1, .knowledge-view h2, .knowledge-view a { overflow-wrap: anywhere; }
+.knowledge-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,250px),1fr)); gap: 16px; }
+.knowledge-form { display: grid; gap: 14px; }
+.knowledge-form label { display: block; margin-block: 10px; }
+.knowledge-form input:not([type=checkbox]), .knowledge-form select, .knowledge-form textarea { display: block; width: 100%; min-width: 0; margin-top: 6px; }
+.knowledge-form input[type=checkbox] { width: auto; }
+.knowledge-view button { max-width: 100%; white-space: normal; }
+.knowledge-view details { margin: 20px 0; }
+.knowledge-view summary { cursor: pointer; font-weight: 600; }
+.knowledge-view dd { margin: 6px 0 18px; overflow-wrap: anywhere; }
+.knowledge-view dt { font-weight: 600; }
+.knowledge-view li { margin-block: 10px; }
+.knowledge-view input[type=checkbox] { width: auto; min-height: 0; display: inline-block; }

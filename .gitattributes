@@ -1,0 +1,3 @@
+# Applied SQL is checksum-verified. Preserve these new migration bytes on every OS.
+packages/db/migrations/0028_knowledge_data.sql -text
+packages/db/migrations/0029_knowledge_reference_types.sql -text

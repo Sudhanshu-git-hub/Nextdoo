@@ -1,0 +1,2 @@
+import { KnowledgeNoteView } from '@/components/knowledge/KnowledgeDetail';
+export default async function Page({params,searchParams}:{params:Promise<{id:string}>;searchParams:Promise<{recordId?:string;databaseId?:string}>}){const {id}=await params;const {recordId,databaseId}=await searchParams;return <KnowledgeNoteView key={`${id}-${recordId??databaseId??''}`} id={id} recordId={recordId} databaseId={databaseId}/>;}
