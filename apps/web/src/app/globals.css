@@ -325,3 +325,22 @@ th { color: var(--text-dim); font-weight: 550; font-size: 12px; text-transform: 
 .connected-layers input[type=checkbox] { width: auto; display: inline; }
 .cal-connected { margin: 6px 0; padding: 6px; border-left: 3px solid var(--accent); overflow-wrap: anywhere; }
 .cal-connected small { display: block; }
+.calendar-center { display:grid; grid-template-columns:250px minmax(0,1fr); gap:20px; }
+.calendar-content,.calendar-sources { min-width:0; }
+.calendar-sources { border-right:1px solid var(--border); padding-right:12px; }
+.calendar-source { padding:10px 0; overflow-wrap:anywhere; }
+.calendar-source label { display:flex; align-items:center; gap:8px; }
+.calendar-source form label { display:block; }
+.calendar-source small { display:block; }
+.calendar-source input[type=checkbox],.calendar-event-dialog input[type=checkbox] { width:auto; min-height:0; }
+.source-dot { width:12px; height:12px; border-radius:50%; flex-shrink:0; display:inline-block; }
+.calendar-actions { flex-wrap:wrap; gap:8px; }
+.calendar-event-dialog { width:min(560px,95vw); max-height:90vh; overflow:auto; border:1px solid var(--border); border-radius:12px; padding:20px; }
+.calendar-event-dialog::backdrop { background:#0005; }
+.calendar-year { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr)); gap:12px; }
+.calendar-year-month { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:2px; }
+.calendar-year-month button { min-width:0; padding:5px 1px; }
+.calendar-year-month small { display:block; }
+.event-resize { cursor:ew-resize; padding:4px; }
+.cal-native { flex-wrap:wrap; }
+@media(max-width:800px){.calendar-center { grid-template-columns:minmax(0,1fr); }.calendar-sources { border-right:0; border-bottom:1px solid var(--border); padding-bottom:16px; }.calendar-content .cal-month .cal-chip { display:block; }.calendar-content .cal-month .cal-title { white-space:normal; overflow-wrap:anywhere; padding:2px; font-size:11px; min-width:0; width:100%; }.calendar-content .cal-month .cal-time { font-size:10px; }.calendar-content .cal-month .cal-connected { padding:2px; font-size:10px; }.calendar-content .cal-month .cal-edit { padding:2px; font-size:10px; }}

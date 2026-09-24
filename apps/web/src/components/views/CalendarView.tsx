@@ -3,21 +3,13 @@ import { localParts, localDateKey, zonedTimeToUtc, workspaceWeek, workspaceMonth
 import { useWorkspace } from '@/components/WorkspaceContext';
 import { TaskEditor } from '@/components/TaskEditor';
 import { useConnectedCalendar,ConnectedCalendarItems } from '@/components/ConnectedCalendar';
+import type { CenterEvent } from '@nextdoo/contracts';
+import { useCalendarCenter,CalendarSourcePanel,CalendarEventDialog,CalendarEventChip,eventOnDay } from '@/components/CalendarCenter';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError, type Task } from '@/lib/api';
 
-type CalendarViewMode = 'day' | 'week' | 'month';
-
-interface ExternalEvent {
-  id: string;
-  title: string;
-  startsAt: string;
-  endsAt: string;
-  isAllDay: boolean;
-  busy: boolean;
-  source: string;
-}
+type CalendarViewMode = 'day' | 'week' | 'month' | 'year' | 'agenda';
 
 interface CalendarWindow {
   from: Date;
@@ -40,7 +32,7 @@ export function CalendarView({ workspaceId }: { workspaceId: string }) {
   const [view, setView] = useState<CalendarViewMode>('week');
   const [anchor, setAnchor] = useState(() => new Date());
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [externalEvents, setExternalEvents] = useState<ExternalEvent[]>([]);
+  const [eventDialog,setEventDialog]=useState<{event:CenterEvent|null}|null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,6 +44,12 @@ export function CalendarView({ workspaceId }: { workspaceId: string }) {
   const requestRef = useRef<AbortController | null>(null);
 
   const win: CalendarWindow = useMemo(() => {
+    if(view==='year'||view==='agenda'){
+      const p=localParts(anchor,timeZone),base=new Date(Date.UTC(p.year,view==='year'?0:p.month-1,view==='year'?1:p.day));
+      const count=view==='year'?(new Date(Date.UTC(p.year+1,0,1)).getTime()-base.getTime())/86400000:30;
+      const at=(i:number)=>{const d=new Date(base.getTime()+i*86400000);return zonedTimeToUtc(d.getUTCFullYear(),d.getUTCMonth()+1,d.getUTCDate(),0,0,timeZone);};
+      return {from:at(0),to:new Date(at(count).getTime()-1),days:Array.from({length:count},(_,i)=>at(i))};
+    }
     if (view === 'day') {
       const b = localDayBounds(anchor, timeZone);
       return { from: b.start, to: b.end, days: [b.start] };
@@ -64,6 +62,7 @@ export function CalendarView({ workspaceId }: { workspaceId: string }) {
     return { from: m.start, to: m.end, days: m.cells };
   }, [view, anchor, timeZone, weekStart]);
   const connected=useConnectedCalendar(win.from.toISOString(),win.to.toISOString());
+  const center=useCalendarCenter(win.from.toISOString(),win.to.toISOString(),timeZone);
 
   const load = useCallback(async () => {
     requestRef.current?.abort();
@@ -90,6 +89,7 @@ export function CalendarView({ workspaceId }: { workspaceId: string }) {
           { signal: controller.signal },
         );
         for (const task of response.data) collected.set(task.id, task);
+        if(controller.signal.aborted)return;
         setTasks([...collected.values()]);
         if (!response.pagination.has_more || !response.pagination.next_cursor) break;
         cursor = response.pagination.next_cursor;
@@ -105,29 +105,10 @@ export function CalendarView({ workspaceId }: { workspaceId: string }) {
     }
   }, [workspaceId, win.from, win.to]);
 
-  // Read-only provider events (PRD §16.3): shown as non-interactive context
-  // for the visible window. A missing calendar connection simply yields
-  // nothing; a failure must never break the task calendar.
-  const loadExternal = useCallback(async (signal: AbortSignal) => {
-    try {
-      const params = new URLSearchParams({ start: win.from.toISOString(), end: win.to.toISOString() });
-      const response = await api<{ events: ExternalEvent[] }>(`/calendar/events?${params.toString()}`, { signal });
-      setExternalEvents(response.events);
-    } catch {
-      setExternalEvents([]);
-    }
-  }, [win.from, win.to]);
-
   useEffect(() => {
     void load();
     return () => requestRef.current?.abort();
   }, [load]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    void loadExternal(controller.signal);
-    return () => controller.abort();
-  }, [loadExternal]);
 
   async function moveTo(task: Task, day: Date) {
     const date = localParts(day, timeZone), original = task.dueAt ? localParts(new Date(task.dueAt), timeZone) : null;
@@ -179,19 +160,6 @@ export function CalendarView({ workspaceId }: { workspaceId: string }) {
     return groups;
   }, [tasks, timeZone]);
 
-  const externalByDay = useMemo(() => {
-    const groups = new Map<string, ExternalEvent[]>();
-    for (const event of externalEvents) {
-      const key = localDateKey(new Date(event.startsAt), timeZone);
-      const list = groups.get(key);
-      if (list) list.push(event); else groups.set(key, [event]);
-    }
-    for (const list of groups.values()) {
-      list.sort((a, b) => a.startsAt.localeCompare(b.startsAt) || a.title.localeCompare(b.title));
-    }
-    return groups;
-  }, [externalEvents, timeZone]);
-
   const capacity = workdayMinutes(workspace.workdayStartMinute, workspace.workdayEndMinute);
   const overDay = (list: Task[]) => list.reduce((sum, t) => sum + (t.estimateMinutes ?? 0), 0) > capacity;
   const isToday = (day: Date) => localDateKey(day, timeZone) === localDateKey(new Date(), timeZone);
@@ -200,33 +168,37 @@ export function CalendarView({ workspaceId }: { workspaceId: string }) {
   function shift(dir: -1 | 1) {
     setAnchor((current) => {
       const p = localParts(current, timeZone);
+      if(view==='year')return zonedTimeToUtc(p.year+dir,1,1,0,0,timeZone);
+      if(view==='agenda'){const d=new Date(Date.UTC(p.year,p.month-1,p.day+dir*30));return zonedTimeToUtc(d.getUTCFullYear(),d.getUTCMonth()+1,d.getUTCDate(),0,0,timeZone);}
       if (view === 'month') {
         // Month arithmetic must not leak day-of-month (Jan 31 + 1 ≠ Mar 3).
-        return new Date(Date.UTC(p.year, p.month - 1 + dir, 1));
+        const d=new Date(Date.UTC(p.year,p.month-1+dir,1));return zonedTimeToUtc(d.getUTCFullYear(),d.getUTCMonth()+1,1,0,0,timeZone);
       }
       const date = new Date(Date.UTC(p.year, p.month - 1, p.day));
       if (view === 'day') date.setUTCDate(date.getUTCDate() + dir);
       else date.setUTCDate(date.getUTCDate() + dir * 7);
-      return date;
+      return zonedTimeToUtc(date.getUTCFullYear(),date.getUTCMonth()+1,date.getUTCDate(),0,0,timeZone);
     });
     setSelected(null);
   }
 
   const periodKey = (date: Date) => {
     const p = localParts(date, timeZone);
+    if(view==='year')return `y:${p.year}`;
+    if(view==='agenda')return `a:${localDateKey(date,timeZone)}`;
     if (view === 'day') return `d:${localDateKey(date, timeZone)}`;
     if (view === 'week') return `w:${localDateKey(workspaceWeek(date, timeZone, weekStart).days[0], timeZone)}`;
     return `m:${p.year}-${p.month}`;
   };
   const atCurrentPeriod = periodKey(anchor) === periodKey(new Date());
 
-  const subtitle = view === 'week'
+  const subtitle = view==='year'?String(localParts(anchor,timeZone).year):view==='agenda'?`${localDateKey(win.from,timeZone)} – ${localDateKey(win.to,timeZone)}`:view === 'week'
     ? `${win.days[0]!.toLocaleDateString(undefined, { timeZone, month: 'short', day: 'numeric' })} – ${win.days[6]!.toLocaleDateString(undefined, { timeZone, month: 'short', day: 'numeric' })}`
     : view === 'month'
-      ? new Date(Date.UTC(localParts(anchor, timeZone).year, localParts(anchor, timeZone).month - 1, 1)).toLocaleDateString(undefined, { timeZone, month: 'long', year: 'numeric' })
+      ? anchor.toLocaleDateString(undefined, { timeZone, month: 'long', year: 'numeric' })
       : win.days[0]!.toLocaleDateString(undefined, { timeZone, weekday: 'long', month: 'long', day: 'numeric' });
 
-  const navLabels = view === 'day'
+  const navLabels = view==='year'?{prev:'← Previous year',next:'Next year →',current:'This year'}:view==='agenda'?{prev:'← Previous 30 days',next:'Next 30 days →',current:'Today'}:view === 'day'
     ? { prev: '← Previous day', next: 'Next day →', current: 'Today' }
     : view === 'month'
       ? { prev: '← Previous month', next: 'Next month →', current: 'This month' }
@@ -237,7 +209,7 @@ export function CalendarView({ workspaceId }: { workspaceId: string }) {
   function chip(task: Task, compact: boolean) {
     const done = task.status === 'COMPLETED';
     return (
-      <div key={task.id} className={`cal-chip${done ? ' cal-done' : ''}`} draggable onDragStart={(e) => e.dataTransfer.setData('text/plain', task.id)}>
+      <div key={task.id} style={{borderLeft:`4px solid ${center.color('internal:task')}`}} className={`cal-chip${done ? ' cal-done' : ''}`} draggable onDragStart={(e) => e.dataTransfer.setData('text/plain', task.id)}>
         <button
           type="button"
           className="check"
@@ -275,9 +247,9 @@ export function CalendarView({ workspaceId }: { workspaceId: string }) {
         </div>
         <div className="row">
           <div className="row" role="group" aria-label="Calendar view">
-            {(['day', 'week', 'month'] as const).map((mode) => (
+            {(['day', 'week', 'month','year','agenda'] as const).map((mode) => (
               <button key={mode} aria-pressed={view === mode} onClick={() => { setView(mode); setSelected(null); }}>
-                {mode === 'day' ? 'Day' : mode === 'week' ? 'Week' : 'Month'}
+                {mode[0]!.toUpperCase()+mode.slice(1)}
               </button>
             ))}
           </div>
@@ -287,6 +259,7 @@ export function CalendarView({ workspaceId }: { workspaceId: string }) {
         </div>
       </div>
 
+      <div className="calendar-center"><CalendarSourcePanel center={center} timeZone={timeZone} onAddEvent={()=>setEventDialog({event:null})}/><div className="calendar-content">
       <p>Calendar time zone: {timeZone}</p>
       {connected.controls}
       <p>Configured workday: {workdayDescription(workspace.workdayStartMinute, workspace.workdayEndMinute)}</p>
@@ -308,14 +281,21 @@ export function CalendarView({ workspaceId }: { workspaceId: string }) {
         </div>
       )}
 
-      <div
+      {view==='year'?<div className="calendar-year">{Array.from({length:12},(_,month)=>{
+        const first=zonedTimeToUtc(localParts(anchor,timeZone).year,month+1,1,0,0,timeZone),grid=workspaceMonthGrid(first,timeZone,weekStart);
+        return <section className="card" key={month}><h2><button onClick={()=>{setAnchor(first);setView('month');}}>{first.toLocaleDateString(undefined,{timeZone,month:'long'})}</button></h2><div className="calendar-year-month">{grid.cells.map(day=>{const key=localDateKey(day,timeZone),p=localParts(day,timeZone);if(p.month!==month+1)return <span key={key}/>;const count=(center.visible('internal:task')?(byDay.get(key)?.length??0):0)+connected.items.filter(i=>i.day===key&&center.visible('internal:'+i.type)).length+center.events.filter(e=>eventOnDay(e,key,timeZone)).length;return <button key={key} aria-label={`${key}, ${count} items`} onClick={()=>{setAnchor(day);setView('day');}}>{p.day}{count>0&&<small> · {count}</small>}</button>;})}</div></section>;
+      })}</div>:<div
         className={view === 'month' ? 'grid cal-month' : 'grid'}
         style={{ gridTemplateColumns: `repeat(${view === 'month' ? 7 : 1}, minmax(0,1fr))` }}
         role="list"
       >
         {win.days.map((day) => {
           const today = isToday(day);
-          const dayTasks = byDay.get(localDateKey(day, timeZone)) ?? [];
+          const key=localDateKey(day,timeZone);
+          const dayTasks = center.visible('internal:task')?(byDay.get(key)??[]):[];
+          const dayEvents=center.events.filter(event=>eventOnDay(event,key,timeZone));
+          const dayConnected=connected.items.filter(item=>item.day===key&&center.visible('internal:'+item.type));
+          if(view==='agenda'&&!loading&&!center.loading&&!dayTasks.length&&!dayEvents.length&&!dayConnected.length)return null;
           const over = dayTasks.length > 0 && overDay(dayTasks);
           const inMonth = !monthBase || localParts(day, timeZone).month === monthBase.month;
           const cardStyle = {
@@ -332,6 +312,8 @@ export function CalendarView({ workspaceId }: { workspaceId: string }) {
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => {
                 e.preventDefault();
+                const eventId=e.dataTransfer.getData('application/x-nextdoo-event'),resizeId=e.dataTransfer.getData('application/x-nextdoo-resize');
+                if(eventId||resizeId){void center.move(eventId||resizeId,day,!!resizeId);return;}
                 const id = e.dataTransfer.getData('text/plain');
                 const task = tasks.find((t) => t.id === id);
                 if (task) void moveTo(task, day);
@@ -340,7 +322,7 @@ export function CalendarView({ workspaceId }: { workspaceId: string }) {
             >
               <div className="spread" style={{ marginBottom: view === 'month' ? 4 : 8 }}>
                 <div style={{ fontSize: view === 'month' ? 11 : 12, color: 'var(--text-dim)' }}>
-                  {view === 'month' ? '' : day.toLocaleDateString(undefined, { timeZone, weekday: 'short' })}
+                  {view === 'month' ? '' : day.toLocaleDateString(undefined, { timeZone, weekday: 'short',month:'short' })}
                 </div>
                 <div style={{ fontWeight: today ? 700 : 400, fontSize: view === 'month' ? 12 : 13, color: inMonth ? undefined : 'var(--text-faint)' }}>
                   {localParts(day, timeZone).day}
@@ -365,29 +347,19 @@ export function CalendarView({ workspaceId }: { workspaceId: string }) {
               {loading && <div className="skeleton" style={{ height: view === 'month' ? 22 : 30 }} />}
 
               {dayTasks.map((task) => chip(task, view === 'month'))}
-              <ConnectedCalendarItems items={connected.items.filter(item=>item.day===localDateKey(day,timeZone))}/>
+              <ConnectedCalendarItems items={dayConnected} color={type=>center.color('internal:'+type)}/>
+              {dayEvents.map(event=><CalendarEventChip key={event.id} timeZone={timeZone} event={event} color={center.color(event.sourceId)} onOpen={()=>setEventDialog({event})}/>)}
 
-              {(externalByDay.get(localDateKey(day, timeZone)) ?? []).map((event) => (
-                <div key={event.id} className="cal-chip cal-external" aria-label={`Calendar event: ${event.title}`}>
-                  <span className="cal-ext-tag">cal</span>
-                  <span className={`cal-title${view === 'month' ? ' cal-compact' : ''}`} title={event.title}>
-                    {event.title}
-                  </span>
-                  {!event.isAllDay && (
-                    <span className="cal-time">
-                      {new Date(event.startsAt).toLocaleTimeString(undefined, { timeZone, hour: 'numeric', minute: '2-digit' })}
-                    </span>
-                  )}
-                </div>
-              ))}
-
-              {!loading && !dayTasks.length && !(externalByDay.get(localDateKey(day, timeZone)) ?? []).length && !selected && (
+              {!loading && !dayTasks.length && !dayEvents.length && !dayConnected.length && !selected && (
                 <p className="muted" style={{ fontSize: 12 }}>—</p>
               )}
             </div>
           );
         })}
-      </div>
+      </div>}
+      {view==='agenda'&&!loading&&!center.loading&&!connected.loading&&!(center.visible('internal:task')&&tasks.length)&&!center.events.length&&!connected.items.some(item=>center.visible('internal:'+item.type))&&<p>No items in this agenda period.</p>}
+      </div></div>
+      {eventDialog&&<CalendarEventDialog key={eventDialog.event?.id??'new'} event={eventDialog.event} sources={center.sources} timeZone={timeZone} onClose={()=>setEventDialog(null)} onSaved={center.refresh}/>}
 
       {editing && <TaskEditor key={editing.id} task={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void load(); }} />}
       <div aria-live="polite" className="sr-only">{status}</div>

@@ -41,3 +41,7 @@ passing and zero dependency findings. See the bulk milestone for boundaries and
 rollout guidance. **Phase 1 remains incomplete**: the completion ledger explicitly
 tracks recurrence, offline/Windows, provider integrations and operational acceptance
 rather than treating core tasks as the whole MVP.
+
+## Calendar Center (PC5)
+
+Calendar now combines configurable internal sources, native calendars, existing Google mirrors and read-only ICS snapshots across Day, Week, Month, Year and Agenda. Source visibility and colors persist; native/import events also appear in Today. See [Calendar Center behavior, validation and provider boundaries](docs/CALENDAR_CENTER_MILESTONE.md). Google secondary-calendar discovery, ICS URL subscriptions and Outlook/Apple connections remain future work.

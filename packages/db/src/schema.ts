@@ -789,6 +789,16 @@ export const attachments = pgTable(
   ],
 );
 
+/** Calendar Center configuration; internal/provider sources are projections, not copied events. */
+export const calendarSources = pgTable('calendar_sources', {
+ id:uuid('id').primaryKey(), workspaceId:uuid('workspace_id').notNull().references(()=>workspaces.id,{onDelete:'cascade'}), userId:uuid('user_id').notNull().references(()=>users.id,{onDelete:'cascade'}),
+ sourceKey:varchar('source_key',{length:700}).notNull(),kind:varchar('kind',{length:20}).notNull(),name:varchar('name',{length:120}).notNull(),color:varchar('color',{length:7}).notNull(),visible:boolean('visible').notNull().default(true),archived:boolean('archived').notNull().default(false),timeZone:varchar('time_zone',{length:64}).notNull(),
+ importHash:varchar('import_hash',{length:64}),importFrom:date('import_from'),importThrough:date('import_through'),lastImportedAt:timestamp('last_imported_at',{withTimezone:true}),version:integer('version').notNull().default(1),...timestamps,
+},t=>[unique('calendar_sources_owner_key_unique').on(t.userId,t.workspaceId,t.sourceKey),unique('calendar_sources_id_workspace_unique').on(t.id,t.workspaceId)]);
+export const calendarNativeEvents = pgTable('calendar_native_events', {
+ id:uuid('id').primaryKey(),workspaceId:uuid('workspace_id').notNull().references(()=>workspaces.id,{onDelete:'cascade'}),sourceId:uuid('source_id').notNull(),importUid:varchar('import_uid',{length:600}),title:varchar('title',{length:500}).notNull(),description:text('description').notNull().default(''),location:varchar('location',{length:1000}).notNull().default(''),startsAt:timestamp('starts_at',{withTimezone:true}).notNull(),endsAt:timestamp('ends_at',{withTimezone:true}).notNull(),timeZone:varchar('time_zone',{length:64}).notNull(),isAllDay:boolean('is_all_day').notNull().default(false),startDay:date('start_day'),endDay:date('end_day'),deletedAt:timestamp('deleted_at',{withTimezone:true}),version:integer('version').notNull().default(1),...timestamps,
+},t=>[foreignKey({columns:[t.sourceId,t.workspaceId],foreignColumns:[calendarSources.id,calendarSources.workspaceId]}).onDelete('cascade'),unique('calendar_native_events_import_unique').on(t.sourceId,t.importUid),index('calendar_native_events_window_idx').on(t.workspaceId,t.startsAt)]);
+
 export const calendarConnections = pgTable(
   'calendar_connections',
   {

@@ -13,7 +13,9 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@nextdoo/contracts": "workspace:*"
+    "@nextdoo/contracts": "workspace:*",
+    "@nextdoo/core": "workspace:^",
+    "ical.js": "2.2.1"
   },
   "devDependencies": {
     "@types/node": "22.20.1",

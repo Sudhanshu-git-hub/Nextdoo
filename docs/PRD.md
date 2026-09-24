@@ -1999,6 +1999,7 @@ The following milestone descriptions record prior execution-loop work and remain
 | AD-06 | Transactional outbox for events | Guarantees event and state consistency |
 | AD-07 | PostgreSQL-backed durable jobs in the current implementation | Leases, retries and transactional consistency; reconsider queue infrastructure only against measured requirements |
 | AD-08 | Billing provider with webhook-driven entitlements | Never rebuild billing; integrity from server-verified events |
+| AD-09 | PC5 Calendar Source preferences overlay internal projections and existing Google mirrors; native/ICS events have their own owned source | Preserve source identity and existing execution/provider authority; hiding calendars never deletes original data |
 
 ### 22.2 Product Decisions
 
@@ -2110,3 +2111,15 @@ Mobile framework · dedicated search engine choice · multi-region residency arc
 | Reviewers | Engineering, Security, SRE, Design |
 | Review cadence | Per milestone |
 | Change process | Pull request against `docs/PRD.md` with a decision-register update |
+
+## PC5 acceptance boundary — Calendar Center
+
+**IMPLEMENTED:** Calendar Source sidebar with persisted per-source visibility, names, colors, capability and status. Tasks, Goal/Milestone deadlines, Tracker activity and Knowledge dates navigate/edit through existing domain workflows. Native calendars support one-off event creation, details, edits, source changes, rescheduling, end-time resizing and deletion. Day, Week, Month, Year and 30-day Agenda share the same date projections. Today uses the same visible native, imported and active Google event projection. Calendar visibility does not change capacity calculations or hide Today’s separate task/goal sections.
+
+**IMPLEMENTED:** Authenticated ICS file snapshots with owned source identity, deduplicated UID-based re-import, archive/restore and private ICS downloads. Imports are capped at 1 MB, 2000 occurrences and a three-year window; calendar event storage is capped at 10,000 per workspace. Daily, weekly weekday and plain monthly/yearly recurrence, exclusions and individual exceptions are expanded within the selected window; unsupported complex patterns are rejected. All-day dates use exclusive end dates. Mutations enforce ownership, optimistic versions and idempotency; account export and deletion include calendar sources/events.
+
+**PARTIAL:** Google source controls expose primary plus distinct calendar IDs already present in existing mirrors. The existing provider still syncs only primary; this milestone does not add secondary-calendar discovery/checkpoints. Mirrored events are read-only in the event dialog; linked Tasks use existing two-way task export/edit and conflict resolution. Native recurrence/reminders remain Task capabilities. Year is a navigable overview; native event resizing is available through end-date editing or a day drag handle, not an hourly time grid.
+
+**EXTERNAL/PROVIDER DEPENDENT:** Real Google authorization, token refresh, webhook/sync and live acceptance require deployed credentials and provider configuration. Deterministic provider fixtures and stored-mirror browser tests are not live-provider acceptance.
+
+**FUTURE:** Outlook/Apple connections, Google secondary-calendar discovery/sync, hardened ICS URL fetching and refresh subscriptions, public subscription feeds, native recurring events/reminders and hourly-grid resizing. No PC6 work is included. See [Calendar Center milestone](CALENDAR_CENTER_MILESTONE.md) for implementation and validation evidence.

@@ -1,0 +1,46 @@
+CREATE TABLE calendar_sources (
+ id uuid PRIMARY KEY,
+ workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+ user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ source_key varchar(700) NOT NULL,
+ kind varchar(20) NOT NULL CHECK (kind IN ('INTERNAL','NATIVE','ICS','GOOGLE')),
+ name varchar(120) NOT NULL,
+ color varchar(7) NOT NULL CHECK (color ~ '^#[0-9a-fA-F]{6}$'),
+ visible boolean NOT NULL DEFAULT true,
+ archived boolean NOT NULL DEFAULT false,
+ time_zone varchar(64) NOT NULL,
+ import_hash varchar(64),
+ import_from date,
+ import_through date,
+ last_imported_at timestamptz,
+ version integer NOT NULL DEFAULT 1 CHECK(version>0),
+ created_at timestamptz NOT NULL DEFAULT now(),
+ updated_at timestamptz NOT NULL DEFAULT now(),
+ UNIQUE(user_id,workspace_id,source_key),
+ UNIQUE(id,workspace_id)
+);
+CREATE INDEX calendar_sources_owner_idx ON calendar_sources(user_id,workspace_id);
+CREATE TABLE calendar_native_events (
+ id uuid PRIMARY KEY,
+ workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+ source_id uuid NOT NULL,
+ import_uid varchar(600),
+ title varchar(500) NOT NULL,
+ description text NOT NULL DEFAULT '',
+ location varchar(1000) NOT NULL DEFAULT '',
+ starts_at timestamptz NOT NULL,
+ ends_at timestamptz NOT NULL,
+ time_zone varchar(64) NOT NULL,
+ is_all_day boolean NOT NULL DEFAULT false,
+ start_day date,
+ end_day date,
+ deleted_at timestamptz,
+ version integer NOT NULL DEFAULT 1 CHECK(version>0),
+ created_at timestamptz NOT NULL DEFAULT now(),
+ updated_at timestamptz NOT NULL DEFAULT now(),
+ FOREIGN KEY(source_id,workspace_id) REFERENCES calendar_sources(id,workspace_id) ON DELETE CASCADE,
+ UNIQUE(source_id,import_uid),
+ CHECK(ends_at>starts_at),
+ CHECK((is_all_day AND start_day IS NOT NULL AND end_day>start_day) OR (NOT is_all_day AND start_day IS NULL AND end_day IS NULL))
+);
+CREATE INDEX calendar_native_events_window_idx ON calendar_native_events(workspace_id,starts_at);

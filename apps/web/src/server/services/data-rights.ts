@@ -2,6 +2,7 @@ import { logger } from '../observability';
 import { and, desc, eq, gte, inArray, isNotNull, isNull, like, lte, or } from 'drizzle-orm';
 import { AppError } from '@nextdoo/contracts';
 import {
+  calendarSources,calendarNativeEvents,
   knowledgeDatabases, knowledgeProperties, knowledgeRecords, knowledgeValues, knowledgeNotes, knowledgeNoteTags, knowledgeRelations, knowledgeFiles,
   purgeAccount,
   goals, milestones, goalTasks, milestoneTasks,
@@ -38,6 +39,8 @@ import { absoluteUrl, sendMail } from '../mailer';
 const DELETION_GRACE_DAYS = 30;
 
 export interface ExportBundle {
+  calendarSources:unknown[];
+  calendarNativeEvents:unknown[];
   knowledgeDatabases: unknown[];
   knowledgeProperties: unknown[];
   knowledgeRecords: unknown[];
@@ -130,6 +133,8 @@ export async function buildExport(userId: string): Promise<ExportBundle> {
   ]);
 
   const taskIds = taskRows.map((t) => t.id);
+  const calendarSourceRows=await db.select().from(calendarSources).where(and(eq(calendarSources.userId,userId),inArray(calendarSources.workspaceId,workspaceIds)));
+  const calendarEventRows=calendarSourceRows.length?await db.select().from(calendarNativeEvents).where(inArray(calendarNativeEvents.sourceId,calendarSourceRows.map(s=>s.id))):[];
   const knowledgeRows = await Promise.all([knowledgeDatabases, knowledgeProperties, knowledgeRecords, knowledgeValues, knowledgeNotes, knowledgeNoteTags, knowledgeRelations, knowledgeFiles].map(table => db.select().from(table).where(inArray(table.workspaceId, workspaceIds))));
   const [goalRows, milestoneRows, goalLinkRows, milestoneLinkRows, trackerRows, trackerEntryRows, trackerLinkRows, trackerSourceRows, trackerReportRows] = await Promise.all([
     db.select().from(goals).where(inArray(goals.workspaceId, workspaceIds)),
@@ -168,6 +173,7 @@ export async function buildExport(userId: string): Promise<ExportBundle> {
 
   return {
     formatVersion: 1 as const,
+    calendarSources:calendarSourceRows,calendarNativeEvents:calendarEventRows,
     knowledgeDatabases: knowledgeRows[0]!, knowledgeProperties: knowledgeRows[1]!, knowledgeRecords: knowledgeRows[2]!, knowledgeValues: knowledgeRows[3]!, knowledgeNotes: knowledgeRows[4]!, knowledgeNoteTags: knowledgeRows[5]!, knowledgeRelations: knowledgeRows[6]!, knowledgeFiles: knowledgeRows[7]!,
     exportedAt: new Date().toISOString(),
     account,
