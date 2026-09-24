@@ -357,6 +357,7 @@ export function SettingsView({
                   Hide overload warnings
                 </label>
               </div>
+              {(['disableStreaks','disableComparativeMetrics'] as const).map(key=><div className="field" key={key}><label><input type="checkbox" checked={prefs[key]} disabled={prefsBusy} onChange={e=>void setPreference(key,e.target.checked)} style={{width:'auto',minHeight:'auto',marginRight:8}} />{key==='disableStreaks'?'Hide tracker streaks':'Hide period comparisons'}</label></div>)}
               {prefsError && (
                 <p role="alert">{prefsError}</p>
               )}

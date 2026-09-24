@@ -193,7 +193,7 @@ export async function linkMilestoneTask(actor: GoalActor, id: string, input: Goa
 
 /** Each task counts once across the subtree; empty milestones use manual completion.
  * Manual goal completion never fabricates measured progress. */
-async function progressFor(db: Database, workspaceId: string, ids: string[]): Promise<Map<string, GoalProgress>> {
+export async function progressFor(db: Database, workspaceId: string, ids: string[]): Promise<Map<string, GoalProgress>> {
   if (!ids.length) return new Map();
   const roots = sql.join(ids.map((id) => sql`${id}::uuid`), sql`, `);
   const rows = await db.execute(sql`WITH RECURSIVE tree(root, id, path) AS (

@@ -7,6 +7,7 @@ import { logger } from '../observability';
 import { recordUnmeasuredResult } from '../metrics';
 import { withWorkspaceTransaction } from './transactions';
 import { AppError, type DayPoint, type RecurrenceAdherence, type RescheduledTask, type TagVariance } from '@nextdoo/contracts';
+import { analyticsTaskExcluded } from './analytics-scope';
 export { CALCULATION_VERSION, type StoredResult } from '@nextdoo/db';
 export function buildScoringInput(workspaceId: string, taskId: string) { return buildInput(getDb(), workspaceId, taskId); }
 export function evaluateTask(workspaceId: string, taskId: string, options: { recalculated?: boolean } = {}) {
@@ -129,12 +130,7 @@ async function readSummary(
 
   // PRD §7.7: a task's latest EXCLUDED_FROM_ANALYTICS correction removes it
   // from analytics (this summary), never from the task itself or its results.
-  const excludedFromAnalytics = sql`exists (
-    select 1 from tracking_corrections tc
-    where tc.task_id=${tasks.id} and tc.workspace_id=${workspaceId} and tc.kind='EXCLUDED_FROM_ANALYTICS' and tc.payload->>'state'='SET'
-      and not exists (select 1 from tracking_corrections tc2
-        where tc2.task_id=tc.task_id and tc2.workspace_id=tc.workspace_id and tc2.kind=tc.kind
-          and (tc2.created_at,tc2.id)>(tc.created_at,tc.id)))`;
+  const excludedFromAnalytics = analyticsTaskExcluded(workspaceId,tasks.id);
   const planned = await db
     .select()
     .from(tasks)
@@ -203,12 +199,7 @@ async function readSummary(
   // Focus trend (PRD §7.8): all tracked focus time starting inside the window,
   // bucketed by the local day it started on. Excluded tasks stay hidden here
   // too, so the focus figures pair with the same cohort as every other number.
-  const excludedSession = sql`exists (
-    select 1 from tracking_corrections tc
-    where tc.task_id=${timerSessions.taskId} and tc.workspace_id=${workspaceId} and tc.kind='EXCLUDED_FROM_ANALYTICS' and tc.payload->>'state'='SET'
-      and not exists (select 1 from tracking_corrections tc2
-        where tc2.task_id=tc.task_id and tc2.workspace_id=tc.workspace_id and tc2.kind=tc.kind
-          and (tc2.created_at,tc2.id)>(tc.created_at,tc.id)))`;
+  const excludedSession = analyticsTaskExcluded(workspaceId,timerSessions.taskId);
   const focusRows = await db
     .select({
       startedAt: timerSessions.startedAt,

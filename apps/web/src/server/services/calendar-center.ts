@@ -88,10 +88,11 @@ export async function deleteNativeEvent(actor:GoalActor,id:string,version:number
     const [row]=await db.update(events).set({deletedAt:new Date(),version:current.version+1,updatedAt:new Date()}).where(eq(events.id,id)).returning();await change(db,actor,'calendar_native_event',row!,'deleted');return {ok:true};});
 }
 
-export async function listCenterEvents(actor:GoalActor,data:unknown,includeHidden=false){
+/** Shared source/visibility/date projection; aggregate consumers never expose provider payloads. */
+export async function calendarCenterProjection(actor:GoalActor,data:unknown,includeHidden=false){
   const q=calendarCenterRange.parse(data),workspace=await loadWorkspaceSettings(actor.workspaceId,actor.workspaceId);
   const from=localDateKey(new Date(q.start),workspace.timeZone),through=localDateKey(new Date(q.end),workspace.timeZone);
-  const rows=await getDb().execute<CenterEvent&Record<string,unknown>>(sql`select * from (
+  return sql`select * from (
     select e.id,e.source_id::text "sourceId",e.title,e.description,e.location,e.starts_at "startsAt",e.ends_at "endsAt",e.time_zone "timeZone",e.is_all_day "isAllDay",e.start_day::text "startDay",e.end_day::text "endDay",e.version,s.kind,null::uuid "taskId"
     from calendar_native_events e join calendar_sources s on s.id=e.source_id and s.workspace_id=e.workspace_id
     where s.workspace_id=${actor.workspaceId} and s.user_id=${actor.userId} and not s.archived and (${includeHidden} or s.visible) and e.deleted_at is null
@@ -100,7 +101,11 @@ export async function listCenterEvents(actor:GoalActor,data:unknown,includeHidde
     from calendar_events e join calendar_connections c on c.id=e.connection_id left join calendar_mappings m on m.connection_id=e.connection_id and m.external_id=e.external_id left join calendar_sources s on s.user_id=c.user_id and s.workspace_id=e.workspace_id and s.source_key='google:'||c.id::text||':'||coalesce(e.calendar_id,'primary')
     where e.workspace_id=${actor.workspaceId} and c.workspace_id=${actor.workspaceId} and c.user_id=${actor.userId} and c.status='ACTIVE' and (${includeHidden} or coalesce(s.visible,true))
     and ((not e.is_all_day and e.starts_at<=${q.end}::timestamptz and e.ends_at>${q.start}::timestamptz) or (e.is_all_day and (e.starts_at at time zone 'UTC')::date<=${through}::date and (e.ends_at at time zone 'UTC')::date>${from}::date))
-  ) items order by "startsAt",id limit ${q.limit+1} offset ${q.offset}`);
+  ) items`;
+}
+export async function listCenterEvents(actor:GoalActor,data:unknown,includeHidden=false){
+  const q=calendarCenterRange.parse(data),projection=await calendarCenterProjection(actor,q,includeHidden);
+  const rows=await getDb().execute<CenterEvent&Record<string,unknown>>(sql`${projection} order by "startsAt",id limit ${q.limit+1} offset ${q.offset}`);
   return {data:serialise(rows.slice(0,q.limit)),nextOffset:rows.length>q.limit?q.offset+q.limit:null};
 }
 

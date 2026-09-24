@@ -17,6 +17,7 @@ const LINKS = [
   { href: '/notifications', label: 'Notifications', icon: '♧' },
   { href: '/conflicts', label: 'Sync conflicts', icon: '⇄' },
   { href: '/focus', label: 'Focus', icon: '◐' },
+  { href: '/insights', label: 'Insights', icon: '▥' },
   { href: '/analytics', label: 'Analytics', icon: '◲' },
   { href: '/settings', label: 'Settings', icon: '⚙' },
 ];

@@ -56,6 +56,13 @@ export function trackerSourceValues(definition: TrackerDefinition, sources: Trac
   return result;
 }
 export interface ScoredTrackerDay { day: string; stars: number | null; statusName: string | null; sourceCount?: number; }
+/** Recording streaks, never a score threshold; restricted to the requested date range. */
+export function personalTrackerStreaks(from:string,to:string,rows:ScoredTrackerDay[]){
+  const days=[...new Set(rows.filter(r=>r.day>=from&&r.day<=to).map(r=>r.day))].sort();
+  let longest=0,run=0,last:string|undefined;
+  for(const day of days){run=last&&Date.parse(day)-Date.parse(last)===86400000?run+1:1;longest=Math.max(longest,run);last=day;}
+  return {longest,current:last===to?run:0};
+}
 /** One persisted row per actual tracked day. No missing-day rows are fabricated. */
 export function personalTrackerReport(startDate: string, from: string, to: string, rows: ScoredTrackerDay[]) {
   [startDate, from, to].forEach((day) => trackerDaySchema.parse(day));

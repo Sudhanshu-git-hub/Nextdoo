@@ -13,3 +13,4 @@ export * from './trackers';
 export * from './knowledge';
 export * from './connected';
 export * from './calendar-center';
+export * from './insights';
