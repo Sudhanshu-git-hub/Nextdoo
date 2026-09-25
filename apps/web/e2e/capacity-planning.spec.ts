@@ -193,7 +193,7 @@ test('settings show plan-aware connection usage at the FREE boundary', async ({ 
   const { id: userId, workspaceId } = await register(page);
   await seedConnection(userId, workspaceId);
 
-  await page.goto('/settings');
+  await page.goto('/settings?section=all');
   await expect(page.getByText('Calendar connections')).toBeVisible();
   await expect(page.getByText('1 of 1')).toBeVisible();
   // A second user without connections sees the empty usage.
@@ -205,7 +205,7 @@ test('settings show plan-aware connection usage at the FREE boundary', async ({ 
     });
     expect(reg.status()).toBe(200);
     const p = await empty.newPage();
-    await p.goto('/settings');
+    await p.goto('/settings?section=all');
     await p.getByText('Calendar connections').waitFor();
     expect(await p.getByText('0 of 1').count()).toBe(1);
   } finally {

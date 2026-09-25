@@ -105,7 +105,7 @@ test('the free plan quota blocks a second export the same day through the API', 
 
 test('the settings screen shows the server-configured plan and live usage', async ({ page }) => {
   await fixture(page);
-  await page.goto('/settings');
+  await page.goto('/settings?section=all');
   await expect(page.getByRole('row', { name: 'Plan' })).toContainText('FREE');
   await expect(page.getByText('1 of 200')).toBeVisible();
   await expect(page.getByText('0 of 3')).toBeVisible();

@@ -5,6 +5,6 @@ import { AuthForm } from '@/components/AuthForm';
 export const dynamic = 'force-dynamic';
 
 export default async function LoginPage() {
-  if (await getAuth()) redirect('/today');
+  if (await getAuth()) redirect('/');
   return <AuthForm mode="login" />;
 }

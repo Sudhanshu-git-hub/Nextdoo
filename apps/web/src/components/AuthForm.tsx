@@ -45,7 +45,7 @@ export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
         // than letting a scheduled deletion vanish silently.
         router.push('/settings?deletion=cancelled');
       } else {
-        router.push('/today');
+        router.push('/');
       }
       router.refresh();
     } catch (caught) {

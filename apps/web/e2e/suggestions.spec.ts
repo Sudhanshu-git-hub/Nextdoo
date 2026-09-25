@@ -190,7 +190,7 @@ test('today view shows the overload suggestion; the §7.9 toggle turns it into a
   await expect(banner).toContainText('no tasks are moved');
 
   // §7.9 toggle in settings.
-  await p.goto('/settings');
+  await p.goto('/settings?section=all');
   await p.getByLabel('Hide overload warnings').check();
   for (let i = 0; i < 40; i++) {
     const prefs = (await (await p.request.get('/api/v1/preferences')).json()) as { disableOverloadWarnings?: boolean };

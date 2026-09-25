@@ -365,3 +365,32 @@ th { color: var(--text-dim); font-weight: 550; font-size: 12px; text-transform: 
 .insights-view li,.insights-view a { overflow-wrap: anywhere; }
 @media(max-width:600px) { .insights-filters { flex-direction: column; align-items: stretch; } .insights-kpis { grid-template-columns: repeat(2,minmax(0,1fr)); } }
 @media print { .app:has(.insights-view) { display: block; } .sidebar,.insights-controls { display: none !important; } .insights-table { max-height: none; overflow: visible; } .insights-view { color: #000; background: #fff; } .insights-view .card { box-shadow: none; background: #fff; } .insights-view a,.insights-view .muted { color: #333; } .insights-view details { display: block; } .insights-view th { break-after: avoid; } .insights-kpis > div { break-inside: avoid; } }
+/* PC7: server-rendered account appearance; no local-storage theme leakage. */
+.personalized { min-height:100vh; color:var(--text); background:var(--bg); --accent-purple:#c4b5fd; --accent-green:#6ee7b7; --contrast-text:#eee; --contrast-border:#aaa; }
+@media(prefers-color-scheme:light) { .personalized { --accent-purple:#6d28d9; --accent-green:#166534; --contrast-text:#242424; --contrast-border:#444; } }
+.personalized[data-theme="light"] { color-scheme:light; --bg:#f7f8fa; --bg-elev:#fff; --bg-elev-2:#f0f2f6; --border:#dde1e8; --border-strong:#c3cad6; --text:#131720; --text-dim:#4d5666; --text-faint:#6b7484; --accent:#1a5fd0; --accent-strong:#1348a8; --ok:#1a7f4b; --warn:#9a6700; --warn-text:#8a5a00; --danger:#c62f36; --shadow:0 4px 16px rgba(16,24,40,.08); --accent-purple:#6d28d9; --accent-green:#166534; --contrast-text:#242424; --contrast-border:#444; }
+.personalized[data-theme="dark"] { color-scheme:dark; --bg:#0f1115; --bg-elev:#171a21; --bg-elev-2:#1f232c; --border:#2b303b; --border-strong:#3d4553; --text:#eef1f6; --text-dim:#a8b0be; --text-faint:#7b8494; --accent:#6aa6ff; --accent-strong:#4b8dfd; --ok:#57c98b; --warn:#f0b849; --warn-text:#f0b849; --danger:#f2777a; --shadow:0 6px 24px rgba(0,0,0,.35); --accent-purple:#c4b5fd; --accent-green:#6ee7b7; --contrast-text:#eee; --contrast-border:#aaa; }
+.personalized[data-accent="purple"] { --accent:var(--accent-purple); --accent-strong:var(--accent-purple); }
+.personalized[data-accent="green"] { --accent:var(--accent-green); --accent-strong:var(--accent-green); }
+.personalized[data-contrast="high"] { --border:var(--contrast-border); --border-strong:var(--contrast-border); --text-dim:var(--contrast-text); --text-faint:var(--contrast-text); }
+.personalized[data-motion="reduced"] * { animation:none !important; transition:none !important; }
+.personalized[data-ui-size="large"] { font-size:18px; }
+.personalized[data-ui-size="large"] input,.personalized[data-ui-size="large"] select,.personalized[data-ui-size="large"] button { font-size:16px; }
+.personalized[data-density="compact"] .card { padding:12px; }
+.personalized[data-density="compact"] .task-row { padding-top:6px; padding-bottom:6px; }
+.personalized[data-density="compact"] .nav-link { padding-top:5px; padding-bottom:5px; min-height:32px; }
+@media(min-width:901px) { .personalized[data-sidebar="compact"] .app { grid-template-columns:90px minmax(0,1fr); } .personalized[data-sidebar="compact"] .nav-label,.personalized[data-sidebar="compact"] .sidebar>.muted { position:absolute; width:1px; height:1px; clip-path:inset(50%); overflow:hidden; } .personalized[data-sidebar="compact"] .brand { font-size:10px; padding-left:0; } .personalized[data-sidebar="compact"] .nav-link { justify-content:center; } }
+.settings-nav { display:flex; gap:8px; flex-wrap:wrap; margin:16px 0 24px; }
+.settings-ready { border:0; padding:0; margin:0; min-width:0; }
+.settings-nav button[aria-pressed="true"] { border:2px solid var(--accent); font-weight:700; }
+.settings-panels,.settings-group { display:grid; grid-template-columns:minmax(0,1fr); gap:18px; min-width:0; }
+.settings-group[hidden] { display:none !important; }
+.settings-panels .card { min-width:0; }
+.settings-panels table { width:100%; table-layout:fixed; }
+.settings-panels td,.settings-panels p,.settings-panels a { overflow-wrap:anywhere; }
+.settings-panels input,.settings-panels select { max-width:100%; }
+.personalized { --on-accent:#0f1115; --focus:0 0 0 2px var(--bg),0 0 0 4px var(--accent); }
+@media(prefers-color-scheme:light) { .personalized { --on-accent:#fff; } }
+.personalized[data-theme="light"] { --on-accent:#fff; }
+.personalized[data-theme="dark"] { --on-accent:#0f1115; }
+.personalized .btn-primary { background:var(--accent); color:var(--on-accent); }

@@ -44,7 +44,7 @@ test('settings lists both devices; revoking one signs it out immediately (measur
   const pageB = await ctxB.newPage();
   try {
     await secondDevice(pageB, email);
-    await pageB.goto('/settings');
+    await pageB.goto('/settings?section=all');
     const cardB = pageB.getByTestId('sessions-card');
     await expect(cardB.getByText('This device')).toHaveCount(1);
     await expect(cardB.locator('li')).toHaveCount(2);
@@ -80,7 +80,7 @@ test('revoking the current session signs that client out at once', async ({ page
   const pageB = await ctxB.newPage();
   try {
     await secondDevice(pageB, email);
-    await pageB.goto('/settings');
+    await pageB.goto('/settings?section=all');
     const cardB = pageB.getByTestId('sessions-card');
     await expect(cardB.getByText('This device')).toHaveCount(1);
     await expect(cardB.locator('li')).toHaveCount(2);
@@ -101,7 +101,7 @@ test('sign out everywhere revokes ALL sessions, including the caller’s (measur
   const pageB = await ctxB.newPage();
   try {
     await secondDevice(pageB, email);
-    await pageB.goto('/settings');
+    await pageB.goto('/settings?section=all');
     const cardB = pageB.getByTestId('sessions-card');
     await expect(cardB.locator('li')).toHaveCount(2);
 
@@ -124,7 +124,7 @@ test('sign out everywhere revokes ALL sessions, including the caller’s (measur
 
 test('profile editing saves name and time zone, persists, and rejects invalid values', async ({ page }) => {
   await fixture(page);
-  await page.goto('/settings');
+  await page.goto('/settings?section=all');
   const form = page.getByRole('form', { name: 'Profile' });
 
   await form.getByLabel('Display name', { exact: true }).fill('Session E2E');
@@ -198,7 +198,7 @@ test('sessions area is accessible (axe) and works from the keyboard', async ({ p
   const pageB = await ctxB.newPage();
   try {
     await secondDevice(pageB, email);
-    await pageB.goto('/settings');
+    await pageB.goto('/settings?section=all');
     const card = pageB.getByTestId('sessions-card');
 
     const { default: AxeBuilder } = await import('@axe-core/playwright');

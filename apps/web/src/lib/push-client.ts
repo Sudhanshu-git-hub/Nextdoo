@@ -97,6 +97,7 @@ export async function unsubscribeFromPush(): Promise<boolean> {
 export async function fetchPushStatus(): Promise<{
   configured: boolean;
   total: number;
+  endpoints: string[];
   permission: NotificationPermission | 'unsupported';
 }> {
   const support = pushSupport();
@@ -109,13 +110,15 @@ export async function fetchPushStatus(): Promise<{
     configured = false;
   }
   let total = 0;
+  let endpoints:string[]=[];
   if (configured) {
     try {
       const body = await api<{ data: Array<{ endpoint: string }> }>('/push/subscriptions');
       total = body.data.length;
+      endpoints=body.data.map(row=>row.endpoint);
     } catch {
       total = 0;
     }
   }
-  return { configured, total, permission };
+  return { configured, total, endpoints, permission };
 }

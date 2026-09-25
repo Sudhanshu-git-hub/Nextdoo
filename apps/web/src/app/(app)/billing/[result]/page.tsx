@@ -1,0 +1,3 @@
+import Link from 'next/link';
+import { notFound } from 'next/navigation';
+export default async function BillingReturn({params}:{params:Promise<{result:string}>}){const {result}=await params;if(!['success','cancel'].includes(result))notFound();return <section className="card"><h1>{result==='cancel'?'Checkout cancelled':'Checkout returned'}</h1><p>{result==='cancel'?'No payment is assumed from this return.':'Your plan changes only after the payment provider confirms it. Returning here is not proof of payment.'}</p><Link href="/settings?section=billing">Check current plan and billing status</Link></section>;}

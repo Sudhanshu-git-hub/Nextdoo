@@ -78,7 +78,7 @@ test('schedule with typed confirmation, then sign in again to restore the accoun
   });
   expect(login.status()).toBe(200);
 
-  await page.goto('/settings');
+  await page.goto('/settings?section=all');
   const section = page.locator('section.card', { has: page.getByRole('heading', { name: 'Delete account' }) });
   await expect(section).toBeVisible();
 

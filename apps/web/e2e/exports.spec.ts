@@ -56,7 +56,7 @@ test('a requested export is generated, listed, downloadable and accessible', asy
   expect(ttlHours).toBeGreaterThan(23);
   expect(ttlHours).toBeLessThanOrEqual(24);
 
-  await page.goto('/settings');
+  await page.goto('/settings?section=all');
   const panel = page.getByRole('region', { name: /data export/i }).first();
   await expect(panel).toBeVisible();
   const row = page.locator('[data-export-status="READY"]');
@@ -148,7 +148,7 @@ test('expired exports lose their file and return 410 in API and UI', async ({ pa
   expect(dl.status()).toBe(410);
   expect((await dl.json()).code).toBe('EXPORT_EXPIRED');
 
-  await page.goto('/settings');
+  await page.goto('/settings?section=all');
   await expect(page.locator('[data-export-status="EXPIRED"]')).toHaveCount(1, { timeout: 20_000 });
   await expect(page.getByRole('cell', { name: /expired/i })).toBeVisible();
 });

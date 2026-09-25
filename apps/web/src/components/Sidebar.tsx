@@ -34,10 +34,12 @@ export function Sidebar() {
           key={link.href}
           href={link.href}
           className="nav-link"
+          aria-label={link.label}
+          title={link.label}
           aria-current={pathname === link.href ? 'page' : undefined}
         >
           <span className="nav-icon" aria-hidden="true">{link.icon}</span>
-          {link.label}
+          <span className="nav-label">{link.label}</span>
         </Link>
       ))}
     </nav>

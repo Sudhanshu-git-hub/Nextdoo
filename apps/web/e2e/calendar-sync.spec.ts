@@ -64,7 +64,7 @@ async function createTask(page: Page, workspaceId: string, title: string, dueAt:
 test('settings: mode is chosen before authorization; unconfigured deployment degrades honestly', async ({ page }) => {
   const { workspaceId } = await fixture(page);
   void workspaceId;
-  await page.goto('/settings');
+  await page.goto('/settings?section=all');
   const card = page.getByTestId('calendar-card');
   await expect(card).toBeVisible();
   // PRD §16.2: the sync mode is offered BEFORE the Google sign-in.
@@ -79,7 +79,7 @@ test('settings: mode is chosen before authorization; unconfigured deployment deg
 test('settings: a paused connection shows the reconnect prompt (PRD §16.6)', async ({ page }) => {
   const { workspaceId, userId } = await fixture(page);
   await seedConnection(userId, workspaceId, 'SUSPENDED');
-  await page.goto('/settings');
+  await page.goto('/settings?section=all');
   await expect(page.getByTestId('calendar-reconnect-prompt')).toBeVisible();
   await expect(page.getByTestId('calendar-reconnect')).toBeVisible();
 
@@ -111,7 +111,7 @@ test('settings: both-side conflicts show both values and resolve (PRD §16.4)', 
     })
     .returning();
 
-  await page.goto('/settings');
+  await page.goto('/settings?section=all');
   const conflictCard = page.getByTestId('calendar-conflict');
   await expect(conflictCard).toHaveCount(1);
   await expect(conflictCard).toContainText('NEXTDOO:');
@@ -143,7 +143,7 @@ test('settings: disconnect stops sync and retains data (PRD §16.5)', async ({ p
   });
 
   page.on('dialog', (d) => d.accept());
-  await page.goto('/settings');
+  await page.goto('/settings?section=all');
   await page.getByRole('button', { name: 'Disconnect', exact: true }).click();
   await expect(page.getByTestId('calendar-card')).toContainText('Calendar disconnected');
 

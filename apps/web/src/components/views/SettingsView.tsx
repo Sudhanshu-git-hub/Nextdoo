@@ -10,6 +10,11 @@ import { SessionSettings } from '@/components/SessionSettings';
 import { CalendarSettings } from '@/components/CalendarSettings';
 import { AuditLog } from '@/components/AuditLog';
 import { DataExport } from '@/components/DataExport';
+import { SettingsSections,SettingsGroup } from '@/components/SettingsSections';
+import { PersonalizationSettings } from '@/components/PersonalizationSettings';
+import { usePersonalization } from '@/components/PersonalizationContext';
+import { BrowserPushPanel } from '@/components/BrowserPushSettings';
+import { useSettingsStatus,SyncDataSettings,PlanSettings,SettingsHelp } from '@/components/SettingsDataPanels';
 
 interface EntitlementSnapshot {
   plan: Plan;
@@ -36,8 +41,11 @@ export function SettingsView({
   profile: { name: string | null; timeZone: string };
 }) {
   const searchParams = useSearchParams();
-  const [contrast, setContrast] = useState(false);
-  const [reducedMotion, setReducedMotion] = useState(false);
+  const {preferences:personal,save:savePersonal,busy:personalBusy}=usePersonalization();
+  const contrast=personal.highContrast,reducedMotion=personal.reducedMotion;
+  const [accessError,setAccessError]=useState('');
+  const center=useSettingsStatus();
+  async function accessibility(patch:{highContrast?:boolean;reducedMotion?:boolean}){setAccessError('');try{await savePersonal(patch);}catch{setAccessError('Could not save accessibility preferences. Try again.');}}
   const [profileName, setProfileName] = useState(profile.name ?? '');
   const [profileTimeZone, setProfileTimeZone] = useState(profile.timeZone);
   const [profileBusy, setProfileBusy] = useState(false);
@@ -55,14 +63,6 @@ export function SettingsView({
   const [notice, setNotice] = useState<string | null>(null);
   const [resendState, setResendState] = useState<'idle' | 'sent'>('idle');
 
-  useEffect(() => {
-    document.documentElement.dataset.contrast = contrast ? 'high' : '';
-  }, [contrast]);
-
-  useEffect(() => {
-    document.documentElement.dataset.motion = reducedMotion ? 'reduced' : '';
-  }, [reducedMotion]);
-
   const loadDeletion = useCallback(async () => {
     try {
       setDeletion(await api<DeletionStatus>('/account/deletion'));
@@ -78,7 +78,7 @@ export function SettingsView({
     let cancelled = false;
     api<WellbeingPreferences>('/preferences')
       .then((current) => { if (!cancelled) setPrefs(current); })
-      .catch(() => {});
+      .catch(() => { if (!cancelled) setPrefsError('Could not load wellbeing preferences. Reload Settings to retry.'); });
     return () => { cancelled = true; }
   }, []);
 
@@ -186,7 +186,7 @@ export function SettingsView({
         </div>
       </div>
 
-      <WorkspaceSettings />
+      <SettingsSections>
       {notice && <div className="banner banner-info" role="status">{notice}</div>}
       {error && <div className="banner banner-error" role="alert">{error}</div>}
 
@@ -203,7 +203,9 @@ export function SettingsView({
         </div>
       )}
 
-      <div className="grid grid-2">
+      {center.error&&<p role="alert">{center.error}</p>}
+      <div className="settings-panels">
+        <SettingsGroup id="account">
         <section className="card" aria-labelledby="account-heading">
           <h2 id="account-heading">Account</h2>
           <table>
@@ -278,12 +280,10 @@ export function SettingsView({
           </form>
         </section>
 
-        <MfaSettings />
-
-        <SessionSettings />
-
-        <CalendarSettings />
-
+        </SettingsGroup>
+        <SettingsGroup id="security"><MfaSettings /><SessionSettings /><AuditLog /><p>Data export and account deletion are in Sync & Data. Account deletion retains its password confirmation and 30-day grace window.</p></SettingsGroup>
+        <SettingsGroup id="integrations"><CalendarSettings /><p>Google Calendar is the supported connected provider. Imported ICS snapshots and source visibility are managed in Calendar. No additional provider connection is implied.</p></SettingsGroup>
+        <SettingsGroup id="billing"><PlanSettings status={center.status} />
         <section className="card" aria-labelledby="usage-heading">
           <h2 id="usage-heading">Usage</h2>
           <Usage label="Active tasks" used={entitlements.usage.activeTasks} max={entitlements.limits.activeTasks} />
@@ -294,6 +294,8 @@ export function SettingsView({
           </p>
         </section>
 
+        </SettingsGroup>
+        <SettingsGroup id="appearance"><PersonalizationSettings section="appearance" />
         <section className="card" aria-labelledby="a11y-heading">
           <h2 id="a11y-heading">Accessibility</h2>
           <div className="field">
@@ -302,7 +304,8 @@ export function SettingsView({
                 id="contrast"
                 type="checkbox"
                 checked={contrast}
-                onChange={(e) => setContrast(e.target.checked)}
+                disabled={personalBusy}
+                onChange={(e) => void accessibility({highContrast:e.target.checked})}
                 style={{ width: 'auto', minHeight: 'auto', marginRight: 8 }}
               />
               Increase contrast
@@ -314,21 +317,25 @@ export function SettingsView({
                 id="motion"
                 type="checkbox"
                 checked={reducedMotion}
-                onChange={(e) => setReducedMotion(e.target.checked)}
+                disabled={personalBusy}
+                onChange={(e) => void accessibility({reducedMotion:e.target.checked})}
                 style={{ width: 'auto', minHeight: 'auto', marginRight: 8 }}
               />
               Reduce motion
             </label>
           </div>
           <p className="muted">
-            Your system preferences are respected by default; these override them for this browser.
+            System reduced-motion preferences are always respected. These additional choices are saved to your account.
           </p>
         </section>
 
+        {accessError&&<p role="alert">{accessError}</p>}
+        </SettingsGroup>
+        <SettingsGroup id="wellbeing">
         <section className="card" aria-labelledby="wellbeing-heading">
           <h2 id="wellbeing-heading">Wellbeing</h2>
           {prefs === null ? (
-            <p className="muted" role="status">Loading your settings…</p>
+            prefsError ? <p role="alert">{prefsError}</p> : <p className="muted" role="status">Loading your settings…</p>
           ) : (
             <>
               <div className="field">
@@ -368,6 +375,9 @@ export function SettingsView({
           )}
         </section>
 
+        <p>Celebration and sound gates remain reserved for future features; no celebration or audio system is currently active.</p>
+        </SettingsGroup>
+        <SettingsGroup id="data"><SyncDataSettings status={center.status} />
         <section className="card" aria-labelledby="data-heading">
           <h2 id="data-heading">Your data</h2>
           <p className="muted" style={{ marginBottom: 12 }}>
@@ -430,8 +440,12 @@ export function SettingsView({
 
         <DataExport exportsPerDay={entitlements.limits.exportsPerDay} />
 
-        <AuditLog />
+        </SettingsGroup>
+        <SettingsGroup id="productivity"><PersonalizationSettings section="productivity" /><WorkspaceSettings /></SettingsGroup>
+        <SettingsGroup id="notifications"><PersonalizationSettings section="notifications" /><BrowserPushPanel /></SettingsGroup>
+        <SettingsGroup id="help"><SettingsHelp /></SettingsGroup>
       </div>
+      </SettingsSections>
     </>
   );
 }

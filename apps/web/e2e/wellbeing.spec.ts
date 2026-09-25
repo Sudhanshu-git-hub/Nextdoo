@@ -87,7 +87,7 @@ test('hiding numeric scores via Settings strips scores from Analytics and restor
   expect(await getPrefs(f.page)).toMatchObject({ disableScores: false });
 
   // Toggle in Settings → the well-known TR-07 hidden state in Analytics.
-  await f.page.goto('/settings');
+  await f.page.goto('/settings?section=all');
   const toggle = f.page.getByLabel('Hide numeric scores', { exact: true });
   await expect(toggle).toBeVisible();
   const patchP = f.page.waitForResponse((r) => r.url().endsWith('/api/v1/preferences') && r.request().method() === 'PATCH');
@@ -101,7 +101,7 @@ test('hiding numeric scores via Settings strips scores from Analytics and restor
   await expect(f.page.getByRole('columnheader', { name: 'Score', exact: true })).toHaveCount(0);
 
   // Untoggle → scores return from the same stored results.
-  await f.page.goto('/settings');
+  await f.page.goto('/settings?section=all');
   const patchBack = f.page.waitForResponse((r) => r.url().endsWith('/api/v1/preferences') && r.request().method() === 'PATCH');
   await toggle.uncheck();
   expect((await patchBack).status()).toBe(200);
@@ -178,7 +178,7 @@ test('wellbeing preferences are owner-scoped across accounts', async ({ page, pl
 
 test('the Wellbeing card passes axe (wcag2a/wcag2aa) and is keyboard operable', async ({ page }) => {
   const f = await fixture(page, 'wellbeing-axe');
-  await f.page.goto('/settings');
+  await f.page.goto('/settings?section=all');
   const card = f.page.locator('section[aria-labelledby="wellbeing-heading"]');
   await expect(card).toBeVisible();
 

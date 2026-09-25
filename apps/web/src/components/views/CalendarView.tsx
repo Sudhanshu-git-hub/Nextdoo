@@ -1,4 +1,5 @@
 'use client';
+import { usePersonalization } from '@/components/PersonalizationContext';
 import { localParts, localDateKey, zonedTimeToUtc, workspaceWeek, workspaceMonthGrid, localDayBounds, workdayDescription, workdayMinutes } from '@nextdoo/core/calendar';
 import { useWorkspace } from '@/components/WorkspaceContext';
 import { TaskEditor } from '@/components/TaskEditor';
@@ -29,7 +30,8 @@ interface CalendarWindow {
 export function CalendarView({ workspaceId }: { workspaceId: string }) {
   const workspace = useWorkspace();
   const { timeZone, weekStart } = workspace;
-  const [view, setView] = useState<CalendarViewMode>('week');
+  const {preferences}=usePersonalization();
+  const [view, setView] = useState<CalendarViewMode>(preferences.calendarView);
   const [anchor, setAnchor] = useState(() => new Date());
   const [tasks, setTasks] = useState<Task[]>([]);
   const [eventDialog,setEventDialog]=useState<{event:CenterEvent|null}|null>(null);

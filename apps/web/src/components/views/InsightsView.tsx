@@ -1,4 +1,5 @@
 'use client';
+import { usePersonalization } from '@/components/PersonalizationContext';
 import { useEffect,useState,type ReactNode } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
@@ -14,7 +15,8 @@ const objectLink=(kind:string,id:string)=>kind==='task'?`/tasks/${id}`:kind==='g
 
 export function InsightsView({report=false}:{report?:boolean}){
   const search=useSearchParams();
-  const [period,setPeriod]=useState<InsightsQuery['period']>((['day','week','month','quarter','year','custom'].includes(search.get('period')??'')?search.get('period'):'month') as InsightsQuery['period']);
+  const {preferences}=usePersonalization();
+  const [period,setPeriod]=useState<InsightsQuery['period']>((['day','week','month','quarter','year','custom'].includes(search.get('period')??'')?search.get('period'):preferences.insightsPeriod) as InsightsQuery['period']);
   const [date,setDate]=useState(search.get('date')??''),[from,setFrom]=useState(search.get('from')??''),[to,setTo]=useState(search.get('to')??''),[compare,setCompare]=useState(search.get('compare')==='true');
   const [data,setData]=useState<InsightsReport|null>(null),[error,setError]=useState(''),[revision,setRevision]=useState(0),[exporting,setExporting]=useState(false),[exportError,setExportError]=useState('');
   const params=new URLSearchParams({period,compare:String(compare)});if(period==='custom'){params.set('from',from);params.set('to',to);}else if(date)params.set('date',date);

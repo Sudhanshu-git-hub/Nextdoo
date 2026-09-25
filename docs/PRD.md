@@ -2138,4 +2138,18 @@ Activity counts cover selected dates. Current overdue work, active goals, measur
 
 **EXTERNAL:** Browser print / Save as PDF depends on the user's browser. Existing provider synchronization and Tracker delivery retain their existing configuration boundaries.
 
-**FUTURE:** Server-generated PDF artifacts, scheduled cross-module report delivery, historical progress snapshots, AI/predictive insights, benchmarking, teams, advanced BI and native applications. PC7 is not started. See [Insights milestone](INSIGHTS_MILESTONE.md).
+**FUTURE:** Server-generated PDF artifacts, scheduled cross-module report delivery, historical progress snapshots, AI/predictive insights, benchmarking, teams, advanced BI and native applications. See [Insights milestone](INSIGHTS_MILESTONE.md).
+
+## PC7 acceptance boundary — Settings, Account and Personalization
+
+**IMPLEMENTED:** Focused Account & Profile, Appearance, Productivity, Notifications, Wellbeing, Sync & Data, Integrations, Plan & Billing, Security & Privacy and Help sections, with an optional All settings view. Existing profile, workspace, MFA, session, audit, export, deletion and Calendar components remain authoritative. Google OAuth return messages open Integrations.
+
+**IMPLEMENTED:** Account-persisted light/dark/system appearance, blue/purple/green accent, comfortable/compact density, standard/large sizing, desktop sidebar, contrast and reduced motion. The authenticated shell renders saved preferences on initial load. Start page controls home/sign-in navigation. Project list/board, Calendar view and Insights period defaults feed existing views; explicit report links retain their period. Quick capture uses an owned active project default unless an explicit project is parsed; clearing or reloading an unavailable default falls back to Inbox. Reminder delivery/minutes prefill existing forms without scheduling or rewriting reminders.
+
+**IMPLEMENTED:** Strict authenticated GET/PATCH `/api/v1/preferences/personalization` reuses namespaced `user_preferences` JSONB keys, existing idempotency, rate limits, workspace ownership, export and purge. No migration or duplicate preference table. The six-key wellbeing API remains unchanged. Authenticated private/no-store `/api/v1/settings/status` composes existing entitlements, subscription state and attachment quota usage; provider configuration is boolean only. Sync reads the existing device queue; no additional reconcile loop. Shared browser-push controls distinguish this device's registration from the account-wide count.
+
+**PARTIAL:** Default task view applies to project List/Board, not the separate task browser. Calendar import and Tracker report delivery remain in their own modules. Settings and non-task modules remain online-only. Preferences loaded elsewhere appear on reload; there is no cross-tab preference broadcast. Account exports include attachment metadata, not file bytes. Help provides lightweight onboarding, product documentation, changelog and issue links; repository access may be required. English is the current interface language; no avatar-upload or translation backend is implied.
+
+**EXTERNAL:** Google OAuth, browser push permission/VAPID, account email and billing require deployment/provider configuration. Stripe checkout is exposed only when configured and eligible; return pages do not claim payment success before provider confirmation. Razorpay backend support is disclosed without an unimplemented embedded checkout. No in-app subscription portal/cancellation or backup restore is invented; these remain provider/deployment operations.
+
+**FUTURE:** Global notification-category/email mute policy, avatar uploads, translations, self-service restore, additional integrations, native clients, AI, collaboration and plugin marketplace. PC8 is out of scope. See [Settings Center milestone](SETTINGS_CENTER_MILESTONE.md).

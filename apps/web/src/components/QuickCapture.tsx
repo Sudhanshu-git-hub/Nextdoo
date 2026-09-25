@@ -1,5 +1,6 @@
 'use client';
 import { useWorkspace } from './WorkspaceContext';
+import { usePersonalization } from './PersonalizationContext';
 
 import { useEffect, useRef, useState } from 'react';
 import { parseTaskText, type ParseResult } from '@nextdoo/core/nl-parse';
@@ -13,6 +14,7 @@ import { cacheTask, enqueue } from '@/lib/offline-queue';
  * when confidence is low, so we never silently guess a date the user did not mean.
  */
 export function QuickCapture({ workspaceId, onCreated }: { workspaceId: string; onCreated: () => void }) {
+  const {preferences}=usePersonalization();
   const [text, setText] = useState('');
   const [parsed, setParsed] = useState<ParseResult | null>(null);
   const [busy, setBusy] = useState(false);
@@ -113,6 +115,7 @@ export function QuickCapture({ workspaceId, onCreated }: { workspaceId: string; 
       tagIds: [],
       tagNames: result.tags?.value ?? [],
       projectName: result.project?.value,
+      projectId:result.project?undefined:preferences.defaultTaskList,
     };
     try {
       await enqueue({
@@ -127,7 +130,7 @@ export function QuickCapture({ workspaceId, onCreated }: { workspaceId: string; 
       await cacheTask(workspaceId, {
         id: taskId,
         workspaceId,
-        projectId: null,
+        projectId:result.project?null:preferences.defaultTaskList,
         sectionId: null,
         parentTaskId: null,
         recurrenceRuleId: null,
@@ -170,6 +173,7 @@ export function QuickCapture({ workspaceId, onCreated }: { workspaceId: string; 
           tagIds: [],
           tagNames: result.tags?.value ?? [],
           projectName: result.project?.value,
+          projectId:result.project?undefined:preferences.defaultTaskList,
           recurrenceRule: result.recurrence ? { ...result.recurrence.value, timeZone } : null,
         });
       if (mutation.current?.body !== body) mutation.current = { body, key: crypto.randomUUID() };

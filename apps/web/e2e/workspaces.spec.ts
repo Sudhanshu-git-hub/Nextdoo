@@ -5,7 +5,7 @@ async function fixture(page: Page) {
  const r = await page.request.post('/api/v1/auth/register', { headers: { ...origin, 'X-Forwarded-For': '198.51.100.155' }, data: { email: `settings-${randomUUID()}@test.local`, password: 'workspace-test-password-123', timeZone: 'UTC' } }); expect(r.status()).toBe(200); return (await r.json()).workspaceId as string;
 }
 test('overnight workspace settings persist, are accessible, and drive calendar and capture defaults', async ({ page }) => {
- await fixture(page); await page.goto('/settings'); const form = page.locator('.workspace-settings');
+ await fixture(page); await page.goto('/settings?section=all'); const form = page.locator('.workspace-settings');
  await form.getByLabel('Workspace name', { exact: true }).fill('Night team'); await form.getByLabel('Workspace time zone', { exact: true }).fill('Asia/Kolkata');
  await form.getByLabel('Week starts on', { exact: true }).selectOption('0'); await form.getByLabel('Workday starts', { exact: true }).fill('22:00'); await form.getByLabel('Workday ends', { exact: true }).fill('06:00');
  await form.getByRole('button', { name: 'Save workspace settings', exact: true }).click(); await expect(form.getByRole('status')).toContainText('saved'); await page.reload();
@@ -17,7 +17,7 @@ test('overnight workspace settings persist, are accessible, and drive calendar a
  await page.locator(`[data-task-id="${task.id}"]`).getByRole('button', { name: 'Edit "Night review"', exact: true }).click(); const dialog = page.getByRole('dialog', { name: 'Edit task', exact: true }); await dialog.getByText('Recurrence', { exact: true }).click(); await expect(dialog.getByLabel('Recurrence time zone', { exact: true })).toHaveValue('Asia/Kolkata');
 });
 test('lost settings acknowledgements retry safely and stale changes retain the draft for review', async ({ page }) => {
- const id = await fixture(page); await page.goto('/settings'); const form = page.locator('.workspace-settings'); let lost = false; const keys: string[] = [];
+ const id = await fixture(page); await page.goto('/settings?section=all'); const form = page.locator('.workspace-settings'); let lost = false; const keys: string[] = [];
  await page.route(`**/api/v1/workspaces/${id}`, async (route) => { if (route.request().method() !== 'PATCH') return route.continue(); keys.push(route.request().headers()['idempotency-key']!); if (lost) return route.continue(); lost = true; expect((await route.fetch()).status()).toBe(200); await route.abort('failed'); });
  await form.getByLabel('Workspace name', { exact: true }).fill('Kept draft'); await form.getByRole('button', { name: 'Save workspace settings', exact: true }).click(); await expect(form.getByRole('alert')).toContainText('not acknowledged');
  await expect(form.getByLabel('Workspace name', { exact: true })).toHaveValue('Kept draft'); await form.getByRole('button', { name: 'Save workspace settings', exact: true }).click(); await expect(form.getByRole('status')).toContainText('saved'); expect(keys[0]).toBe(keys[1]);
@@ -42,7 +42,7 @@ test('workspace HTTP contracts enforce scope, origin, idempotency, strict fields
  } finally { await guest.dispose(); }
 });
 test('invalid hours and failed reloads keep the draft, while leaving requires confirmation', async ({ page }) => {
- const id = await fixture(page); const original = await (await page.request.get(`/api/v1/workspaces/${id}`)).json(); await page.goto('/settings'); const form = page.locator('.workspace-settings');
+ const id = await fixture(page); const original = await (await page.request.get(`/api/v1/workspaces/${id}`)).json(); await page.goto('/settings?section=all'); const form = page.locator('.workspace-settings');
  await form.getByLabel('Workspace name', { exact: true }).fill('Do not lose this'); await form.getByLabel('Workday ends', { exact: true }).fill('09:00'); await form.getByRole('button', { name: 'Save workspace settings', exact: true }).focus(); await page.keyboard.press('Enter'); await expect(form.getByRole('alert')).toContainText('different');
  expect((await (await page.request.get(`/api/v1/workspaces/${id}`)).json()).version).toBe(1);
  page.once('dialog', (d) => d.dismiss()); await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'Inbox', exact: true }).click(); await expect(form.getByLabel('Workspace name', { exact: true })).toHaveValue('Do not lose this'); expect(new URL(page.url()).pathname).toBe('/settings');

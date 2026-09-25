@@ -147,6 +147,11 @@ export async function authorizeAttachmentOwner(auth: { userId: string; workspace
   if (owner.goalId) { const goal=await loadGoal(auth.workspaceId,owner.goalId); if(mutable && goal.status==='ARCHIVED')throw new AppError('VALIDATION_FAILED','Restore this goal before uploading.'); }
 }
 
+export async function attachmentStorageUsage(workspaceId:string){
+  const [row]=await getDb().select({bytes:sql<number>`coalesce(sum(${attachments.sizeBytes}),0)`}).from(attachments).where(and(eq(attachments.workspaceId,workspaceId),isNull(attachments.deletedAt)));
+  return Number(row?.bytes??0);
+}
+
 export async function authorizeAttachmentUpload(auth: AuthContext, input: AttachmentUploadInput) {
   input=attachmentUploadSchema.parse(input);
   return withWorkspaceTransaction(auth.workspaceId, async () => {
@@ -162,11 +167,8 @@ export async function authorizeAttachmentUpload(auth: AuthContext, input: Attach
   }
 
   const db = getDb();
-  const [usage] = await db
-    .select({ bytes: sql<number>`coalesce(sum(${attachments.sizeBytes}), 0)` })
-    .from(attachments)
-    .where(and(eq(attachments.workspaceId, auth.workspaceId), isNull(attachments.deletedAt)));
-  if ((Number(usage?.bytes ?? 0) + input.sizeBytes) > limits.attachmentStorageBytes) {
+  const usage=await attachmentStorageUsage(auth.workspaceId);
+  if ((usage + input.sizeBytes) > limits.attachmentStorageBytes) {
     throw new AppError(
       'ENTITLEMENT_LIMIT_REACHED',
       `Your plan includes ${humanBytes(limits.attachmentStorageBytes)} of attachment storage. Delete something or upgrade.`,

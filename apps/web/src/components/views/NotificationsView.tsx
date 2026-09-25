@@ -1,10 +1,11 @@
 'use client';
+import { usePersonalization } from '@/components/PersonalizationContext';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError, type Task } from '@/lib/api';
 import { TaskEditor } from '@/components/TaskEditor';
 import { useWorkspace } from '@/components/WorkspaceContext';
-import { fetchPushStatus, pushSupport, registerServiceWorker, subscribeToPush, unsubscribeFromPush } from '@/lib/push-client';
+import { useBrowserPush,BrowserPushSettings } from '@/components/BrowserPushSettings';
 interface Reminder { id: string; taskId: string; scheduledAt: string; channel: string; status: string; version: number; attempts: number; lastError: string | null; nextAttemptAt: string; supersededById: string | null; task: Task | null }
 interface Notice { id: string; title: string; body: string | null; createdAt: string; readAt: string | null; task: Task | null }
 interface Page<T> { data: T[]; pagination: { has_more: boolean; next_cursor: string | null } }
@@ -21,48 +22,12 @@ function useHistory<T extends { id: string }>(path: string) {
  useEffect(() => { void load(); return () => { request.current?.abort(); locked.current = false; }; }, [load]);
  return { rows, cursor, busy, error, reload: () => load(), more: () => load(cursor) };
 }
-type PushState =
- | { phase: 'loading' }
- | { phase: 'unsupported'; reason: string }
- | { phase: 'unconfigured' }
- | { phase: 'denied' }
- | { phase: 'ready'; total: number };
-
 export function NotificationsView({ initialTask }: { initialTask: Task | null }) {
  const { timeZone } = useWorkspace(); const [task, setTask] = useState(initialTask), [editing, setEditing] = useState<Task | null>(null);
  const history = useHistory<Reminder>(`/reminders?history=true${task ? `&taskId=${task.id}` : ''}`), notices = useHistory<Notice>('/notifications');
- const [mode, setMode] = useState('relative'), [before, setBefore] = useState('15'), [when, setWhen] = useState(''), [channel, setChannel] = useState('WEB');
- const [push, setPush] = useState<PushState>({ phase: 'loading' }), [pushBusy, setPushBusy] = useState(false), [pushMessage, setPushMessage] = useState(''), [pushError, setPushError] = useState<string | null>(null);
- const refreshPush = useCallback(async () => {
-  const support = pushSupport();
-  if (support.kind !== 'supported') { setPush({ phase: 'unsupported', reason: support.reason }); return; }
-  const status = await fetchPushStatus();
-  if (!status.configured) { setPush({ phase: 'unconfigured' }); return; }
-  if (status.permission === 'denied') { setPush({ phase: 'denied' }); return; }
-  setPush({ phase: 'ready', total: status.total });
- }, []);
- useEffect(() => { void refreshPush(); }, [refreshPush]);
- async function enablePush() {
-  setPushBusy(true); setPushError(null); setPushMessage('');
-  try {
-   await registerServiceWorker();
-   const keyResponse = await fetch('/api/v1/push/public-key');
-   if (!keyResponse.ok) throw new Error('Push is not configured.');
-   const { vapidPublicKey } = await keyResponse.json();
-   const result = await subscribeToPush(vapidPublicKey);
-   if (!result.ok) { setPushError('Browser push could not be enabled. Check that notifications are allowed for this site, then try again.'); await refreshPush(); return; }
-   setPushMessage(`Browser push enabled (${result.total} subscription${result.total === 1 ? '' : 's'} registered).`);
-   await refreshPush();
-  } catch {
-   setPushError('Browser push could not be enabled. Try again or check your browser settings.');
-  } finally { setPushBusy(false); }
- }
- async function disablePush() {
-  setPushBusy(true); setPushError(null); setPushMessage('');
-  try { const removed = await unsubscribeFromPush(); setPushMessage(removed ? 'Browser push disabled on this device.' : 'Browser push disabled locally; the server registration is already gone.'); await refreshPush(); }
-  catch { setPushError('Could not disable browser push on this device.'); }
-  finally { setPushBusy(false); }
- }
+ const {preferences}=usePersonalization();
+ const [mode, setMode] = useState('relative'), [before, setBefore] = useState(String(preferences.reminderMinutes)), [when, setWhen] = useState(''), [channel, setChannel] = useState<string>(preferences.reminderChannel);
+ const controls=useBrowserPush();const {push}=controls;
  const [busy, setBusy] = useState(false), [error, setError] = useState<string | null>(null), [message, setMessage] = useState('');
  const locked = useRef(false), keys = useRef(new Map<string, string>());
  const date = (s: string) => new Date(s).toLocaleString(undefined, { timeZone });
@@ -80,20 +45,7 @@ export function NotificationsView({ initialTask }: { initialTask: Task | null })
  return <div className="notifications-view">
   <div className="page-head"><div><h1>Notifications</h1><p className="subtitle">Durable in-app reminders and delivery history · {timeZone}</p></div></div>
   <p>WEB / SENT means saved in this notification center, not a browser popup or email. PUSH / SENT additionally delivers a browser notification through your registered devices (when browser push is enabled below). Refresh to check for new deliveries; the worker checks every 30 seconds.</p>
-  <section aria-labelledby="push-heading" style={{ marginTop: 16 }} className="card">
-   <h2 id="push-heading">Browser push</h2>
-   {push.phase === 'loading' && <p role="status">Checking browser push…</p>}
-   {push.phase === 'unsupported' && <p>Browser push is not supported in this browser. Reminders continue to appear in this notification center.</p>}
-   {push.phase === 'unconfigured' && <p>Browser push is not configured on this deployment. Reminders continue to appear in this notification center.</p>}
-   {push.phase === 'denied' && <p>Notifications are blocked for this site in your browser settings. Allow notifications to use browser push; reminders continue to appear in this notification center.</p>}
-   {push.phase === 'ready' && <>
-    <p>{push.total > 0 ? `Browser push is enabled — ${push.total} subscription${push.total === 1 ? '' : 's'} registered for this account.` : 'Browser push is available. Enable it to receive reminders as browser notifications on this device.'}</p>
-    {push.total === 0 && <button disabled={pushBusy || busy} onClick={() => void enablePush()}>Enable browser push</button>}
-    {push.total > 0 && <button disabled={pushBusy || busy} onClick={() => void disablePush()}>Disable browser push on this device</button>}
-   </>}
-   {pushError && <p className="banner banner-error" role="alert">{pushError}</p>}
-   {pushMessage && <p role="status">{pushMessage}</p>}
-  </section>
+  <BrowserPushSettings controls={controls} disabled={busy} />
   {task && <section className="card" aria-labelledby="schedule-heading"><h2 id="schedule-heading">Reminders for {task.title}</h2>
    <form onSubmit={(e) => { e.preventDefault(); if (!task) return; void command('/reminders', { taskId: task.id, taskVersion: task.version, channel, ...(mode === 'relative' ? { minutesBeforeDue: Number(before) } : { scheduledAt: new Date(when).toISOString() }) }, 'Reminder scheduled.'); }}>
     <fieldset disabled={busy || task.status !== 'ACTIVE'} style={{ border: 0, padding: 0 }}>
