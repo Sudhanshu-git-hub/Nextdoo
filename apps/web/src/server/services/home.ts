@@ -3,11 +3,13 @@ import { z } from 'zod';
 import { taskQuerySchema } from '@nextdoo/contracts';
 import { assertWorkspaceAccess } from '../auth';
 import { getDb } from '../db';
-import { queryTasks } from './tasks';
+import { loadTask, queryTasks } from './tasks';
 import { listGoals } from './goals';
 import { connectedToday } from './connected';
 import { getActiveTimer } from './timers';
 import { getInsights } from './insights';
+import { getPersonalization } from './personalization';
+import { durationLabel } from '@/lib/time-entry';
 import { loadWorkspaceSettings } from './workspaces';
 import { dailyFilters, dailyWindow } from '@/lib/daily-tasks';
 import type { HomeCardData } from '@/lib/home-widgets';
@@ -21,23 +23,29 @@ export async function homeSummary(actor: Actor, now = new Date()) {
     count(*) filter(where status='ACTIVE' and due_at between ${upcoming.start.toISOString()}::timestamptz and ${upcoming.end.toISOString().replace('.999Z','.999999Z')}::timestamptz)::int upcoming,
     count(*) filter(where status='ACTIVE' and due_at<${start.toISOString()}::timestamptz)::int overdue
     from tasks where workspace_id=${actor.workspaceId} and deleted_at is null`);
-  const [focus] = await getDb().execute<{ minutes: number }>(sql`select coalesce(sum(accumulated_seconds+manual_adjustment_seconds),0)::float8/60 minutes from timer_sessions where workspace_id=${actor.workspaceId} and started_at between ${start.toISOString()}::timestamptz and ${end.toISOString().replace('.999Z','.999999Z')}::timestamptz and status in ('STOPPED','OVERLAPPED')`);
-  return { ...counts!, focusMinutes: Math.round(focus!.minutes), timeZone: workspace.timeZone, asOf: now.toISOString() };
+  const report=await getInsights(actor,{period:'day'},now);
+  return { ...counts!, focusMinutes: report.tasks.focusMinutes, timeZone: workspace.timeZone, asOf: now.toISOString() };
 }
 export async function homeCard(actor: Actor, value: unknown, now = new Date()): Promise<HomeCardData> {
   await assertWorkspaceAccess(actor.userId, actor.workspaceId);
   const card = z.enum(['today','upcoming','overdue','priorities','goals','focus','calendar','tracker','knowledge','insights']).parse(value);
   const workspace = await loadWorkspaceSettings(actor.workspaceId, actor.workspaceId);
+  const preferences=await getPersonalization(actor);
   if (['today','upcoming','overdue','priorities'].includes(card)) {
     const filters: Record<string, unknown> = { workspaceId: actor.workspaceId, status: 'ACTIVE', limit: 5, sortBy: 'dueAt', sortOrder: 'asc' };
-    if (card === 'upcoming' || card === 'overdue') Object.assign(filters, Object.fromEntries(dailyFilters(card, now, workspace.timeZone)));
+    if (card === 'upcoming' || card === 'overdue') Object.assign(filters, Object.fromEntries(dailyFilters(card, now, workspace.timeZone, preferences.homeUpcomingDays)));
     if (card === 'today') { const day = dailyWindow(now, workspace.timeZone); filters.dueAfter = day.start.toISOString(); filters.dueBefore = day.end.toISOString().replace('.999Z','.999999Z'); }
-    if (card === 'priorities') filters.priority = 'HIGH';
+    if (card === 'priorities') filters.priority = preferences.homePriority;
     const tasks = await queryTasks(actor.workspaceId, taskQuerySchema.parse(filters));
     return { more: tasks.hasMore, items: tasks.data.map(t => ({ id:t.id, title:t.title, href:'/tasks/'+t.id, detail:t.dueAt ? new Date(t.dueAt).toLocaleString('en', { timeZone:workspace.timeZone, month:'short',day:'numeric',hour:'2-digit',minute:'2-digit' }) : 'Unscheduled' })) };
   }
   if (card === 'goals') { const goals = await listGoals(actor.workspaceId, { limit:5 }); return { more:!!goals.nextCursor, items:goals.data.map(({goal,progress}) => ({ id:goal.id, title:goal.title, href:'/goals/'+goal.id, detail:progress.percent === null ? 'Not measured' : `${progress.percent}% · ${progress.completed}/${progress.total} units` })) }; }
-  if (card === 'focus') { const timer = await getActiveTimer(actor.userId); return { more:false, items:timer ? [{id:timer.id,title:timer.status === 'RUNNING' ? 'Session running' : 'Session paused',href:'/focus',detail:`${Math.floor(timer.elapsedSeconds/60)}m recorded at refresh`}] : [] }; }
+  if (card === 'focus') {
+    const timer=await getActiveTimer(actor.userId);
+    if(!timer || timer.workspaceId!==actor.workspaceId)return {more:false,items:[{id:'idle',title:'No active focus session',href:'/focus',detail:'Start Focus'}]};
+    const task=await loadTask(actor.workspaceId,timer.taskId);
+    return {more:false,items:[{id:timer.id,title:task.title,href:'/focus?taskId='+task.id,detail:`${timer.status==='RUNNING'?'Running':'Paused'} · Actual ${durationLabel(task.actualMinutes*60+task.actualSecondsRemainder+timer.elapsedSeconds)} · Planned ${task.estimateMinutes===null?'Not planned':durationLabel(task.estimateMinutes*60)} · Continue`}]};
+  }
   if (card === 'calendar' || card === 'tracker') { const today = await connectedToday(actor.workspaceId, actor.userId, now), section = card === 'tracker' ? today.trackers : today.calendar; return { more:section.hasMore, items:section.data.map(i=>({id:i.id,title:i.title,href:i.href ?? '/home',detail:i.detail})) }; }
   if (card === 'knowledge') {
     const rows = await getDb().execute<HomeCardData['items'][number]>(sql`select id,title,href,detail from (

@@ -6,7 +6,8 @@ export function focusElapsed(timer: FocusSnapshot, now = Date.now()) {
 export function projectFocus(base: FocusSnapshot | null, queued: QueuedMutation[]): FocusSnapshot | null {
   let current = base;
   for (const command of queued.filter(q => q.entityType === 'timer_session')) {
-    if (command.payload.action === 'adjust') continue;
+    if(command.payload.action==='complete' && current?.taskId===command.payload.taskId){current=null;continue;}
+    if (['adjust','complete','entry-create','entry-edit','entry-remove'].includes(String(command.payload.action))) continue;
     if (command.operation === 'create') {
       current = { id: command.entityId, taskId: String(command.payload.taskId), status: 'RUNNING',
         startedAt: String(command.payload.startedAt), observedAt: String(command.payload.startedAt), elapsedSeconds: 0, version: 1 };

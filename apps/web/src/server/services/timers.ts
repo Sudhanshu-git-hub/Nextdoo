@@ -1,9 +1,9 @@
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
-import { AppError, logTimeSchema, notFound, versionConflict } from '@nextdoo/contracts';
-import { tasks, timerSessions, type Database } from '@nextdoo/db';
+import { AppError, logTimeSchema, notFound, versionConflict, timeEntrySchema, editTimeEntrySchema, removeTimeEntrySchema } from '@nextdoo/contracts';
+import { tasks, timerSessions, trackingEvents, type Database } from '@nextdoo/db';
 import { getDb, withTransaction } from '../db';
 import { withWorkspaceTransaction } from './transactions';
-import { serialiseTask } from './tasks';
+import { loadTask, serialiseTask } from './tasks';
 import { newId } from '../ids';
 import { appendTrackingEvent, publishEvent, recordSyncChange, writeAudit } from './events';
 import { scheduleTrackingEvaluation } from './tracking';
@@ -31,16 +31,20 @@ function elapsedSeconds(row: typeof timerSessions.$inferSelect, at: Date): numbe
 }
 
 function serialise(row: typeof timerSessions.$inferSelect, at = new Date()) {
+  // An accepted client transition may be slightly ahead of the server clock.
+  // Do not project elapsed work from an observation before that transition.
+  const observed = new Date(Math.max(at.getTime(), row.lastTransitionAt.getTime()));
   return {
     id: row.id,
     taskId: row.taskId,
+    workspaceId: row.workspaceId,
     deviceId: row.deviceId,
     status: row.status,
     startedAt: row.startedAt.toISOString(),
     endedAt: row.endedAt?.toISOString() ?? null,
-    elapsedSeconds: elapsedSeconds(row, at),
+    elapsedSeconds: elapsedSeconds(row, observed),
     version: row.version,
-    observedAt: at.toISOString(),
+    observedAt: observed.toISOString(),
   };
 }
 
@@ -248,4 +252,55 @@ export async function getActiveTimer(userId: string) {
     .orderBy(desc(timerSessions.startedAt))
     .limit(1);
   return rows[0] ? serialise(rows[0]) : null;
+}
+
+/** Dated manual entries reuse timer_sessions; changes append compensating tracking events. */
+export async function createTimeEntry(actor: TimerActor, raw: unknown, id = newId()) {
+  const input = timeEntrySchema.parse(raw);
+  return withTimerTransaction(actor, async tx => {
+    const [task] = await tx.select().from(tasks).where(and(eq(tasks.id,input.taskId),eq(tasks.workspaceId,actor.workspaceId)));
+    if (!task || task.status === 'DELETED') throw notFound('task',input.taskId);
+    const start = eventTime(input.startedAt), end = eventTime(input.endedAt);
+    if (end.getTime() > Date.now()+15*60000) throw new AppError('VALIDATION_FAILED','Time entries cannot end in the future.');
+    const seconds = Math.floor((end.getTime()-start.getTime())/1000);
+    if (seconds < 1) throw new AppError('VALIDATION_FAILED','Record at least one second.');
+    const [entry] = await tx.insert(timerSessions).values({id,workspaceId:actor.workspaceId,taskId:input.taskId,userId:actor.userId,
+      deviceId:'manual-entry',startedAt:start,endedAt:end,lastTransitionAt:end,status:'STOPPED',accumulatedSeconds:seconds}).returning();
+    await applyDurationToTask(tx,actor,input.taskId,seconds);
+    await appendTrackingEvent(tx,{workspaceId:actor.workspaceId,taskId:input.taskId,actorId:actor.userId,type:'TIME_LOGGED',occurredAt:start,
+      payload:{seconds,minutes:seconds/60,source:'manual-entry',entryId:id,note:input.note},idempotencyKey:`manual-entry:${id}:1`});
+    await writeAudit(tx,{workspaceId:actor.workspaceId,actorId:actor.userId,action:'time.entry_created',targetType:'timer_session',targetId:id,
+      metadata:{seconds,startedAt:input.startedAt,endedAt:input.endedAt},requestId:actor.requestId});
+    return {entry:serialise(entry!)};
+  });
+}
+export async function reviseTimeEntry(actor: TimerActor, raw: unknown, remove = false) {
+  const input = remove ? removeTimeEntrySchema.parse(raw) : editTimeEntrySchema.parse(raw);
+  return withTimerTransaction(actor,async tx=>{
+    const [entry]=await tx.select().from(timerSessions).where(and(eq(timerSessions.id,input.entryId),eq(timerSessions.workspaceId,actor.workspaceId),eq(timerSessions.userId,actor.userId)));
+    if (!entry || entry.deviceId!=='manual-entry' || entry.status!=='STOPPED') throw notFound('manual time entry',input.entryId);
+    await loadTask(actor.workspaceId,entry.taskId);
+    if (entry.version!==input.version) throw versionConflict('timer',entry.id);
+    const before=entry.accumulatedSeconds+entry.manualAdjustmentSeconds;
+    if (!before) throw new AppError('VALIDATION_FAILED','This entry was already removed.');
+    const start='startedAt' in input ? eventTime(String(input.startedAt)) : entry.startedAt;
+    const end='endedAt' in input ? eventTime(String(input.endedAt)) : entry.endedAt!;
+    const after=remove?0:Math.floor((end.getTime()-start.getTime())/1000);
+    if ((!remove&&after<1)||end.getTime()>Date.now()+15*60000) throw new AppError('VALIDATION_FAILED','Invalid time entry timestamps.');
+    await applyDurationToTask(tx,actor,entry.taskId,after-before);
+    const [updated]=await tx.update(timerSessions).set({startedAt:start,endedAt:end,accumulatedSeconds:after,manualAdjustmentSeconds:0,version:entry.version+1,updatedAt:new Date()}).where(eq(timerSessions.id,entry.id)).returning();
+    await appendTrackingEvent(tx,{workspaceId:actor.workspaceId,taskId:entry.taskId,actorId:actor.userId,type:'TIME_LOGGED',occurredAt:start,
+      payload:{seconds:after-before,minutes:(after-before)/60,source:remove?'manual-entry-removed':'manual-entry-corrected',entryId:entry.id,note:input.note,
+        previous:{seconds:before,startedAt:entry.startedAt.toISOString(),endedAt:entry.endedAt?.toISOString()},secondsAfter:after},idempotencyKey:`manual-entry:${entry.id}:${entry.version+1}`});
+    await writeAudit(tx,{workspaceId:actor.workspaceId,actorId:actor.userId,action:remove?'time.entry_removed':'time.entry_corrected',targetType:'timer_session',targetId:entry.id,
+      metadata:{before,after,previousStart:entry.startedAt.toISOString(),previousEnd:entry.endedAt?.toISOString(),startedAt:start.toISOString(),endedAt:end.toISOString()},requestId:actor.requestId});
+    return {entry:serialise(updated!)};
+  });
+}
+export async function listTimeEntries(actor: TimerActor, taskId: string) {
+  const [task]=await getDb().select({id:tasks.id}).from(tasks).where(and(eq(tasks.id,taskId),eq(tasks.workspaceId,actor.workspaceId)));
+  if(!task)throw notFound('task',taskId);
+  const entries=await getDb().select().from(timerSessions).where(and(eq(timerSessions.taskId,taskId),eq(timerSessions.workspaceId,actor.workspaceId),eq(timerSessions.userId,actor.userId),eq(timerSessions.deviceId,'manual-entry'))).orderBy(desc(timerSessions.startedAt)).limit(51);
+  const notes=await getDb().select({payload:trackingEvents.payload}).from(trackingEvents).where(and(eq(trackingEvents.workspaceId,actor.workspaceId),eq(trackingEvents.taskId,taskId),eq(trackingEvents.type,'TIME_LOGGED'))).orderBy(desc(trackingEvents.sequence));
+  return {hasMore:entries.length>50,entries:entries.slice(0,50).map(e=>({...serialise(e),note:(notes.find(n=>(n.payload as Record<string,unknown>).entryId===e.id)?.payload as Record<string,unknown>|undefined)?.note??'',removed:e.accumulatedSeconds+e.manualAdjustmentSeconds===0}))};
 }

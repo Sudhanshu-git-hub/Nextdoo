@@ -6,12 +6,12 @@ import { conflictSnapshots, syncChanges, syncMutations, tasks } from '@nextdoo/d
 import { getDb } from '../db';
 import { newId } from '../ids';
 import { logger } from '../observability';
-import { serialiseTask, createTask, updateTask, completeTask, reopenTask, archiveTask, deleteTask, type TaskActor, type SerialisedTask } from './tasks';
+import { serialiseTask, loadTask, createTask, updateTask, completeTask, reopenTask, archiveTask, deleteTask, type TaskActor, type SerialisedTask } from './tasks';
 import { withTransaction } from '../db';
 import { withWorkspaceTransaction } from './transactions';
 import { assertTaskReferences } from './task-references';
 import { z } from 'zod';
-import { startTimer, updateTimer, logTime } from './timers';
+import { startTimer, updateTimer, logTime, createTimeEntry, reviseTimeEntry } from './timers';
 import { logTimeSchema } from '@nextdoo/contracts';
 
 /**
@@ -139,11 +139,28 @@ async function applyMutation(
 
   if (mutation.entityType === 'timer_session') {
     let result: Record<string, unknown>;
-    if (mutation.operation === 'create') {
+    if (mutation.operation === 'update' && mutation.payload.action === 'complete') {
+      const input=z.object({action:z.literal('complete'),taskId:z.string().uuid(),taskVersion:z.number().int().positive(),at:z.string().datetime(),timerId:z.string().uuid().optional(),timerVersion:z.number().int().positive().optional()}).strict().parse(mutation.payload);
+      const task=await loadTask(actor.workspaceId,input.taskId);
+      if(task.version!==input.taskVersion)throw new AppError('RESOURCE_VERSION_CONFLICT','Task changed; refresh before completing.');
+      if(Date.parse(input.at)>Date.now()+15*60000)throw new AppError('VALIDATION_FAILED','Completion time is in the future.');
+      let timer=null;
+      if(input.timerId){
+        if(!input.timerVersion)throw new AppError('VALIDATION_FAILED','Timer version required.');
+        timer=await updateTimer(actor,input.timerId,'stop',input.at,input.timerVersion);
+        if(timer.taskId!==input.taskId)throw new AppError('VALIDATION_FAILED','Timer belongs to another task.');
+      }
+      const current=await loadTask(actor.workspaceId,input.taskId);
+      const completed=await completeTask(actor,input.taskId,current.version,input.at);
+      result={...(timer??{}),completedTask:completed};
+    } else if (mutation.operation === 'create') {
       const input = z.object({ taskId: z.string().uuid(), startedAt: z.string().datetime() }).strict().parse(mutation.payload);
       if (mutation.baseVersion !== null) throw new AppError('VALIDATION_FAILED', 'New timers cannot have a base version.');
       if (new Date(input.startedAt).getTime() > Date.now() + 15 * 60000) throw new AppError('VALIDATION_FAILED', 'Timer time is too far in the future.');
       result = await startTimer(actor, input.taskId, deviceId, input.startedAt, mutation.entityId);
+    } else if (mutation.operation === 'update' && ['entry-create','entry-edit','entry-remove'].includes(String(mutation.payload.action))) {
+      const { action, ...fields } = mutation.payload;
+      result = action === 'entry-create' ? await createTimeEntry(actor, fields, mutation.entityId) : await reviseTimeEntry(actor, fields, action === 'entry-remove');
     } else if (mutation.operation === 'update' && mutation.payload.action === 'adjust') {
       const { action: _action, ...fields } = mutation.payload;
       const input = logTimeSchema.parse(fields);

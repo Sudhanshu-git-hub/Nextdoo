@@ -1,3 +1,7 @@
+> Task Center continuation: Home configuration/reset, selected-task Focus, full
+> Pomodoro cycles and dated auditable entries now extend the first-half delivery.
+> The implementation and boundaries are in `TASK_DAILY_WORKFLOWS_MILESTONE.md`.
+
 # Phase 1 completion ledger and remaining execution plan
 
 Current personal-web follow-up: [Task Center daily workflows](TASK_DAILY_WORKFLOWS_MILESTONE.md)

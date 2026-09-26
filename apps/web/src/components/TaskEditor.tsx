@@ -1,4 +1,5 @@
 'use client';
+import { TaskTimeSummary } from './focus/TaskTimeSummary';
 import { TaskAttachments } from './TaskAttachments';
 import { KnowledgeBacklinks } from './knowledge/shared';
 import { TaskConnectedContext } from './ConnectedContext';
@@ -137,7 +138,7 @@ function TaskEditorForm({ task, onClose, onSaved, onNavigate, onBack }: {
         <label htmlFor="edit-project">Project</label><select id="edit-project" value={draft.projectId} onChange={(e) => change('projectId', e.target.value)}><option value="">Inbox (unfiled)</option>{projects.map((p) => <option key={p.id} value={p.id} disabled={p.status !== 'ACTIVE'}>{p.name}{p.status !== 'ACTIVE' ? ' (archived)' : ''}</option>)}</select>
         <label htmlFor="edit-priority">Priority</label><select id="edit-priority" value={draft.priority} onChange={(e) => change('priority', e.target.value as Task['priority'])}>{['NONE', 'LOW', 'MEDIUM', 'HIGH'].map((p) => <option key={p}>{p}</option>)}</select>
         <label htmlFor="edit-due">Due date and time ({Intl.DateTimeFormat().resolvedOptions().timeZone})</label><input id="edit-due" type="datetime-local" value={draft.due} onChange={(e) => change('due', e.target.value)} />
-        <label htmlFor="edit-estimate">Estimate (minutes)</label><input id="edit-estimate" type="number" min={0} max={44640} step={1} value={draft.estimate} onChange={(e) => change('estimate', e.target.value)} />
+        <TaskTimeSummary task={task}/><label htmlFor="edit-estimate">Estimate (minutes)</label><input id="edit-estimate" type="number" min={0} max={44640} step={1} value={draft.estimate} onChange={(e) => change('estimate', e.target.value)} />
         <fieldset><legend>Tags</legend>{tags.map((t) => <label key={t.id} style={{ display: 'block' }}><input type="checkbox" checked={draft.tagIds.includes(t.id)} onChange={(e) => change('tagIds', e.target.checked ? [...draft.tagIds, t.id] : draft.tagIds.filter((id) => id !== t.id))} /> #{t.name}</label>)}
           <label htmlFor="edit-new-tags">New tags (comma separated)</label><input id="edit-new-tags" value={draft.newTags} onChange={(e) => change('newTags', e.target.value)} />
         </fieldset>

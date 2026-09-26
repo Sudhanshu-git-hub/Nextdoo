@@ -15,3 +15,4 @@ export * from './connected';
 export * from './calendar-center';
 export * from './insights';
 export * from './personalization';
+export * from './time-entries';

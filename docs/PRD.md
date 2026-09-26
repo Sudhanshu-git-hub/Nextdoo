@@ -2177,8 +2177,9 @@ start/pause/resume/stop and audited signed manual adjustments. Local commands ar
 saved before sending, replay safely, preserve reasons and reject negative totals.
 Versions and canonical overlap rules govern conflicts; rejected local commands
 remain reviewable. Stopwatch/Pomodoro work/break preferences persist. Pomodoro
-indicates elapsed intervals and requires an explicit finish-work action; breaks
-never add task duration. Break phase persists per browser/workspace. Offline
+closes work at its timestamp-derived deadline on the next browser wake-up; breaks
+never add task duration. Short/long break progression and optional auto-start use
+the existing durable queue. Break phase persists per browser/workspace. Offline
 commands work in the loaded application and survive restart; reopening the
 application shell/authentication still requires connectivity. This is not a new
 offline HTML cache or a native timer service.
@@ -2186,3 +2187,19 @@ offline HTML cache or a native timer service.
 No advanced task views, personal collection redesign, AI, collaboration, plugins,
 platform work or M8-i8 release hardening is included. Implementation and verification:
 [Task Center daily workflows](TASK_DAILY_WORKFLOWS_MILESTONE.md).
+
+
+### Daily workflow continuation acceptance
+
+Home supports restoring defaults and configuring Upcoming/priority previews in
+existing personalization. Focus displays the selected task, subtasks, actual and
+planned duration, task selection and completion. Pomodoro uses timestamp-derived
+work deadlines, configurable short/long breaks, session progression, break pause/
+resume, skip and optional auto-start. A late browser wake-up closes one work
+interval at its deadline; unattended historical cycles are never fabricated.
+
+Dated manual entries reuse timer sessions. Versioned edits/removals retain audit
+history and append compensating tracking events. They and Focus completion enter
+the existing durable sync queue. Home, Insights and reports share existing timer
+sessions plus historical manual TIME_LOGGED events, avoiding both omission and
+double credit. No additional timer database, sync protocol or migration is added.

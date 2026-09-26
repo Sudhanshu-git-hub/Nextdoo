@@ -31,8 +31,10 @@ export function useTaskPages(workspaceId: string, filters: string, cachedFallbac
       if (!more && cachedFallback) {
         const cached = await readCachedTasks<Task>(workspaceId).catch(() => []);
         if (controller.signal.aborted || currentKey.current !== key) return;
-        const until = new URLSearchParams(filters).get('dueBefore');
-        const tasks = cached.filter((t) => t.status === 'ACTIVE' && (!until || t.dueAt && t.dueAt <= until));
+        const query=new URLSearchParams(filters),until=query.get('dueBefore'),after=query.get('dueAfter');
+        const tasks=cached.filter(t=>t.status===(query.get('status')??'ACTIVE')&&(!until||t.dueAt&&t.dueAt<=until)&&(!after||t.dueAt&&t.dueAt>=after)
+          &&(!query.get('priority')||t.priority===query.get('priority'))&&(!query.get('projectId')||t.projectId===query.get('projectId'))
+          &&(!query.get('q')||t.title.toLowerCase().includes(query.get('q')!.toLowerCase())));
         if (tasks.length) { setState({ ...empty(key), tasks, stale: true, loading: false }); return; }
       }
       setState({ ...previous, loading: false, error: error instanceof ApiError ? error.problem.detail : 'Could not load your tasks. Please retry.' });

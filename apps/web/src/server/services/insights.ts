@@ -7,6 +7,7 @@ import { assertWorkspaceAccess } from '../auth';
 import { loadWorkspaceSettings } from './workspaces';
 import { getWellbeingPreferences } from './preferences';
 import { progressFor,type GoalActor } from './goals';
+import { focusTimeRows } from './focus-time';
 import { analyticsTaskExcluded } from './analytics-scope';
 import { calendarCenterProjection,listCalendarSources } from './calendar-center';
 
@@ -40,8 +41,8 @@ async function taskMetrics(db:Database,workspaceId:string,w:InsightsWindow,now:D
       union all select (t.due_at at time zone ${w.timeZone})::date,'planned' from tasks t where ${scope} and ${due}
       union all select (t.due_at at time zone ${w.timeZone})::date,'done' from tasks t where ${scope} and ${due} and t.status='COMPLETED' and t.completed_at is not null
     ), counts as(select day,count(*) filter(where kind='created')::int created,count(*) filter(where kind='completed')::int completed,count(*) filter(where kind='planned')::int planned,count(*) filter(where kind='done')::int done from activity group by day),
-    focus as(select (s.started_at at time zone ${w.timeZone})::date AS day,sum(s.accumulated_seconds+s.manual_adjustment_seconds)::float8/60 minutes
-      from timer_sessions s where s.workspace_id=${workspaceId} and s.started_at between ${w.start}::timestamptz and ${w.end}::timestamptz and not ${analyticsTaskExcluded(workspaceId,sql`s.task_id`)} group by day)
+    focus as(select (f.started_at at time zone ${w.timeZone})::date AS day,sum(f.seconds)::float8/60 minutes
+      from (${focusTimeRows(workspaceId,w.start,w.end,now)}) f group by day)
     select d.day::text AS day,coalesce(c.created,0)::int created,coalesce(c.completed,0)::int completed,coalesce(c.planned,0)::int planned,coalesce(c.done,0)::int done,coalesce(f.minutes,0)::float8 "focusMinutes"
     from days d left join counts c using(day) left join focus f using(day) order by d.day`);
   return {created:n(row!.created),completed:n(row!.completed),planned:n(row!.planned),completedPlanned:n(row!.done),incomplete:n(row!.incomplete),overdue:n(row!.overdue),currentOverdue:n(row!.currentOverdue),completionRate:rate(n(row!.done),n(row!.planned)),focusMinutes:round(trend.reduce((sum,d)=>sum+n(d.focusMinutes),0)),byPriority:dimensions.filter(d=>d.kind==='priority'),byStatus:dimensions.filter(d=>d.kind==='status'),byProject:dimensions.filter(d=>d.kind==='project').sort((a,b)=>b.count-a.count).slice(0,20),projectGroups:dimensions.filter(d=>d.kind==='project').length,trend};

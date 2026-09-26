@@ -291,8 +291,21 @@ export async function earliestRetryAt(workspaceId: string): Promise<number | nul
 
 export interface FlushResult { applied: number; conflicts: number; rejected: number }
 const inFlight = new Map<string, Promise<FlushResult>>();
+export async function readPomodoro(workspaceId:string):Promise<import('./pomodoro').PomodoroState|null>{
+  const row=await tx<{value:import('./pomodoro').PomodoroState|null}|undefined>(STORE_META,'readonly',s=>s.get(`pomodoro:${workspaceId}`));return row?.value??null;
+}
+/** Commit a cycle transition and its timer command in one existing IndexedDB transaction. */
+export async function savePomodoro(workspaceId:string,value:import('./pomodoro').PomodoroState|null,command?:Omit<QueuedMutation,'attempts'|'createdAt'|'localOrder'>){
+  if(command&&command.workspaceId!==workspaceId)throw new Error('Focus workspace mismatch');
+  const db=await openDb();await new Promise<void>((resolve,reject)=>{
+    const transaction=db.transaction([STORE_META,STORE_MUTATIONS],'readwrite');
+    transaction.objectStore(STORE_META).put({key:`pomodoro:${workspaceId}`,value});
+    if(command)transaction.objectStore(STORE_MUTATIONS).add({...command,attempts:0,createdAt:new Date().toISOString()});
+    transaction.oncomplete=()=>resolve();transaction.onerror=transaction.onabort=()=>reject(transaction.error??new Error('Could not save Focus transition'));
+  });await refreshCount(workspaceId);if(typeof window!=='undefined')window.dispatchEvent(new CustomEvent('nextdoo-queue-changed'));
+}
 export interface FocusSnapshot {
-  id: string; taskId: string; status: 'RUNNING' | 'PAUSED' | 'STOPPED' | 'OVERLAPPED';
+  workspaceId?: string; id: string; taskId: string; status: 'RUNNING' | 'PAUSED' | 'STOPPED' | 'OVERLAPPED';
   startedAt: string; elapsedSeconds: number; version: number; observedAt: string;
 }
 export async function readFocusSnapshot(workspaceId: string): Promise<FocusSnapshot | null> {

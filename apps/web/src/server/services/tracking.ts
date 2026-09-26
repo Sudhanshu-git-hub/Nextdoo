@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, gte, gt, inArray, isNull, lte, not, sql } from 'drizzle-orm';
-import { tasks, timerSessions, tags, taskTags, trackingEvents, trackingResults, workspaces, buildScoringInput as buildInput, evaluateTrackingInTransaction, type StoredResult } from '@nextdoo/db';
+import { tasks, tags, taskTags, trackingEvents, trackingResults, workspaces, buildScoringInput as buildInput, evaluateTrackingInTransaction, type StoredResult } from '@nextdoo/db';
 import { localDateKey, localDayBounds, localParts, workdayMinutes, workspaceWeek, zonedTimeToUtc, type ComponentResult } from '@nextdoo/core';
 import { getDb, withTransaction } from '../db';
 import { readTrackingFreshness } from './tracking-freshness';
@@ -7,6 +7,7 @@ import { logger } from '../observability';
 import { recordUnmeasuredResult } from '../metrics';
 import { withWorkspaceTransaction } from './transactions';
 import { AppError, type DayPoint, type RecurrenceAdherence, type RescheduledTask, type TagVariance } from '@nextdoo/contracts';
+import { focusTimeRows } from './focus-time';
 import { analyticsTaskExcluded } from './analytics-scope';
 export { CALCULATION_VERSION, type StoredResult } from '@nextdoo/db';
 export function buildScoringInput(workspaceId: string, taskId: string) { return buildInput(getDb(), workspaceId, taskId); }
@@ -199,24 +200,10 @@ async function readSummary(
   // Focus trend (PRD §7.8): all tracked focus time starting inside the window,
   // bucketed by the local day it started on. Excluded tasks stay hidden here
   // too, so the focus figures pair with the same cohort as every other number.
-  const excludedSession = analyticsTaskExcluded(workspaceId,timerSessions.taskId);
-  const focusRows = await db
-    .select({
-      startedAt: timerSessions.startedAt,
-      seconds: sql<number>`${timerSessions.accumulatedSeconds} + ${timerSessions.manualAdjustmentSeconds}`,
-    })
-    .from(timerSessions)
-    .where(
-      and(
-        eq(timerSessions.workspaceId, workspaceId),
-        gte(timerSessions.startedAt, from),
-        lte(timerSessions.startedAt, to),
-        not(excludedSession),
-      ),
-    );
+  const focusRows=await db.execute<{startedAt:Date|string;seconds:number}>(sql`select f.started_at as "startedAt",f.seconds from (${focusTimeRows(workspaceId,from.toISOString(),to.toISOString())}) f`);
   const focusByDay = new Map<string, number>();
   for (const row of focusRows) {
-    const key = localDateKey(row.startedAt, timeZone);
+    const key = localDateKey(new Date(row.startedAt), timeZone);
     focusByDay.set(key, (focusByDay.get(key) ?? 0) + Number(row.seconds));
   }
 

@@ -9,6 +9,16 @@ beforeEach(async () => {
   queue = await import('./offline-queue');
 });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
+it('Pomodoro phase and command persist atomically, reject mixed workspaces and roll back together',async()=>{
+  const cycle={session:1,phase:'work' as const,taskId:'task',timerId:'timer',targetSeconds:1500,deadline:null,remaining:null};
+  const command={...mutation(),entityType:'timer_session' as const};
+  await queue.savePomodoro(a,cycle,command);
+  vi.resetModules();queue=await import('./offline-queue');
+  expect(await queue.readPomodoro(a)).toEqual(cycle);expect(await queue.readPomodoro(b)).toBeNull();
+  await expect(queue.savePomodoro(b,cycle,command)).rejects.toThrow('workspace');
+  await expect(queue.savePomodoro(a,{...cycle,session:2},command)).rejects.toThrow();
+  expect((await queue.readPomodoro(a))?.session).toBe(1);expect(await queue.listQueued(a)).toHaveLength(1);
+});
 it('focus acknowledgement durably advances the canonical snapshot and serializes different sessions', async () => {
   const first={...mutation(),entityType:'timer_session' as const,payload:{taskId:randomUUID(),startedAt:new Date().toISOString()}};
   const second={...mutation(),entityType:'timer_session' as const,payload:{taskId:randomUUID(),startedAt:new Date().toISOString()}};

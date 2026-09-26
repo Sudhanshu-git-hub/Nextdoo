@@ -422,3 +422,8 @@ th { color: var(--text-dim); font-weight: 550; font-size: 12px; text-transform: 
 .mobile-navigation { display:none; }
 @media (max-width:900px) { .personalized .sidebar { display:none; } .mobile-navigation { display:block; padding:14px 26px 0; } }
 @media (max-width:700px) { .home-grid { grid-template-columns:minmax(0,1fr); } .home-stats { grid-template-columns:repeat(2,minmax(0,1fr)); } .home-card-picker { grid-template-columns:1fr; } }
+
+.focus-times { grid-template-columns:repeat(2,minmax(0,1fr)); margin:16px 0; }
+.focus-times > div { display:flex; flex-direction:column; gap:6px; min-width:0; }
+.focus-times strong { font-size:1.25rem; font-variant-numeric:tabular-nums; }
+.focus-card input[type=checkbox] { width:auto; min-height:0; display:inline-block; margin-right:6px; }

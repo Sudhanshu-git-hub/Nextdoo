@@ -12,6 +12,7 @@ import { TaskPagination } from '../TaskPagination';
 export function DailyTasksView({ workspaceId, view }: { workspaceId: string; view: DailyView }) {
   const { timeZone } = useWorkspace(), { now } = useWorkspaceDay(timeZone);
   const [horizon, setHorizon] = useState(7), [backlog, setBacklog] = useState('unscheduled');
+  useEffect(()=>{const days=Number(new URLSearchParams(window.location.search).get('days'));if([3,7,14].includes(days))setHorizon(days);},[]);
   const [priority, setPriority] = useState(''), [sort, setSort] = useState('dueAt');
   const filters = dailyFilters(view, now, timeZone, horizon, backlog);
   if (priority) filters.set('priority', priority);
