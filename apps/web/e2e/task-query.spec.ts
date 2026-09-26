@@ -87,18 +87,18 @@ test('HTTP query rejects invalid tokens and cross-tenant access without changing
   expect((await other.get(`${base}&sortBy=priority&cursor=${cursor}`)).status()).toBe(403);
  } finally { await other.dispose(); }
 });
-test.describe('browser-local calendar bounds', () => {
+test.describe('workspace calendar bounds with a different browser timezone', () => {
  test.use({ timezoneId: 'Asia/Kolkata' });
- test('a local due-day includes both edges and excludes the following day', async ({ page }) => {
+ test('a workspace due-day includes both edges and excludes the following day', async ({ page }) => {
   const { create } = await fixture(page);
-  await create('Day start', { dueAt: '2026-09-07T18:30:00Z' });
-  await create('Day end', { dueAt: '2026-09-08T18:29:59.999Z' });
-  await create('Next day', { dueAt: '2026-09-08T18:30:00Z' });
+  await create('Day start', { dueAt: '2026-09-08T00:00:00Z' });
+  await create('Day end', { dueAt: '2026-09-08T23:59:59.999Z' });
+  await create('Next day', { dueAt: '2026-09-09T00:00:00Z' });
   await page.goto('/tasks'); await expect(rows(page)).toHaveCount(3);
   await page.getByLabel('Due from', { exact: true }).fill('2026-09-08'); await page.getByLabel('Due through', { exact: true }).fill('2026-09-08');
   const request = page.waitForRequest((r) => r.url().includes('/api/v1/tasks?') && new URL(r.url()).searchParams.has('dueBefore'));
   await apply(page); const params = new URL((await request).url()).searchParams;
-  expect(params.get('dueAfter')).toBe('2026-09-07T18:30:00.000Z'); expect(params.get('dueBefore')).toBe('2026-09-08T18:29:59.999999Z');
+  expect(params.get('dueAfter')).toBe('2026-09-08T00:00:00.000Z'); expect(params.get('dueBefore')).toBe('2026-09-08T23:59:59.999999Z');
   await expect(rows(page)).toHaveCount(2); await expect(page.getByRole('button', { name: 'Edit "Next day"', exact: true })).not.toBeVisible();
  });
 });

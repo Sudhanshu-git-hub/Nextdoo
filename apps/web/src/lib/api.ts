@@ -42,6 +42,7 @@ export interface Task {
   id: string;
   workspaceId: string;
   projectId: string | null;
+  projectName?: string | null;
   sectionId?: string | null;
   parentTaskId?: string | null;
   recurrenceRuleId?: string | null;

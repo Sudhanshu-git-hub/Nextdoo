@@ -36,7 +36,7 @@ export interface ReconcileResult {
 export interface QueuedMutation {
   workspaceId: string;
   mutationId: string;
-  entityType: 'task';
+  entityType: 'task' | 'timer_session';
   entityId: string;
   operation: 'create' | 'update' | 'delete';
   baseVersion: number | null;
@@ -291,6 +291,36 @@ export async function earliestRetryAt(workspaceId: string): Promise<number | nul
 
 export interface FlushResult { applied: number; conflicts: number; rejected: number }
 const inFlight = new Map<string, Promise<FlushResult>>();
+export interface FocusSnapshot {
+  id: string; taskId: string; status: 'RUNNING' | 'PAUSED' | 'STOPPED' | 'OVERLAPPED';
+  startedAt: string; elapsedSeconds: number; version: number; observedAt: string;
+}
+export async function readFocusSnapshot(workspaceId: string): Promise<FocusSnapshot | null> {
+  const row = await tx<{ value: FocusSnapshot | null } | undefined>(STORE_META, 'readonly', s => s.get(`focus:${workspaceId}`));
+  return row?.value ?? null;
+}
+export async function saveFocusSnapshot(workspaceId: string, value: FocusSnapshot | null): Promise<void> {
+  await tx(STORE_META, 'readwrite', s => s.put({ key: `focus:${workspaceId}`, value }));
+}
+export async function readFocusBreak(workspaceId: string): Promise<number | null> {
+  const row = await tx<{ value: number | null } | undefined>(STORE_META, 'readonly', s => s.get(`focus-break:${workspaceId}`));
+  return row?.value ?? null;
+}
+export async function saveFocusBreak(workspaceId: string, value: number | null): Promise<void> {
+  await tx(STORE_META, 'readwrite', s => s.put({ key: `focus-break:${workspaceId}`, value }));
+}
+/** Acknowledgement and canonical snapshot commit together: a crash cannot lose a timer. */
+async function acknowledgeTimer(workspaceId: string, mutation: QueuedMutation, entity: FocusSnapshot) {
+  const db = await openDb();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction([STORE_META, STORE_MUTATIONS], 'readwrite');
+    if (entity?.id && entity.observedAt) transaction.objectStore(STORE_META).put({ key: `focus:${workspaceId}`, value: entity });
+    if (mutation.localOrder !== undefined) transaction.objectStore(STORE_MUTATIONS).delete(mutation.localOrder);
+    transaction.oncomplete = () => resolve();
+    transaction.onabort = transaction.onerror = () => reject(transaction.error ?? new Error('Timer acknowledgement failed'));
+  });
+  await refreshCount(workspaceId);
+}
 export function flushQueue(workspaceId: string, deviceId: string): Promise<FlushResult> {
   const active = inFlight.get(workspaceId);
   if (active) return active;
@@ -308,8 +338,9 @@ async function flush(workspaceId: string, deviceId: string): Promise<FlushResult
   // heads block followers; independent entities can make progress.
   const seen = new Set<string>();
   const batch = queued.filter((m) => {
-    if (seen.has(m.entityId)) return false;
-    seen.add(m.entityId);
+    const key = m.entityType === 'timer_session' ? 'focus-commands' : m.entityId;
+    if (seen.has(key)) return false;
+    seen.add(key);
     return !m.quarantined && (m.retryAt ?? 0) <= Date.now();
   }).slice(0, 200);
   if (!batch.length) return result;
@@ -332,7 +363,11 @@ async function flush(workspaceId: string, deviceId: string): Promise<FlushResult
     if (!Array.isArray(body.results)) throw new Error('Invalid sync response');
     for (const m of batch) {
       const reply = body.results.find((r: { mutationId?: string }) => r.mutationId === m.mutationId);
-      if (reply?.status === 'applied' || reply?.status === 'duplicate') { await dequeue(workspaceId, m.mutationId); result.applied++; }
+      if (reply?.status === 'applied' || reply?.status === 'duplicate') {
+        if (m.entityType === 'timer_session') await acknowledgeTimer(workspaceId, m, reply.entity);
+        else await dequeue(workspaceId, m.mutationId);
+        result.applied++;
+      }
       else if (reply?.status === 'conflict' || reply?.status === 'rejected') {
         await markFailed(workspaceId, m.mutationId, `Needs attention: ${reply.status}`, 'client');
         if (reply.status === 'conflict') result.conflicts++; else result.rejected++;

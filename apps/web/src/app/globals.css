@@ -394,3 +394,31 @@ th { color: var(--text-dim); font-weight: 550; font-size: 12px; text-transform: 
 .personalized[data-theme="light"] { --on-accent:#fff; }
 .personalized[data-theme="dark"] { --on-accent:#0f1115; }
 .personalized .btn-primary { background:var(--accent); color:var(--on-accent); }
+
+/* Personal dashboard and daily execution: reuse the active appearance tokens. */
+.home-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; margin-top:24px; }
+.home-widget { min-width:0; display:flex; flex-direction:column; gap:10px; }
+.home-widget header { justify-content:space-between; align-items:start; }
+.home-widget h2 { margin:0; font-size:1.1rem; }
+.home-widget details { position:relative; }
+.home-widget summary { cursor:pointer; padding:4px 8px; }
+.home-card-menu { display:flex; flex-direction:column; gap:8px; padding:8px 0; }
+.home-items,.focus-tasks { list-style:none; margin:0; padding:0; }
+.home-items li { padding:10px 0; border-bottom:1px solid var(--border); overflow-wrap:anywhere; }
+.home-items span { display:block; margin-top:3px; font-size:.85rem; }
+.home-card-link { margin-top:auto; padding-top:10px; }
+.home-stats { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
+.home-stats a { text-decoration:none; display:flex; flex-direction:column; gap:8px; color:inherit; }
+.home-stats strong { font-size:1.8rem; }
+.home-stats span { font-size:.85rem; }
+.home-card-picker { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.home-card-picker label { display:flex; align-items:center; gap:8px; }
+.home-card-picker input { width:auto; }
+.daily-controls { margin-bottom:20px; align-items:end; }
+.focus-card { padding:28px; margin-bottom:24px; }
+.focus-clock { font-size:clamp(2.4rem,8vw,4rem); font-variant-numeric:tabular-nums; margin-top:28px; }
+.focus-tasks { margin-bottom:24px; }
+.sidebar { overflow-y:auto; }
+.mobile-navigation { display:none; }
+@media (max-width:900px) { .personalized .sidebar { display:none; } .mobile-navigation { display:block; padding:14px 26px 0; } }
+@media (max-width:700px) { .home-grid { grid-template-columns:minmax(0,1fr); } .home-stats { grid-template-columns:repeat(2,minmax(0,1fr)); } .home-card-picker { grid-template-columns:1fr; } }

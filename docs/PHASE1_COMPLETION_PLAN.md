@@ -1,5 +1,11 @@
 # Phase 1 completion ledger and remaining execution plan
 
+Current personal-web follow-up: [Task Center daily workflows](TASK_DAILY_WORKFLOWS_MILESTONE.md)
+extends the PC1–PC7 baseline with Home cards, daily task navigation and durable
+Focus/Pomodoro/manual time commands. The dated M1–M6 ledger below is historical;
+its offline-timer limitation is superseded within that follow-up's stated boundary.
+This does not close the separate M8-i8 security/deployment release gates.
+
 Date: 2026-09-09 (Asia/Calcutta). **Status: incomplete — not ready to declare the
 Paid-Quality MVP finished.** The user has requested the next increment and full
 Phase 1 completion. This ledger preserves that goal; it does not redefine Phase 1

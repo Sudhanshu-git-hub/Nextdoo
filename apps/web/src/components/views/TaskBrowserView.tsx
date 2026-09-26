@@ -1,20 +1,24 @@
 'use client';
 import Link from 'next/link';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { TaskBulkList } from '@/components/TaskBulkList';
 import { TaskPagination } from '@/components/TaskPagination';
 import { useTaskPages } from '@/lib/use-task-pages';
+import { dateWindow } from '@/lib/daily-tasks';
+import { useWorkspace } from '../WorkspaceContext';
 
 type Option = { id: string; name: string };
 const defaults = { q: '', status: 'ACTIVE', project: '', tagId: '', priority: '', hasDueDate: '', from: '', through: '', sortBy: 'createdAt', sortOrder: 'desc' };
 /** Explicitly applied, online-only workspace search. Inbox/Today retain their fixed semantics. */
 export function TaskBrowserView({ workspaceId, projects, tags }: { workspaceId: string; projects: Option[]; tags: Option[] }) {
+  const { timeZone } = useWorkspace();
   const [draft, setDraft] = useState(defaults);
   const [applied, setApplied] = useState(defaults);
   const [filters, setFilters] = useState('status=ACTIVE&sortBy=createdAt&sortOrder=desc');
   const [bulkPending, setBulkPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const page = useTaskPages(workspaceId, filters);
+  useEffect(() => { const priority = new URLSearchParams(window.location.search).get('priority'); if (priority && ['HIGH','MEDIUM','LOW','NONE'].includes(priority)) { const next = {...defaults,priority}; setDraft(next); setApplied(next); setFilters('status=ACTIVE&sortBy=createdAt&sortOrder=desc&priority='+priority); } }, []);
   function field(key: keyof typeof defaults, value: string) { setDraft((d) => ({ ...d, [key]: value })); setError(null); }
   function apply(event: FormEvent) {
     event.preventDefault();
@@ -23,10 +27,11 @@ export function TaskBrowserView({ workspaceId, projects, tags }: { workspaceId: 
     for (const key of ['status', 'tagId', 'priority', 'hasDueDate'] as const) if (draft[key]) query.set(key, draft[key]);
     if (draft.q.trim()) query.set('q', draft.q.trim());
     if (draft.project === 'unfiled') query.set('unfiled', 'true'); else if (draft.project) query.set('projectId', draft.project);
-    // Calendar-day boundaries in the browser's timezone; retain the last DB microsecond.
+    // Use the same workspace calendar dates as Today, Tomorrow and Upcoming.
     for (const [date, key, time] of [[draft.from, 'dueAfter', 'T00:00:00.000'], [draft.through, 'dueBefore', 'T23:59:59.999']] as const) {
       if (!date) continue;
-      const boundary = new Date(`${date}${time}`);
+      const range = dateWindow(date, timeZone);
+      const boundary = time === 'T00:00:00.000' ? range.start : range.end;
       if (!Number.isFinite(boundary.getTime())) { setError('Choose a valid due date.'); return; }
       query.set(key, boundary.toISOString().replace('.999Z', '.999999Z'));
     }
@@ -58,7 +63,7 @@ export function TaskBrowserView({ workspaceId, projects, tags }: { workspaceId: 
         <div><label htmlFor="filter-direction">Direction</label><select id="filter-direction" value={draft.sortOrder} onChange={(e) => field('sortOrder', e.target.value)}><option value="asc">Ascending</option><option value="desc">Descending</option></select></div>
       </div>
       <p id="task-search-help" className="muted">Search matches whole words in titles and descriptions, not partial words.</p>
-      <p id="task-date-help" className="muted">Dates include the whole day in this browser’s timezone. Choosing “No due date” clears the range.</p>
+      <p id="task-date-help" className="muted">Dates include the whole day in your workspace timezone ({timeZone}). Choosing “No due date” clears the range.</p>
       <p className="muted">Ascending: earliest, lowest priority, shortest estimate, A–Z or smallest position first. Missing values stay last in both directions. Custom position reads the stored order; it does not reorder tasks.</p>
       {error && <div role="alert" className="banner banner-error">{error}</div>}
       <div className="row"><button className="btn-primary" type="submit">Apply filters</button><button type="button" onClick={reset}>Reset filters</button></div>

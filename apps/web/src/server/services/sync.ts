@@ -10,6 +10,9 @@ import { serialiseTask, createTask, updateTask, completeTask, reopenTask, archiv
 import { withTransaction } from '../db';
 import { withWorkspaceTransaction } from './transactions';
 import { assertTaskReferences } from './task-references';
+import { z } from 'zod';
+import { startTimer, updateTimer, logTime } from './timers';
+import { logTimeSchema } from '@nextdoo/contracts';
 
 /**
  * Sync protocol (PRD §10).
@@ -115,6 +118,8 @@ async function applyMutation(
 ): Promise<MutationResult> {
   return withTransaction(async (db) => {
     await db.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'mutation:' + mutation.mutationId}, 0))`);
+    // Match the online timer lock order before entering a workspace transaction.
+    if (mutation.entityType === 'timer_session') await db.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'timer-user:' + actor.userId}, 0))`);
     return withWorkspaceTransaction(actor.workspaceId, async (tx) => {
   // Replay protection: return the original outcome verbatim.
   const prior = await tx
@@ -132,6 +137,26 @@ async function applyMutation(
     return { mutationId: mutation.mutationId, status: prior[0].status === 'rejected' ? 'rejected' : prior[0].status === 'conflict' ? 'conflict' : 'duplicate', entity: prior[0].result as Record<string, unknown> };
   }
 
+  if (mutation.entityType === 'timer_session') {
+    let result: Record<string, unknown>;
+    if (mutation.operation === 'create') {
+      const input = z.object({ taskId: z.string().uuid(), startedAt: z.string().datetime() }).strict().parse(mutation.payload);
+      if (mutation.baseVersion !== null) throw new AppError('VALIDATION_FAILED', 'New timers cannot have a base version.');
+      if (new Date(input.startedAt).getTime() > Date.now() + 15 * 60000) throw new AppError('VALIDATION_FAILED', 'Timer time is too far in the future.');
+      result = await startTimer(actor, input.taskId, deviceId, input.startedAt, mutation.entityId);
+    } else if (mutation.operation === 'update' && mutation.payload.action === 'adjust') {
+      const { action: _action, ...fields } = mutation.payload;
+      const input = logTimeSchema.parse(fields);
+      await logTime(actor, input.taskId, input.minutes, input.note);
+      result = { adjusted: true, taskId: input.taskId };
+    } else if (mutation.operation === 'update') {
+      const input = z.object({ action: z.enum(['pause','resume','stop']), at: z.string().datetime() }).strict().parse(mutation.payload);
+      if (mutation.baseVersion === null || new Date(input.at).getTime() > Date.now() + 15 * 60000) throw new AppError('VALIDATION_FAILED', 'A valid timer version and timestamp are required.');
+      result = await updateTimer(actor, mutation.entityId, input.action, input.at, mutation.baseVersion);
+    } else throw new AppError('VALIDATION_FAILED', 'Unsupported timer command.');
+    await recordMutation(tx, actor.workspaceId, deviceId, mutation, 'applied', result);
+    return { mutationId: mutation.mutationId, status: 'applied', entity: result };
+  }
   if (mutation.entityType !== 'task') {
     return {
       mutationId: mutation.mutationId,

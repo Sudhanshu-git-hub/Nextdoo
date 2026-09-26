@@ -1,6 +1,7 @@
 'use client';
 import { localDayBounds, localDateKey } from '@nextdoo/core/calendar';
 import { useWorkspace } from '@/components/WorkspaceContext';
+import { useWorkspaceDay } from '@/lib/use-workspace-day';
 import { ConnectedToday } from '@/components/ConnectedContext';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -29,11 +30,13 @@ import { TaskList } from '@/components/TaskList';
  */
 export function TodayView({ workspaceId }: { workspaceId: string }) {
   const { timeZone } = useWorkspace();
+  const { now, day } = useWorkspaceDay(timeZone);
+  const [taskStatus, setTaskStatus] = useState('ACTIVE');
   const filters = useMemo(() => {
     const { end } = localDayBounds(new Date(), timeZone);
-    return `status=ACTIVE&dueBefore=${encodeURIComponent(end.toISOString())}`;
-  }, [timeZone]);
-  const page = useTaskPages(workspaceId, filters, true);
+    return `status=${taskStatus}&sortBy=dueAt&sortOrder=asc&dueBefore=${encodeURIComponent(end.toISOString().replace('.999Z', '.999999Z'))}${taskStatus === 'COMPLETED' ? '&dueAfter=' + encodeURIComponent(localDayBounds(new Date(), timeZone).start.toISOString()) : ''}`;
+  }, [timeZone, day, taskStatus]);
+  const page = useTaskPages(workspaceId, filters, taskStatus === 'ACTIVE');
   const { tasks, loading, stale, reload: load } = page;
   const [capacity, setCapacity] = useState<DayCapacityData | null>(null);
   const [connectedRevision,setConnectedRevision]=useState(0);
@@ -81,7 +84,7 @@ export function TodayView({ workspaceId }: { workspaceId: string }) {
     return () => window.removeEventListener('nextdoo-synced', onSynced);
   }, [reload]);
 
-  const now = new Date();
+
   const overdue = tasks.filter((t) => t.dueAt && new Date(t.dueAt) < localDayBounds(now, timeZone).start);
   const today = tasks.filter((t) => !t.dueAt || new Date(t.dueAt) >= localDayBounds(now, timeZone).start);
 
@@ -103,6 +106,7 @@ export function TodayView({ workspaceId }: { workspaceId: string }) {
         </div>
       )}
 
+      <label>Today task state<select value={taskStatus} onChange={e => setTaskStatus(e.target.value)}><option value="ACTIVE">Incomplete</option><option value="COMPLETED">Completed, due today</option></select></label>
       <QuickCapture workspaceId={workspaceId} onCreated={reload} />
 
       {capacity?.status === 'OVERLOADED' && overloadWarningsEnabled && (

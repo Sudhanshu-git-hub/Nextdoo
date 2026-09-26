@@ -333,9 +333,9 @@ export const updateTimerSchema = z.object({
 
 export const logTimeSchema = z.object({
   taskId: uuid,
-  minutes: z.number().int().min(1).max(60 * 24),
+  minutes: z.number().int().min(-60 * 24).max(60 * 24).refine(v => v !== 0, 'Enter a nonzero adjustment.'),
   note: z.string().max(500).optional(),
-});
+}).refine(v => v.minutes > 0 || Boolean(v.note?.trim()), 'Explain a negative time correction.');
 
 // ---------------------------------------------------------------- reminders
 

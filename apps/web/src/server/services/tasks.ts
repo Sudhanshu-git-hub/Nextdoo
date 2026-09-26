@@ -726,7 +726,7 @@ export async function queryTasks(
   if (order.after) conditions.push(order.after);
 
   const rows = await db
-    .select({ ...getTableColumns(tasks), cursorKey: order.selection })
+    .select({ ...getTableColumns(tasks), cursorKey: order.selection, projectName: projects.name })
     .from(tasks)
     .leftJoin(projects, and(eq(projects.id, tasks.projectId), eq(projects.workspaceId, workspaceId), isNull(projects.deletedAt)))
     .where(and(...conditions))
@@ -741,7 +741,7 @@ export async function queryTasks(
       ? order.cursor(last)
       : null;
 
-  return { data: page.map(serialise), nextCursor, hasMore };
+  return { data: page.map(row => ({ ...serialise(row), projectName: row.projectName })), nextCursor, hasMore };
 }
 
 export { serialise as serialiseTask };

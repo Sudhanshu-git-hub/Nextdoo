@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
-import { AppError, logTimeSchema, notFound } from '@nextdoo/contracts';
+import { AppError, logTimeSchema, notFound, versionConflict } from '@nextdoo/contracts';
 import { tasks, timerSessions, type Database } from '@nextdoo/db';
 import { getDb, withTransaction } from '../db';
 import { withWorkspaceTransaction } from './transactions';
@@ -40,6 +40,7 @@ function serialise(row: typeof timerSessions.$inferSelect, at = new Date()) {
     endedAt: row.endedAt?.toISOString() ?? null,
     elapsedSeconds: elapsedSeconds(row, at),
     version: row.version,
+    observedAt: at.toISOString(),
   };
 }
 
@@ -61,7 +62,7 @@ function eventTime(value?: string): Date {
   return time;
 }
 
-export async function startTimer(actor: TimerActor, taskId: string, deviceId: string, startedAt?: string) {
+export async function startTimer(actor: TimerActor, taskId: string, deviceId: string, startedAt?: string, id = newId()) {
   const now = eventTime(startedAt);
   return withTimerTransaction(actor, async (tx) => {
     const [task] = await tx.select().from(tasks).where(and(eq(tasks.id, taskId), eq(tasks.workspaceId, actor.workspaceId)));
@@ -86,7 +87,7 @@ export async function startTimer(actor: TimerActor, taskId: string, deviceId: st
       }
     }
     const [created] = await tx.insert(timerSessions).values({
-      id: newId(), workspaceId: actor.workspaceId, taskId, userId: actor.userId, deviceId,
+      id, workspaceId: actor.workspaceId, taskId, userId: actor.userId, deviceId,
       startedAt: now, lastResumedAt: incomingOlder ? null : now,
       status: incomingOlder ? 'OVERLAPPED' : 'RUNNING',
       endedAt: incomingOlder ? canonical.startedAt : null,
@@ -106,7 +107,7 @@ export async function startTimer(actor: TimerActor, taskId: string, deviceId: st
   });
 }
 
-export async function updateTimer(actor: TimerActor, timerId: string, action: 'pause' | 'resume' | 'stop', at?: string) {
+export async function updateTimer(actor: TimerActor, timerId: string, action: 'pause' | 'resume' | 'stop', at?: string, version?: number) {
   const now = eventTime(at);
 
   const result = await withTimerTransaction(actor, async (tx) => {
@@ -117,6 +118,7 @@ export async function updateTimer(actor: TimerActor, timerId: string, action: 'p
       .limit(1);
     const row = rows[0];
     if (!row) throw notFound('timer_session', timerId);
+    if (version !== undefined && row.version !== version) throw versionConflict('timer', timerId);
     if (now < row.lastTransitionAt) throw new AppError('VALIDATION_FAILED', 'Timer timestamps cannot move backwards.');
     if (row.status === 'STOPPED' || row.status === 'OVERLAPPED') {
       throw new AppError('VALIDATION_FAILED', 'This timer has already been stopped.');
@@ -216,17 +218,21 @@ export async function logTime(actor: TimerActor, taskId: string, minutes: number
       action: 'time.logged_manually',
       targetType: 'task',
       targetId: taskId,
-      metadata: { minutes },
+      metadata: { minutes, note: note ?? null },
       requestId: actor.requestId ?? null,
     });
   });
 }
 
 async function applyDurationToTask(tx: Database, actor: TimerActor, taskId: string, seconds: number): Promise<void> {
-  if (seconds <= 0) return;
+  if (seconds === 0) return;
+  const [current] = await tx.select().from(tasks).where(and(eq(tasks.id, taskId), eq(tasks.workspaceId, actor.workspaceId)));
+  if (!current) throw notFound('task', taskId);
+  const total = current.actualMinutes * 60 + current.actualSecondsRemainder + seconds;
+  if (total < 0) throw new AppError('VALIDATION_FAILED', 'A correction cannot reduce recorded time below zero.');
   const [updated] = await tx.update(tasks)
-    .set({ actualMinutes: sql`${tasks.actualMinutes} + floor((${tasks.actualSecondsRemainder}::bigint + ${seconds})::numeric / 60)::integer`,
-      actualSecondsRemainder: sql`(${tasks.actualSecondsRemainder}::bigint + ${seconds}) % 60`, updatedAt: new Date(), version: sql`${tasks.version} + 1` })
+    .set({ actualMinutes: Math.floor(total / 60),
+      actualSecondsRemainder: total % 60, updatedAt: new Date(), version: sql`${tasks.version} + 1` })
     .where(and(eq(tasks.id, taskId), eq(tasks.workspaceId, actor.workspaceId))).returning();
   if (!updated) throw notFound('task', taskId);
   await recordSyncChange(tx, { workspaceId: actor.workspaceId, entityType: 'task', entityId: taskId, operation: 'update', payload: serialiseTask(updated), version: updated.version });

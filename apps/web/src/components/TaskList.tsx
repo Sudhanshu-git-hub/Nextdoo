@@ -51,6 +51,9 @@ function TaskRow({ task, timeZone, busy, rowError, onToggle, onOpen, onTaskDrag,
                 })}
               </span>
             )}
+            {task.status === 'ACTIVE' && <Link href={`/focus?taskId=${task.id}`} className="history-link" aria-label="Start task timer">Start timer</Link>}
+            {task.status === 'COMPLETED' && <Link href={`/focus?taskId=${task.id}`} className="history-link">Adjust recorded time</Link>}
+            {task.projectId && <Link href={`/projects/${task.projectId}`} className="history-link">{task.projectName ?? 'Project'}</Link>}
             {task.status !== 'DELETED' && <Link href={`/analytics?taskId=${task.id}`} className="history-link">Tracking</Link>}
             {task.status !== 'DELETED' && <Link href={`/notifications?taskId=${task.id}`} className="history-link">Reminders</Link>}
             {task.priority !== 'NONE' && (
@@ -139,7 +142,7 @@ export function TaskList({
 
   if (loading) {
     return (
-      <div aria-busy="true" aria-label="Loading tasks">
+      <div role="status" aria-busy="true" aria-label="Loading tasks">
         {[0, 1, 2].map((i) => (
           <div key={i} className="skeleton" style={{ height: 56, marginBottom: 7 }} />
         ))}

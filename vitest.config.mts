@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 export default defineConfig({
   resolve: {
     alias: Object.fromEntries([
+      ['@nextdoo/core/calendar', fileURLToPath(new URL('./packages/core/src/calendar.ts', import.meta.url))],
       ...['contracts', 'core', 'db', 'billing', 'calendar'].map((name) => [
         `@nextdoo/${name}`, fileURLToPath(new URL(`./packages/${name}/src/index.ts`, import.meta.url)),
       ]),

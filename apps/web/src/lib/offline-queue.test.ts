@@ -9,6 +9,22 @@ beforeEach(async () => {
   queue = await import('./offline-queue');
 });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
+it('focus acknowledgement durably advances the canonical snapshot and serializes different sessions', async () => {
+  const first={...mutation(),entityType:'timer_session' as const,payload:{taskId:randomUUID(),startedAt:new Date().toISOString()}};
+  const second={...mutation(),entityType:'timer_session' as const,payload:{taskId:randomUUID(),startedAt:new Date().toISOString()}};
+  await queue.enqueue(first);await queue.enqueue(second);
+  const entity={id:first.entityId,taskId:first.payload.taskId,status:'RUNNING',startedAt:first.payload.startedAt,observedAt:new Date().toISOString(),elapsedSeconds:0,version:1};
+  const fetch=vi.fn().mockResolvedValue(new Response(JSON.stringify({results:[{mutationId:first.mutationId,status:'applied',entity}]})));vi.stubGlobal('fetch',fetch);
+  await queue.flushQueue(a,'test');
+  expect(JSON.parse(fetch.mock.calls[0]![1].body).mutations).toHaveLength(1);
+  expect(await queue.readFocusSnapshot(a)).toEqual(entity);expect(await queue.readFocusSnapshot(b)).toBeNull();
+  expect((await queue.listQueued(a)).map(m=>m.mutationId)).toEqual([second.mutationId]);
+});
+it('focus commands and break deadlines survive module reload while staying workspace-scoped',async()=>{
+  await queue.enqueue({...mutation(),entityType:'timer_session',payload:{action:'pause',at:new Date().toISOString()}});
+  await queue.saveFocusBreak(a,123456);vi.resetModules();queue=await import('./offline-queue');
+  expect(await queue.listQueued(a)).toHaveLength(1);expect(await queue.readFocusBreak(a)).toBe(123456);expect(await queue.readFocusBreak(b)).toBeNull();
+});
 it('queue records are workspace-scoped and cannot be flushed under another account', async () => {
   const m = mutation(a); await queue.enqueue(m);
   const fetch = vi.fn(); vi.stubGlobal('fetch', fetch);

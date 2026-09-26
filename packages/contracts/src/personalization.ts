@@ -1,12 +1,16 @@
 import { z } from 'zod';
 export const personalizationSchema=z.object({
+  homeCards:z.array(z.enum(['today','upcoming','overdue','priorities','goals','focus','calendar','tracker','knowledge','notes','insights'])).max(11).refine(v=>new Set(v).size===v.length,'Choose each card only once.').default(['today','upcoming','goals','priorities','calendar','focus','tracker','knowledge']),
+  focusMinutes:z.number().int().min(1).max(180).default(25),
+  breakMinutes:z.number().int().min(1).max(60).default(5),
+  focusMode:z.enum(['stopwatch','pomodoro']).default('stopwatch'),
   theme:z.enum(['system','light','dark']).default('system'),
   accent:z.enum(['blue','purple','green']).default('blue'),
   density:z.enum(['comfortable','compact']).default('comfortable'),
   uiSize:z.enum(['standard','large']).default('standard'),
   sidebar:z.enum(['expanded','compact']).default('expanded'),
   highContrast:z.boolean().default(false),reducedMotion:z.boolean().default(false),
-  startPage:z.enum(['/today','/inbox','/tasks','/goals','/trackers','/knowledge','/projects','/calendar','/insights']).default('/today'),
+  startPage:z.enum(['/home','/tomorrow','/upcoming','/overdue','/backlog','/completed','/focus','/today','/inbox','/tasks','/goals','/trackers','/knowledge','/projects','/calendar','/insights']).default('/today'),
   defaultTaskView:z.enum(['list','board']).default('list'),
   defaultTaskList:z.string().uuid().nullable().default(null),
   calendarView:z.enum(['day','week','month','year','agenda']).default('week'),

@@ -114,7 +114,8 @@ describe('preferences service (§7.9, M8-i3)', () => {
 
     const multi = await setWellbeingPreferences(account.id, { disableStreaks: true, disableComparativeMetrics: false });
     expect(multi).toEqual({ ...DEFAULTS, disableScores: true, disableStreaks: true, disableComparativeMetrics: false });
-    expect((await prefRows(account.id)).map((r) => r.key)).toEqual(['disableScores', 'disableStreaks', 'disableComparativeMetrics']);
+    // SQL without ORDER BY promises the stored set, not insertion order.
+    expect((await prefRows(account.id)).map((r) => r.key).sort()).toEqual(['disableScores', 'disableStreaks', 'disableComparativeMetrics'].sort());
     const audits = await auditRows(account.id, 'account.preferences_updated');
     expect(audits).toHaveLength(2);
     expect(audits[0]!.metadata).toMatchObject({ fields: ['preferences.disableScores'] });

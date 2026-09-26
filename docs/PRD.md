@@ -538,7 +538,7 @@ Acceptance requires real persisted hierarchy, milestone and task-link workflows;
 
 ### 6.12 Remaining personal modules — planned
 
-Task Center remains the daily execution hub. Its planned navigation is Home, Inbox, Today, Tomorrow, Upcoming, Focus, Overdue/Backlog and Completed. Personal organization can use lists, projects, rituals, spaces and recurring habit collections. Preserve existing priority, status, tags, effort/estimate, duration and dates; extend urgency, importance and energy only with defined behavior and usable filtering. Tasks connect to goals/milestones, trackers, knowledge, calendar, attachments, recurrence, reminders and supported automations through real owned relationships.
+Task Center remains the daily execution hub. Its daily navigation is Home, Inbox, Today, Tomorrow, Upcoming, Focus, Overdue, Backlog and Completed; see the Task Center daily-workflow acceptance boundary below. Personal organization can use lists, projects, rituals, spaces and recurring habit collections. Preserve existing priority, status, tags, effort/estimate, duration and dates; extend urgency, importance and energy only with defined behavior and usable filtering. Tasks connect to goals/milestones, trackers, knowledge, calendar, attachments, recurrence, reminders and supported automations through real owned relationships.
 
 List, board and calendar are existing view foundations. Table, timeline/Gantt, cards/gallery, Eisenhower, mind-map and map views are possible later personal-product views, not simultaneous launch requirements. Goal tree/flowchart/mind-map/matrix views are likewise future extensions of the persisted hierarchy.
 
@@ -2153,3 +2153,36 @@ Activity counts cover selected dates. Current overdue work, active goals, measur
 **EXTERNAL:** Google OAuth, browser push permission/VAPID, account email and billing require deployment/provider configuration. Stripe checkout is exposed only when configured and eligible; return pages do not claim payment success before provider confirmation. Razorpay backend support is disclosed without an unimplemented embedded checkout. No in-app subscription portal/cancellation or backup restore is invented; these remain provider/deployment operations.
 
 **FUTURE:** Global notification-category/email mute policy, avatar uploads, translations, self-service restore, additional integrations, native clients, AI, collaboration and plugin marketplace. PC8 is out of scope. See [Settings Center milestone](SETTINGS_CENTER_MILESTONE.md).
+
+
+## Task Center daily-workflow acceptance boundary
+
+Home is a configurable personal overview using real, bounded module previews and
+server-computed task counts. Its registry supports Today, Upcoming, Overdue,
+Priorities, Goals, Focus, Calendar, Tracker, Recent Knowledge, Quick Notes and
+Productivity summary. Card inclusion/order and optional Home start-page selection
+reuse existing personalization preferences. Recently Viewed is unavailable until
+there is an authoritative viewing-history source. Quick Notes creates a Knowledge
+note; no parallel notepad database is introduced.
+
+Tomorrow uses the next workspace-local calendar date. Upcoming starts tomorrow
+with a selectable 3/7/14-day horizon (default seven). Overdue means due before
+today; Backlog separates overdue and no-date work. Completed is a first-class
+reopenable view. Today retains overdue context and offers completed tasks due
+today. Daily and general task-date filters use workspace timezone boundaries,
+including DST. Existing recurrence, reminder and completion commands remain authoritative.
+
+Focus extends the existing timer service and sync mutation ledger with durable
+start/pause/resume/stop and audited signed manual adjustments. Local commands are
+saved before sending, replay safely, preserve reasons and reject negative totals.
+Versions and canonical overlap rules govern conflicts; rejected local commands
+remain reviewable. Stopwatch/Pomodoro work/break preferences persist. Pomodoro
+indicates elapsed intervals and requires an explicit finish-work action; breaks
+never add task duration. Break phase persists per browser/workspace. Offline
+commands work in the loaded application and survive restart; reopening the
+application shell/authentication still requires connectivity. This is not a new
+offline HTML cache or a native timer service.
+
+No advanced task views, personal collection redesign, AI, collaboration, plugins,
+platform work or M8-i8 release hardening is included. Implementation and verification:
+[Task Center daily workflows](TASK_DAILY_WORKFLOWS_MILESTONE.md).
