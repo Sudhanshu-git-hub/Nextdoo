@@ -18,6 +18,8 @@ const signatures = [
 export const digest = value => createHash('sha256').update(value.replace(/\r\n/g, '\n')).digest('hex');
 
 export function scanText(file, text) {
+  // Normalize before matching: multiline regexes may consume a lone CR at EOL.
+  text = text.replace(/\r\n/g, '\n');
   const findings = [];
   const add = (rule, start, value) => findings.push({ file, rule, line: text.slice(0, start).split('\n').length, fingerprint: digest(value) });
   if (/(^|\/)\.env(?:\.|$)/.test(file) && !file.endsWith('.example')) add('SECRET_ENV_FILE', 0, text);

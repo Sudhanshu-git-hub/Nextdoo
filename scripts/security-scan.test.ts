@@ -27,6 +27,18 @@ describe('deterministic secret signatures', () => {
     expect(findings.some(f => f.rule === rule)).toBe(true);
     expect(JSON.stringify(findings)).not.toContain(sample);
   });
+  it('uses identical findings and exceptions for Windows and Linux line endings', () => {
+    for (const [file, source] of [
+      ['config.yml', '# fixture\nAUTH_SECRET: ' + sample + '\nPORT: 3000\n'],
+      ['fixture.ts', '// fixture\nconst clientSecret = "' + sample + '";\nsql.raw(input);\n'],
+    ]) {
+      const linux = scanText(file, source);
+      const windows = scanText(file, source.replace(/\n/g, '\r\n'));
+      expect(windows).toEqual(linux);
+      const entries = windows.map(f => ({ ...f, reason: 'Synthetic cross-platform scanner fixture reviewed in this test.' }));
+      expect(applyAllowlist(linux, entries)).toEqual([]);
+    }
+  });
   it('rejects committed env variants but permits a credential-free template', () => {
     expect(scanText('config/.env.production', 'PORT=3000')[0].rule).toBe('SECRET_ENV_FILE');
     expect(scanText('.env.example', 'API_KEY=')).toEqual([]);

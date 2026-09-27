@@ -14,19 +14,19 @@
   {
     "file": ".env.example",
     "rule": "SECRET_CONFIG",
-    "fingerprint": "eaa7816129fb1ad850f1c3801c1c80601fb2cc439268479543b82f762d6f8af1",
+    "fingerprint": "a839594e9e314081bf1a4c7e7593c4d92e9c2d4417e0fe008340bd09b5b1917e",
     "reason": "Reviewed local or CI-only example configuration/credential; not for deployment. Exact value pinned."
   },
   {
     "file": ".env.example",
     "rule": "SECRET_CONFIG",
-    "fingerprint": "cbb4c130f70bdd1a7e6137659c821120d43649f43106c97001a1568614e154e5",
+    "fingerprint": "f8ce274924bc95d2e84c25c96b759314a64b896d6e62702b52ef007f671d6488",
     "reason": "Reviewed local or CI-only example configuration/credential; not for deployment. Exact value pinned."
   },
   {
     "file": ".env.example",
     "rule": "SECRET_CONFIG",
-    "fingerprint": "f8bf480748fad946171dd0c19a22d226d0ad802ee1de21ed37f0cd32635656f1",
+    "fingerprint": "9d1f3130ba2c97c1f95115b9ceb524287a11c7572f8b0834e838a2626d4a0aba",
     "reason": "Reviewed local or CI-only example configuration/credential; not for deployment. Exact value pinned."
   },
   {
@@ -38,7 +38,7 @@
   {
     "file": ".github/workflows/quality.yml",
     "rule": "SECRET_CONFIG",
-    "fingerprint": "664996f8bfe726afe4c31cc9390922d5e0c499103807722121fda1987a5b5e1c",
+    "fingerprint": "e72b6b1b24e92fd74951537f03fc36be9002d21c31fbed7c8a1150bd264d0cf0",
     "reason": "Reviewed local or CI-only example configuration/credential; not for deployment. Exact value pinned."
   },
   {
@@ -548,7 +548,7 @@
   {
     "file": "docs/DEVELOPMENT.md",
     "rule": "SECRET_CONFIG",
-    "fingerprint": "74075d8d180f52b614a5a34843fd1f4cf1ad5bfa09cb2ac6561801073daf4582",
+    "fingerprint": "963f8133ca6fadb6bac872cb006551a9232cf3ba2356125e46b42e925ea19d15",
     "reason": "Reviewed local or CI-only example configuration/credential; not for deployment. Exact value pinned."
   },
   {
