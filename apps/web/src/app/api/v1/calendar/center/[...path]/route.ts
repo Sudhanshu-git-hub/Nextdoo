@@ -18,7 +18,7 @@ async function handle(request:Request,params:Params){
     if(r.method==='GET'){
       if(kind==='sources'&&path.length===1)return {data:await service.listCalendarSources(actor)};
       if(kind==='events'&&path.length===1)return service.listCenterEvents(actor,Object.fromEntries(new URL(r.url).searchParams),true);
-      if(kind==='events'&&path.length===2)return service.loadNativeEvent(actor,id!);
+      if(kind==='events'&&path.length===2)return service.loadCenterEvent(actor,id!);
       if(kind==='sources'&&id&&action==='export'&&path.length===3)return {content:await service.exportCalendar(actor,id)};
       throw new AppError('NOT_FOUND','Calendar command not found.');
     }

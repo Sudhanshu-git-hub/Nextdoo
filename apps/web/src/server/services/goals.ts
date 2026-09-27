@@ -32,7 +32,7 @@ export async function loadGoal(workspaceId: string, id: string): Promise<GoalRow
   return row;
 }
 
-async function loadMilestone(workspaceId: string, id: string): Promise<MilestoneRow> {
+export async function loadMilestone(workspaceId: string, id: string): Promise<MilestoneRow> {
   uuid.parse(id);
   const [row] = await getDb().select().from(milestones).where(and(eq(milestones.id, id), eq(milestones.workspaceId, workspaceId)));
   if (!row) throw notFound('milestone', id);

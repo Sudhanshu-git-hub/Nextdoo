@@ -797,7 +797,7 @@ export const calendarSources = pgTable('calendar_sources', {
 },t=>[unique('calendar_sources_owner_key_unique').on(t.userId,t.workspaceId,t.sourceKey),unique('calendar_sources_id_workspace_unique').on(t.id,t.workspaceId)]);
 export const calendarNativeEvents = pgTable('calendar_native_events', {
  id:uuid('id').primaryKey(),workspaceId:uuid('workspace_id').notNull().references(()=>workspaces.id,{onDelete:'cascade'}),sourceId:uuid('source_id').notNull(),importUid:varchar('import_uid',{length:600}),title:varchar('title',{length:500}).notNull(),description:text('description').notNull().default(''),location:varchar('location',{length:1000}).notNull().default(''),startsAt:timestamp('starts_at',{withTimezone:true}).notNull(),endsAt:timestamp('ends_at',{withTimezone:true}).notNull(),timeZone:varchar('time_zone',{length:64}).notNull(),isAllDay:boolean('is_all_day').notNull().default(false),startDay:date('start_day'),endDay:date('end_day'),deletedAt:timestamp('deleted_at',{withTimezone:true}),version:integer('version').notNull().default(1),...timestamps,
-},t=>[foreignKey({columns:[t.sourceId,t.workspaceId],foreignColumns:[calendarSources.id,calendarSources.workspaceId]}).onDelete('cascade'),unique('calendar_native_events_import_unique').on(t.sourceId,t.importUid),index('calendar_native_events_window_idx').on(t.workspaceId,t.startsAt)]);
+},t=>[foreignKey({columns:[t.sourceId,t.workspaceId],foreignColumns:[calendarSources.id,calendarSources.workspaceId]}).onDelete('cascade'),uniqueIndex('calendar_native_events_id_workspace_unique').on(t.id,t.workspaceId),unique('calendar_native_events_import_unique').on(t.sourceId,t.importUid),index('calendar_native_events_window_idx').on(t.workspaceId,t.startsAt)]);
 
 export const calendarConnections = pgTable(
   'calendar_connections',
@@ -1252,7 +1252,7 @@ export const knowledgeRelations = pgTable('knowledge_relations', {
  propertyType: varchar('property_type',{length:16}).generatedAlwaysAs(sql`'RELATION'::varchar`),
  id: uuid('id').primaryKey(), workspaceId: uuid('workspace_id').notNull(), recordId: uuid('record_id'), noteId: uuid('note_id'), databaseId: uuid('database_id'), propertyId: uuid('property_id'),
  kind: varchar('kind',{length:16}).notNull().$type<import('@nextdoo/contracts').KnowledgePropertyInput['config']['relationKind']>(), targetId: uuid('target_id').notNull(),
- targetRecordId: uuid('target_record_id'), targetDatabaseId: uuid('target_database_id'), targetNoteId: uuid('target_note_id'), taskId: uuid('task_id'), goalId: uuid('goal_id'), milestoneId: uuid('milestone_id'), trackerId: uuid('tracker_id'), calendarEventId: uuid('calendar_event_id'),
+ targetRecordId: uuid('target_record_id'), targetDatabaseId: uuid('target_database_id'), targetNoteId: uuid('target_note_id'), taskId: uuid('task_id'), goalId: uuid('goal_id'), milestoneId: uuid('milestone_id'), trackerId: uuid('tracker_id'), calendarEventId: uuid('calendar_event_id'), nativeEventId: uuid('native_event_id'),
  createdAt: timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
 }, (t) => [unique('knowledge_relations_identity').on(t.recordId,t.noteId,t.propertyId,t.kind,t.targetId).nullsNotDistinct(),
  foreignKey({name:'knowledge_relations_property_type_fk',columns:[t.propertyId,t.databaseId,t.workspaceId,t.propertyType],foreignColumns:[knowledgeProperties.id,knowledgeProperties.databaseId,knowledgeProperties.workspaceId,knowledgeProperties.type]}),
@@ -1266,6 +1266,7 @@ export const knowledgeRelations = pgTable('knowledge_relations', {
  foreignKey({columns:[t.goalId,t.workspaceId],foreignColumns:[goals.id,goals.workspaceId]}).onDelete('cascade'),
  foreignKey({columns:[t.milestoneId,t.workspaceId],foreignColumns:[milestones.id,milestones.workspaceId]}).onDelete('cascade'),
  foreignKey({columns:[t.trackerId,t.workspaceId],foreignColumns:[personalTrackers.id,personalTrackers.workspaceId]}).onDelete('cascade'),
+ foreignKey({name:'knowledge_relations_native_event_fk',columns:[t.nativeEventId,t.workspaceId],foreignColumns:[calendarNativeEvents.id,calendarNativeEvents.workspaceId]}).onDelete('cascade'),
  foreignKey({columns:[t.calendarEventId,t.workspaceId],foreignColumns:[calendarEvents.id,calendarEvents.workspaceId]}).onDelete('cascade'),
  index('knowledge_relations_target_idx').on(t.workspaceId,t.kind,t.targetId,t.id), index('knowledge_relations_source_record_idx').on(t.recordId), index('knowledge_relations_source_note_idx').on(t.noteId)]);
 export const knowledgeFiles = pgTable('knowledge_files', {

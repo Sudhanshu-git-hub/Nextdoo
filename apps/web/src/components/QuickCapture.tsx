@@ -37,11 +37,13 @@ export function QuickCapture({ workspaceId, onCreated }: { workspaceId: string; 
     void api('/telemetry/capture', { method: 'POST', body: JSON.stringify({ latencyMs, success, confirmed }) }).catch(() => undefined);
   }
 
+  useEffect(()=>{if(window.location.hash==='#capture')inputRef.current?.focus();},[]);
+
   // `N` focuses capture from anywhere, unless the user is already typing.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      const typing = target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
+      const typing = target?.closest('input,textarea,select,[contenteditable],dialog');
       if (event.key === 'n' && !typing && !event.metaKey && !event.ctrlKey) {
         event.preventDefault();
         inputRef.current?.focus();

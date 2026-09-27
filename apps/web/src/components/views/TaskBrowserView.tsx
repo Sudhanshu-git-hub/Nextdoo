@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import { api } from '@/lib/api';
 import { useEffect, useState, type FormEvent } from 'react';
 import { TaskBulkList } from '@/components/TaskBulkList';
 import { TaskPagination } from '@/components/TaskPagination';
@@ -8,7 +9,7 @@ import { dateWindow } from '@/lib/daily-tasks';
 import { useWorkspace } from '../WorkspaceContext';
 
 type Option = { id: string; name: string };
-const defaults = { q: '', status: 'ACTIVE', project: '', tagId: '', priority: '', hasDueDate: '', from: '', through: '', sortBy: 'createdAt', sortOrder: 'desc' };
+const defaults = { q: '', status: 'ACTIVE', project: '', sectionId: '', tagId: '', priority: '', hasDueDate: '', from: '', through: '', sortBy: 'createdAt', sortOrder: 'desc' };
 /** Explicitly applied, online-only workspace search. Inbox/Today retain their fixed semantics. */
 export function TaskBrowserView({ workspaceId, projects, tags }: { workspaceId: string; projects: Option[]; tags: Option[] }) {
   const { timeZone } = useWorkspace();
@@ -18,13 +19,18 @@ export function TaskBrowserView({ workspaceId, projects, tags }: { workspaceId: 
   const [bulkPending, setBulkPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const page = useTaskPages(workspaceId, filters);
-  useEffect(() => { const priority = new URLSearchParams(window.location.search).get('priority'); if (priority && ['HIGH','MEDIUM','LOW','NONE'].includes(priority)) { const next = {...defaults,priority}; setDraft(next); setApplied(next); setFilters('status=ACTIVE&sortBy=createdAt&sortOrder=desc&priority='+priority); } }, []);
+  const [sections,setSections]=useState<Option[]>([]);
+  useEffect(()=>{const params=new URLSearchParams(window.location.search),next={...defaults};const priority=params.get('priority');if(priority&&['HIGH','MEDIUM','LOW','NONE'].includes(priority))next.priority=priority;
+    const project=params.get('projectId');if(project&&projects.some(p=>p.id===project)){next.project=project;const section=params.get('sectionId');if(section&&/^[0-9a-f-]{36}$/i.test(section))next.sectionId=section;}
+    const query=new URLSearchParams({status:'ACTIVE',sortBy:'createdAt',sortOrder:'desc'});if(next.priority)query.set('priority',next.priority);if(next.project)query.set('projectId',next.project);if(next.sectionId)query.set('sectionId',next.sectionId);setDraft(next);setApplied(next);setFilters(query.toString());
+  },[projects]);
+  useEffect(()=>{setSections([]);if(!draft.project||draft.project==='unfiled')return;const c=new AbortController();void api<{data:Option[]}>(`/sections?projectId=${draft.project}`,{signal:c.signal}).then(r=>{if(!c.signal.aborted)setSections(r.data);}).catch(()=>{if(!c.signal.aborted)setError('Could not load project lists. Retry by choosing the project again.');});return()=>c.abort();},[draft.project]);
   function field(key: keyof typeof defaults, value: string) { setDraft((d) => ({ ...d, [key]: value })); setError(null); }
   function apply(event: FormEvent) {
     event.preventDefault();
     if (draft.from && draft.through && draft.from > draft.through) { setError('Due range start must not be after its end.'); return; }
     const query = new URLSearchParams({ sortBy: draft.sortBy, sortOrder: draft.sortOrder });
-    for (const key of ['status', 'tagId', 'priority', 'hasDueDate'] as const) if (draft[key]) query.set(key, draft[key]);
+    for (const key of ['status', 'tagId', 'priority', 'hasDueDate','sectionId'] as const) if (draft[key]) query.set(key, draft[key]);
     if (draft.q.trim()) query.set('q', draft.q.trim());
     if (draft.project === 'unfiled') query.set('unfiled', 'true'); else if (draft.project) query.set('projectId', draft.project);
     // Use the same workspace calendar dates as Today, Tomorrow and Upcoming.
@@ -53,7 +59,8 @@ export function TaskBrowserView({ workspaceId, projects, tags }: { workspaceId: 
       <div className="task-filter-grid">
         <div><label htmlFor="filter-search-words">Search words</label><input id="filter-search-words" type="search" maxLength={200} value={draft.q} onChange={(e) => field('q', e.target.value)} aria-describedby="task-search-help" /></div>
         <div><label htmlFor="filter-status">Status</label><select id="filter-status" value={draft.status} onChange={(e) => field('status', e.target.value)}><option value="ACTIVE">Active</option><option value="COMPLETED">Completed</option><option value="ARCHIVED">Archived</option><option value="">Active and completed</option></select></div>
-        <div><label htmlFor="filter-project">Project</label><select id="filter-project" value={draft.project} onChange={(e) => field('project', e.target.value)}><option value="">All projects and unfiled</option><option value="unfiled">Unfiled only</option>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
+        <div><label htmlFor="filter-project">Project</label><select id="filter-project" value={draft.project} onChange={(e) => {field('project', e.target.value);field('sectionId','');}}><option value="">All projects and unfiled</option><option value="unfiled">Unfiled only</option>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
+        <div><label htmlFor="filter-section">Project list</label><select id="filter-section" value={draft.sectionId} onChange={e=>field('sectionId',e.target.value)}><option value="">All lists</option>{sections.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
         <div><label htmlFor="filter-tag">Tag</label><select id="filter-tag" value={draft.tagId} onChange={(e) => field('tagId', e.target.value)}><option value="">Any tag</option>{tags.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></div>
         <div><label htmlFor="filter-priority">Priority</label><select id="filter-priority" value={draft.priority} onChange={(e) => field('priority', e.target.value)}><option value="">Any priority</option><option value="HIGH">High</option><option value="MEDIUM">Medium</option><option value="LOW">Low</option><option value="NONE">None</option></select></div>
         <div><label htmlFor="filter-due-date">Due date</label><select id="filter-due-date" value={draft.hasDueDate} onChange={(e) => { const value = e.target.value; setDraft((d) => ({ ...d, hasDueDate: value, ...(value === 'false' ? { from: '', through: '' } : {}) })); setError(null); }}><option value="">With or without a due date</option><option value="true">Has a due date</option><option value="false">No due date</option></select></div>

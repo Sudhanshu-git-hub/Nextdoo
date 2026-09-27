@@ -715,6 +715,7 @@ export async function queryTasks(
   if (query.unfiled && query.projectId) throw new AppError('VALIDATION_FAILED', 'Choose unfiled tasks or a project, not both.');
   if (query.unfiled) conditions.push(isNull(tasks.projectId));
   if (query.projectId) conditions.push(eq(tasks.projectId, query.projectId));
+  if (query.sectionId) conditions.push(eq(tasks.sectionId,query.sectionId));
   if (query.dueBefore) conditions.push(sql`${tasks.dueAt} <= ${query.dueBefore}::timestamptz`);
   if (query.dueAfter) conditions.push(sql`${tasks.dueAt} >= ${query.dueAfter}::timestamptz`);
   if (query.q) {

@@ -136,3 +136,13 @@ export async function exportCalendar(actor:GoalActor,id:string){
   const rows=await getDb().select().from(events).where(and(eq(events.sourceId,id),isNull(events.deletedAt))).limit(2001);if(rows.length>2000)invalid('This calendar exceeds the 2000-event download limit.');
   return calendarIcsExport(source.name,rows.map(e=>({...e,uid:e.importUid??e.id+'@nextdoo',startsAt:e.startsAt.toISOString(),endsAt:e.endsAt.toISOString()})));
 }
+
+/** Exact saved-event navigation, including provider mirrors; no provider request. */
+export async function loadCenterEvent(actor:GoalActor,id:string):Promise<CenterEvent>{
+  uuid.parse(id);
+  const [native]=await getDb().select({event:events,kind:sources.kind}).from(events).innerJoin(sources,and(eq(sources.id,events.sourceId),eq(sources.workspaceId,events.workspaceId))).where(and(owned(actor),eq(events.id,id),isNull(events.deletedAt)));
+  if(native)return serialise({...native.event,kind:native.kind}) as unknown as CenterEvent;
+  const workspace=await loadWorkspaceSettings(actor.workspaceId,actor.workspaceId);
+  const rows=await getDb().execute<CenterEvent&Record<string,unknown>>(sql`select e.id,'google:'||c.id::text||':'||coalesce(e.calendar_id,'primary') "sourceId",coalesce(e.title,'Calendar event') title,'' description,'' location,e.starts_at "startsAt",e.ends_at "endsAt",coalesce(e.time_zone,${workspace.timeZone}) "timeZone",e.is_all_day "isAllDay",case when e.is_all_day then to_char(e.starts_at at time zone 'UTC','YYYY-MM-DD') end "startDay",case when e.is_all_day then to_char(e.ends_at at time zone 'UTC','YYYY-MM-DD') end "endDay",0 version,'GOOGLE' kind,m.task_id "taskId" from calendar_events e join calendar_connections c on c.id=e.connection_id and c.workspace_id=e.workspace_id left join calendar_mappings m on m.connection_id=c.id and m.external_id=e.external_id where e.id=${id} and e.workspace_id=${actor.workspaceId} and c.user_id=${actor.userId} and c.status='ACTIVE'`);
+  if(!rows[0])throw notFound('calendar event',id);return serialise(rows[0]);
+}

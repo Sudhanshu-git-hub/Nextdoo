@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getAuth } from '@/server/auth';
+import { CommandPalette } from '@/components/CommandPalette';
 import { Sidebar } from '@/components/Sidebar';
 import { loadWorkspaceSettings } from '@/server/services/workspaces';
 import { WorkspaceProvider } from '@/components/WorkspaceContext';
@@ -18,7 +19,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <PersonalizationProvider key={auth.workspaceId} initial={preferences}><WorkspaceProvider value={workspace}><div className="app">
       <a className="skip-link" href="#main">Skip to main content</a>
-      <Sidebar />
+      <Sidebar /><CommandPalette />
       <main className="main" id="main" tabIndex={-1}>{children}</main>
       <OfflineBadge workspaceId={auth.workspaceId} />
     </div></WorkspaceProvider></PersonalizationProvider>

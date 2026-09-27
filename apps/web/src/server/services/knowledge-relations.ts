@@ -17,15 +17,16 @@ const targets = {
   goal: { table: 'goals', title: 'title', active: "status<>'ARCHIVED'", column: 'goalId', path: '/goals/' },
   milestone: { table: 'milestones', title: 'title', active: "status<>'ARCHIVED'", column: 'milestoneId', path: '/goals/' },
   tracker: { table: 'personal_trackers', title: 'name', active: "state<>'ARCHIVED'", column: 'trackerId', path: '/trackers/' },
+  native_event: { table: 'calendar_native_events', title: 'title', active: "deleted_at is null and exists(select 1 from calendar_sources s join workspaces w on w.id=s.workspace_id and w.owner_id=s.user_id where s.id=calendar_native_events.source_id and s.workspace_id=calendar_native_events.workspace_id and s.kind='NATIVE' and not s.archived)", column: 'nativeEventId', path: '/calendar/events/' },
   calendar: { table: 'calendar_events', title: 'title', active: 'true', column: 'calendarEventId', path: '/calendar' },
 } as const;
 const like = (term: string) => '%' + term.replace(/[\\%_]/g, '\\$&') + '%';
 export async function knowledgeTarget(workspaceId: string, kind: KnowledgeKind, id: string, active = true) {
   knowledgeTargetKind.parse(kind); uuid.parse(id); const target = targets[kind];
-  const rows = await getDb().execute<{ id: string; title: string; goal_id?: string; database_id?: string; unavailable: boolean }>(sql`select id,${sql.raw(target.title)} title,not (${sql.raw(target.active)}) unavailable ${kind === 'milestone' ? sql`,goal_id` : kind === 'record' ? sql`,database_id` : sql``} from ${sql.raw(target.table)} where id=${id} and workspace_id=${workspaceId} ${active ? sql`and (${sql.raw(target.active)})` : sql``}`);
+  const rows = await getDb().execute<{ id: string; title: string; goal_id?: string; database_id?: string; unavailable: boolean }>(sql`select id,${sql.raw(target.title)} title,not (${sql.raw(target.active)}) unavailable ${kind === 'milestone' ? sql`,goal_id` : kind === 'record' ? sql`,database_id` : sql``} from ${sql.raw(target.table)} where id=${id} and workspace_id=${workspaceId} ${kind==='native_event'?sql`and exists(select 1 from calendar_sources s join workspaces w on w.id=s.workspace_id and w.owner_id=s.user_id where s.id=calendar_native_events.source_id and s.workspace_id=${workspaceId} and s.kind='NATIVE')`:sql``} ${active ? sql`and (${sql.raw(target.active)})` : sql``}`);
   const row = rows[0]; if (!row) throw notFound('linked item', id);
-  return { id, kind, label: row.unavailable ? 'Unavailable ' + kind : row.title ?? 'Calendar event', databaseId: row.database_id ?? null, unavailable: row.unavailable,
-    href: row.unavailable || !target.path ? null : kind === 'milestone' ? '/goals/' + row.goal_id + '#milestone-' + id : kind === 'calendar' ? '/calendar' : target.path + id };
+  return { id, kind, label: row.unavailable ? 'Unavailable ' + (kind==='native_event'?'Calendar event':kind) : row.title ?? 'Calendar event', databaseId: row.database_id ?? null, unavailable: row.unavailable,
+    href: row.unavailable || !target.path ? null : kind === 'milestone' ? '/goals/' + row.goal_id + '#milestone-' + id : kind === 'calendar' ? '/calendar/events/'+id : target.path + id };
 }
 export async function searchKnowledgeTargets(workspaceId: string, data: unknown) {
   const input = z.object({ kind: knowledgeTargetKind, q: z.string().max(200).default(''), databaseId: uuid.optional(), offset: z.coerce.number().int().min(0).max(1000000).default(0) }).strict().parse(data);

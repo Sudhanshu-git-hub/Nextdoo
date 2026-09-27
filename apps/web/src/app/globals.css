@@ -427,3 +427,8 @@ th { color: var(--text-dim); font-weight: 550; font-size: 12px; text-transform: 
 .focus-times > div { display:flex; flex-direction:column; gap:6px; min-width:0; }
 .focus-times strong { font-size:1.25rem; font-variant-numeric:tabular-nums; }
 .focus-card input[type=checkbox] { width:auto; min-height:0; display:inline-block; margin-right:6px; }
+
+.command-launcher { position:fixed; right:20px; bottom:20px; z-index:30; box-shadow:0 2px 8px #0003; }
+.command-palette { width:min(640px,calc(100vw - 32px)); max-height:80vh; overflow:auto; padding:24px; }
+.command-palette li { margin:10px 0; overflow-wrap:anywhere; }
+.command-palette a:focus { outline:2px solid currentColor; outline-offset:4px; }

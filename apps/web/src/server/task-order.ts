@@ -13,6 +13,7 @@ export function taskOrder(workspaceId: string, query: TaskQueryInput) {
     priority: query.priority ?? null, q: query.q ?? '', unfiled: query.unfiled ?? false,
     hasDueDate: query.hasDueDate ?? null, dueAfter: query.dueAfter ?? null, dueBefore: query.dueBefore ?? null,
     includeArchived: query.includeArchived ?? false,
+    ...(query.sectionId ? {sectionId:query.sectionId} : {}),
   })).digest('hex');
   const values = {
     createdAt: sql`${tasks.createdAt}`, dueAt: sql`${tasks.dueAt}`, estimateMinutes: sql`${tasks.estimateMinutes}`,

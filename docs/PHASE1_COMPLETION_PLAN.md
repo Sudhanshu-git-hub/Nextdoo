@@ -344,3 +344,8 @@ acceptance and must be resolved before implementing their affected semantics:
 Phase 2 collaboration/voice/mobile/advanced automations are still excluded. AI model
 fallback is not substituted for the deterministic parser, and no model/provider
 processing or automatic destructive action is introduced by this plan.
+
+
+## Shared Personal Workspace completion (after Task Center dc833df)
+
+The next bounded personal milestone adds a keyboard-accessible command palette, shared search for existing Projects/project sections/saved Calendar events, shared Task/Note tag filtering, task-side Goal/Milestone/Tracker linking and exact Calendar/Knowledge references. Reuses existing services and commands; additive migration 0031 preserves typed reference integrity. Notifications retain Task reminders and existing providers. No AI, collaboration, platform, billing or subsequent milestone work is included. See [audit, implementation boundaries and validation](SHARED_PERSONAL_WORKSPACE_MILESTONE.md).

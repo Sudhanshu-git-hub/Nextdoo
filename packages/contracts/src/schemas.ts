@@ -203,6 +203,7 @@ export const taskQuerySchema = z.object({
   hasDueDate: z.preprocess((v) => v === 'true' ? true : v === 'false' ? false : v, z.boolean()).optional(),
   status: z.enum(TASK_STATUS).optional(),
   projectId: uuid.optional(),
+  sectionId: uuid.optional(),
   tagId: uuid.optional(),
   unfiled: z.preprocess((v) => v === 'true' ? true : v === 'false' ? false : v, z.boolean()).optional(),
   q: z.string().trim().max(200).optional(),

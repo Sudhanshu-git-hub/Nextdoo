@@ -317,7 +317,7 @@ Requirements use these labels:
 
 **Current, with implementation-specific boundaries documented in the completion ledger:** authentication/account recovery · personal workspace · task lifecycle, projects, sections, tags, estimates, recurrence, reminders, focus/time tracking, task execution analytics · calendar foundations · offline task capture/sync/conflict handling · attachments · exports/deletion/retention · billing scaffolding · browser push · Google Calendar integration code and reliability hardening.
 
-**Personal-core implementation:** Goal Center and configurable Tracker have bounded online implementations; see their milestone documents for validation and limitations. **Remaining dependency order:** Knowledge & Data; general cross-module relations; broader Task Center navigation and personal collections; cross-module Calendar layers; cross-module Insights; global search/command palette; remaining settings/onboarding/accessibility/release evidence. Existing functionality must be preserved while these modules are introduced.
+**Personal-core implementation:** PC1–PC7, Task Center Daily Workflows and Shared Personal Workspace have bounded web implementations. Goal Center, Tracker, Knowledge, Calendar layers, Insights, settings, daily navigation, shared search and the command palette are available within their documented contracts. See the milestone documents for validation and limitations. **Remaining:** broader personal collections, universal relations/tagging, product-wide offline support and external accessibility/provider/release acceptance; these are not implied by the bounded milestones.
 
 **Explicitly deferred:** native clients · collaboration · enterprise administration · public API · plugin platform · marketplace · automatic destructive automation · broad AI agents.
 
@@ -339,7 +339,7 @@ Shared workspaces, assignment, comments, team permissions, organizational admini
 
 ## 5. Core Product Loop
 
-The personal architecture connects Goal → Milestone → Task. Tasks branch into Tracker and Knowledge/Data. Knowledge/Data contains Notes, Files, Records and Relations. These sources feed the Calendar time layer and Reports as each supported projection is implemented. A relation is a reference to an existing entity; it does not duplicate task execution, goal progress or tracker scoring. PC3 establishes the knowledge and relation layer. PC4 adds contextual links, shared search, compact Today summaries and Calendar overlays for existing deadlines, recorded Tracker activity and Knowledge date fields. Full cross-module Insights remains later scope; existing goal progress, Tracker reports and task analytics retain ownership of their calculations. See [PC4 boundaries and validation](CONNECTED_WORKFLOWS_MILESTONE.md).
+The personal architecture connects Goal → Milestone → Task. Tasks branch into Tracker and Knowledge/Data. Knowledge/Data contains Notes, Files, Records and Relations. These sources feed the Calendar time layer and Reports as each supported projection is implemented. A relation is a reference to an existing entity; it does not duplicate task execution, goal progress or tracker scoring. PC3 establishes the knowledge and relation layer. PC4 adds contextual links, shared search, compact Today summaries and Calendar overlays for existing deadlines, recorded Tracker activity and Knowledge date fields. PC6 provides bounded cross-module Insights; existing goal progress, Tracker reports and task analytics retain ownership of their calculations. Shared Personal Workspace Completion extends search/navigation and task-side links without replacing those calculations. See [PC4 boundaries and validation](CONNECTED_WORKFLOWS_MILESTONE.md).
 
 ### 5.1 Capture
 
@@ -534,7 +534,7 @@ Goals and milestones can link existing tasks without copying them or changing th
 
 **Measured progress:** count each nondeleted task once across the goal and its nonarchived descendants, including milestone links. A milestone with no nondeleted task contributes one manual completion unit. Divide completed units by total units and round to the nearest integer percentage. No units means **Not measured**, never an invented percentage. Empty child goals add no measurement unit. Marking a goal complete records the user's decision and does not override its measured progress or task execution scores.
 
-Acceptance requires real persisted hierarchy, milestone and task-link workflows; workspace enforcement in services and database constraints; optimistic versions and idempotent commands; atomic audit/events/sync deltas; recoverable conflict drafts; account export and deletion coverage; keyboard operation and accessibility checks. PC1 editing requires connectivity. Offline goal mutation, automatic reference tags, task-side goal selectors and additional visualizations remain follow-up work rather than implied by PC1.
+Acceptance requires real persisted hierarchy, milestone and task-link workflows; workspace enforcement in services and database constraints; optimistic versions and idempotent commands; atomic audit/events/sync deltas; recoverable conflict drafts; account export and deletion coverage; keyboard operation and accessibility checks. PC1 editing requires connectivity. Task-side Goal/Milestone selectors are delivered by Shared Personal Workspace Completion through the existing PC1 commands. Offline goal mutation, automatic reference tags and additional visualizations remain follow-up work.
 
 ### 6.12 Remaining personal modules — planned
 
@@ -811,7 +811,7 @@ Each module owns its database tables, domain services, validation, events, autho
 | Auth service | In-process module: sessions, MFA, password reset, revocation |
 | Database | System of record for transactional data |
 | Object storage | Attachments and generated exports; metadata stays in PostgreSQL |
-| Search index | PostgreSQL FTS initially; current task search evolves into global search across supported personal-core modules |
+| Search | Task word search uses PostgreSQL FTS; shared personal-module search uses bounded SQL substring projections without a second index |
 | Job workers | Reminders, notifications, calendar sync, recurrence generation, tracking calculation, indexing, file scanning, exports, retention/deletion |
 | Notification service | Channel abstraction (web push, desktop, email), delivery status, suppression |
 | Billing service | Stripe integration, webhook verification, entitlement projection |
@@ -2203,3 +2203,12 @@ history and append compensating tracking events. They and Focus completion enter
 the existing durable sync queue. Home, Insights and reports share existing timer
 sessions plus historical manual TIME_LOGGED events, avoiding both omission and
 double credit. No additional timer database, sync protocol or migration is added.
+
+
+### Shared Personal Workspace Completion — bounded web implementation
+
+The personal web workspace now includes a small accessible command palette, shared substring search, task-side Goal/Milestone/Tracker linking, existing shared Task/Note tag filtering and exact saved Calendar event navigation. Search includes Tasks, Goals, Milestones, Trackers, Knowledge databases/records/notes, active Projects, project sections (lists), native/imported Calendar events and saved events from active owned Google connections. No new search infrastructure is introduced.
+
+The palette opens with the visible Commands button or `?` outside editing controls. It reuses existing capture, Focus and navigation; item previews come from the same authenticated search. Native one-off Calendar events can reference Knowledge Notes/Records through the existing typed relation store, with an additive composite foreign key. Home and Today event links now open those exact items. Task-side links preserve module versions, source ownership, replay and deletion semantics.
+
+Shared tags cover Tasks and Notes only; Goal categories/identifiers, Tracker statuses and Knowledge property options remain module-specific labels. Reminders retain the existing Task-only scheduling/delivery contract; this milestone does not add Goal, Knowledge or native-event reminders, notification categories, providers or offline relationships. Imported Calendar snapshots remain read-only and cannot acquire native-event references. Standalone list entities, attachment-content search, fuzzy/indexed global search and universal relations remain deferred. Full boundaries and evidence: [Shared Personal Workspace milestone](SHARED_PERSONAL_WORKSPACE_MILESTONE.md).
