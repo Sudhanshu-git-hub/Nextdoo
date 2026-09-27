@@ -525,3 +525,35 @@ it('includes attachment metadata in the data-rights export bundle', async () => 
   expect(list[0]).not.toHaveProperty('data');
   expect(list[0]).not.toHaveProperty('bytes');
 });
+
+for (const transition of ['complete', 'delete'] as const) {
+  it(`rejects an upload already in flight when ${transition} wins the race`, async () => {
+    const { actor, taskId } = await fixture();
+    const upload = await authorizeAttachmentUpload(actor, { taskId, fileName: 'race.txt', contentType: 'text/plain', sizeBytes: 4 });
+    const id = upload.attachment.id, token = extractToken(upload.uploadUrl);
+    await writeAttachmentData(actor, id, token, new Response('safe').body!);
+    let start!: () => void, release!: () => void;
+    const reading = new Promise<void>(resolve => { start = resolve; });
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const body = new ReadableStream<Uint8Array>({ async pull(controller) {
+      start(); await gate; controller.enqueue(new TextEncoder().encode('evil')); controller.close();
+    } }, { highWaterMark: 0 });
+    const delayed = writeAttachmentData(actor, id, token, body);
+    // Attach rejection handling immediately, while retaining the outcome assertion.
+    const outcome = delayed.then(() => null, error => error);
+    await reading;
+    if (transition === 'complete') {
+      await completeAttachment(actor, id); await runDue(id);
+      await runAttachmentScan(getDb(), { store, scanner: fakeScanner(), limit: 100 });
+      expect((await rowOf(id))!.scanStatus).toBe('CLEAN');
+    } else await deleteAttachment(actor, id);
+    release();
+    expect(await outcome).toMatchObject({ code: transition === 'complete' ? 'VALIDATION_FAILED' : 'NOT_FOUND' });
+    const row = (await rowOf(id))!;
+    if (transition === 'complete') {
+      expect(Buffer.from((await store.read(row.objectKey))!).toString()).toBe('safe');
+      const link = await requestAttachmentDownload(actor, id);
+      expect(Buffer.from((await streamAttachmentDownload(actor, id, extractToken(link.downloadUrl))).data).toString()).toBe('safe');
+    } else expect(await store.read(row.objectKey)).toBeNull();
+  });
+}

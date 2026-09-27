@@ -1,0 +1,620 @@
+[
+  {
+    "file": "apps/web/e2e/security-release.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "1a50345918b89dc3f13f81bc3290bb6c9fac49024174b43224d331d1a441f019",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": ".env.example",
+    "rule": "SECRET_CREDENTIAL_URL",
+    "fingerprint": "5d7b5229e6e85ce8ff3ba3aabdcf34dd13d1d8c889f4c2bff15b29e267057488",
+    "reason": "Reviewed local or CI-only example configuration/credential; not for deployment. Exact value pinned."
+  },
+  {
+    "file": ".env.example",
+    "rule": "SECRET_CONFIG",
+    "fingerprint": "eaa7816129fb1ad850f1c3801c1c80601fb2cc439268479543b82f762d6f8af1",
+    "reason": "Reviewed local or CI-only example configuration/credential; not for deployment. Exact value pinned."
+  },
+  {
+    "file": ".env.example",
+    "rule": "SECRET_CONFIG",
+    "fingerprint": "cbb4c130f70bdd1a7e6137659c821120d43649f43106c97001a1568614e154e5",
+    "reason": "Reviewed local or CI-only example configuration/credential; not for deployment. Exact value pinned."
+  },
+  {
+    "file": ".env.example",
+    "rule": "SECRET_CONFIG",
+    "fingerprint": "f8bf480748fad946171dd0c19a22d226d0ad802ee1de21ed37f0cd32635656f1",
+    "reason": "Reviewed local or CI-only example configuration/credential; not for deployment. Exact value pinned."
+  },
+  {
+    "file": ".github/workflows/quality.yml",
+    "rule": "SECRET_CREDENTIAL_URL",
+    "fingerprint": "fcdd4d2931e2160ff904cc1af018866e702fb7a562d044c8242cf961550876f3",
+    "reason": "Reviewed local or CI-only example configuration/credential; not for deployment. Exact value pinned."
+  },
+  {
+    "file": ".github/workflows/quality.yml",
+    "rule": "SECRET_CONFIG",
+    "fingerprint": "664996f8bfe726afe4c31cc9390922d5e0c499103807722121fda1987a5b5e1c",
+    "reason": "Reviewed local or CI-only example configuration/credential; not for deployment. Exact value pinned."
+  },
+  {
+    "file": "apps/web/e2e/account-deletion.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "939d611fc548a711163e67936f14b018813ce38e84b343ee54139a01134bd9c6",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/analytics-reporting.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "7177bbbafa393fd4784407b1b355e853114029bb7593c24ceab62b2ea69bb0b1",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/attachments.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "f95500e28d926b1f1570b2d47f9caec36299fab3d469e40b01f5d8570fa2b24b",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/billing.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "795afb31e1716af23a471e194459c3e5da8034d958b319d8fc9f0a3e32fff9a1",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/board.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "b9b5626ec36d48ed28b5abca8355d94ff4aba47bdd704b961635fe53cf99a709",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/calendar-center.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "889792518df41521509de08efe2514644794cd47fad7dc843dd00b130930f2e5",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/calendar-sync.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "889792518df41521509de08efe2514644794cd47fad7dc843dd00b130930f2e5",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/calendar.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "889792518df41521509de08efe2514644794cd47fad7dc843dd00b130930f2e5",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/capacity-planning.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "92e75e33437a1c53ba436449daee09925d68908b4926de76afc9c3556078c9ae",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/connected.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "77b1e6d630a4b1986f507235925c763874d28d37d1400cfbf9c44aeb9925f686",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/core.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "bf2c56ba7e7d627f8828370c4ce9bf25e6e15de26ef4a44a873b3c1d104d2a38",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/core.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "d36286aec22fb5efd4b54fb90d5d81ce8fbcad264d977edd77ecddc291c9cf07",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/daily-workflows.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "cb63793e35fbc97b2932d950249dde71e7a5d26d117b3599a92f52aaa972b202",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/entitlements-exports.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "af1c21ea6406b5cc97fa0515305c782404be8ed76d580fa7563efedbabbcf5ef",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/exports.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "b7c95634a58d1cc566e52aa9f6e2542a6027eda7c40a2d3dae4d0c61f9b6abf8",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/focus-completion.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "f66b7cc9b80b0e8a7b561eece9b1ead7246eff3742bad700a814ea66868bf474",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/goals.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "b5164833cf06794aa701bdf5940485925862bbc109ab71f0c40c353bf72495b9",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/insights.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "f8b44e629aa4d292d5aa46fb5d4cc5c5d611a50fde1ee5ca1da52065ae14a486",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/knowledge.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "fab2ede86a821a2ed23d50dc86069efdd28bbf62f40fa8dceba50573093999fb",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/metrics-instrumentation.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "0076cca8fb717818c6add8f188fbf65991a6371071c96c2f252a991b5249803d",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/notifications.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "5a651464d4d8708e3a4db7c7f79f442f2f890a1a214a1cdb6d632882c2938c20",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/online.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "587ece9bf6bed22e687b5d2f9612c60aa6687d5f63e364b82ca2f940fc8cc21c",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/personal-trackers.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "5469d692c150bc73f446c9fe273cd7e31ef4b8074505663647cce4486f8444f4",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/project-analytics.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "e207a25a11f5231184e89b52dc69e493bcf716519c1bca9c64965e19de96acfb",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/projects.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "59f1743a5361f03921d55f77772aa0ce3646cc9e5e17bb01a0ed445595170138",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/push-notifications.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "a0319bfcbb6b8638ad1618c7a2c38af2eb5e3afe3d27b50ee0c36c9eebfc9273",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/recurrence.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "101cecb434c182cfbae87bdb4a6f53ee956b57a55d5e60c848bcd4e03fdaf52d",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/retention.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "da20e103de83916142f43e0c38c57d4d0b6c78c18c06c843e94b289fcf538119",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/sessions.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "0fcf19b4531a65f155d4a302237530870c2aa0695a6933f4342670ef3b4f9d28",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/settings-center.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "e9b0c630ad4a9a6a5e3c2c604b4e5992c97c71b400e02526cfb41cc70d26053b",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/shared-workspace.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "d070e8da28256bf69220cb54daf167fd35ee3dfcd69aed88904f79fecad3140c",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/suggestions.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "5c0d5ff53c0e9318e4b23c5566c439e8c6f8e9e0cd3c3d9aeae01a4b0dcd7032",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/task-bulk.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "bffa322503c1164003c459562ffa165523a64a76d6dffb62882c44c3573e5a65",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/task-description.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "3273738d61ed9f88f94792d02f05ad5acf9bae2455aab3773e09e025c86c2a72",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/task-location.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "59d6015c237d8c582f37fd83b9019af1c836dbb799dd8f4a4145ae890439cfd2",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/task-query.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "3010a57cc3d0edbe59f7ce999c4ffc920eba62eea9854fa43c882d4bb4866c35",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/task-recovery.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "221eb909e019e46bad95704158376443c082e31027059c3d1ffa75b14dcabdfd",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/task-relations.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "27e59e55a32b156487c003a71541b4eef1ccd3153b1714bac38049b2627d026e",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/task-virtualization.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "6dbbfc3fc13f6b67b1f574938f407c07e418e672a6bc93d080927e97ce74b6d5",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/tracking-corrections.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "b89e2c8d8317eafe41f79e1c717b3f996b48ef96db365841f1c11e491777dedd",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/tracking.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "41f94d271c415ef8da2412c075276e15dd5971d488c70a8c53828ccc03c581e6",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/tracking.spec.ts",
+    "rule": "STATIC_RAW_SQL_REVIEW",
+    "fingerprint": "4f139e10c0c2351ca971c59f2344d0dadc2e16e9ac604ccf94c21635c4ccced5",
+    "reason": "Test-only DDL fault injection or generated UUID fixtures; no runtime route input. Whole file pinned for review."
+  },
+  {
+    "file": "apps/web/e2e/wellbeing.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "36d9715f09acd5da2401f4bd3b70996b91004df5fd809d5a7147bd63cdd4e632",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/e2e/workspaces.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "b1ffdfad823c31f1167b283933af86e0fa1e7d2d1d34a9ca55ae8811b31a57da",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/playwright.config.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "3f3242b9f32a00638688a15b59316ffa52eaab102b60b8828dd75cddc6d1e50b",
+    "reason": "Published test-only VAPID private key for the isolated browser server; never a deployment credential."
+  },
+  {
+    "file": "apps/web/src/server/services/account-deletion.integration.test.ts",
+    "rule": "SECRET_CREDENTIAL_URL",
+    "fingerprint": "5d7b5229e6e85ce8ff3ba3aabdcf34dd13d1d8c889f4c2bff15b29e267057488",
+    "reason": "Existing isolated local PostgreSQL test fallback, never a production database credential."
+  },
+  {
+    "file": "apps/web/src/server/services/account-deletion.integration.test.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "14836e3c627e475a25a5108cf7bcc452aaee8cb8b298590139b5ea0a91734f24",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/src/server/services/account-security.integration.test.ts",
+    "rule": "SECRET_CREDENTIAL_URL",
+    "fingerprint": "5d7b5229e6e85ce8ff3ba3aabdcf34dd13d1d8c889f4c2bff15b29e267057488",
+    "reason": "Existing isolated local PostgreSQL test fallback, never a production database credential."
+  },
+  {
+    "file": "apps/web/src/server/services/account-security.integration.test.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "c03f6e36f91374228c0353a25afe987b52cda4d0991af4767066a7c6363e8bf9",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/src/server/services/account-sessions.integration.test.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "14d5cb9f9562c76827bb662be4868f4ae25b84efe75dfa8cb3d0e742f674ae10",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/src/server/services/calendar-connections.integration.test.ts",
+    "rule": "SECRET_PROVIDER",
+    "fingerprint": "88fb57453b9b8912ee4213dff459dc7e34cc0a3f68c68bf9557dbbadae667b8c",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/src/server/services/calendar-connections.integration.test.ts",
+    "rule": "SECRET_CREDENTIAL_URL",
+    "fingerprint": "5d7b5229e6e85ce8ff3ba3aabdcf34dd13d1d8c889f4c2bff15b29e267057488",
+    "reason": "Existing isolated local PostgreSQL test fallback, never a production database credential."
+  },
+  {
+    "file": "apps/web/src/server/services/calendar-connections.integration.test.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "53c33d35f714936624e081e44f8e2c70cdc381d9e2f0e0d03f6eb7969ef9ca79",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/src/server/services/calendar-sync.integration.test.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "212de392e3b7216606a09419f0647a33ba947702c88a5dbba31e392c65ff26c0",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/src/server/services/calendar-sync.integration.test.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "53c33d35f714936624e081e44f8e2c70cdc381d9e2f0e0d03f6eb7969ef9ca79",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/src/server/services/calendar-sync.integration.test.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "6971e554473e9f9804f2a28069d9e5c22bc79a68787dae82c9f68de7ea790d6f",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/src/server/services/calendar-sync.integration.test.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "4e641295b1e069282c93d802d4474fee388ae644a7575431151f022da4214d9b",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/src/server/services/capacity.integration.test.ts",
+    "rule": "SECRET_CREDENTIAL_URL",
+    "fingerprint": "5d7b5229e6e85ce8ff3ba3aabdcf34dd13d1d8c889f4c2bff15b29e267057488",
+    "reason": "Existing isolated local PostgreSQL test fallback, never a production database credential."
+  },
+  {
+    "file": "apps/web/src/server/services/capacity.integration.test.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "53c33d35f714936624e081e44f8e2c70cdc381d9e2f0e0d03f6eb7969ef9ca79",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/src/server/services/knowledge-query.ts",
+    "rule": "STATIC_RAW_SQL_REVIEW",
+    "fingerprint": "aee52a4d32c940d05535baddbfab620fe6181001c6ed034b46bf183f5db68726",
+    "reason": "Reviewed finite column/table/operator choices and Zod enum direction; values remain parameters."
+  },
+  {
+    "file": "apps/web/src/server/services/knowledge-relations.ts",
+    "rule": "STATIC_RAW_SQL_REVIEW",
+    "fingerprint": "53de125a8eced8864abf7e88904e04bb5a3c2dc96a1300266f5cc28b0e828f7e",
+    "reason": "Reviewed fixed targets map after kind validation; IDs and user values are parameters."
+  },
+  {
+    "file": "apps/web/src/server/services/metrics.instrumentation.integration.test.ts",
+    "rule": "SECRET_CREDENTIAL_URL",
+    "fingerprint": "5d7b5229e6e85ce8ff3ba3aabdcf34dd13d1d8c889f4c2bff15b29e267057488",
+    "reason": "Existing isolated local PostgreSQL test fallback, never a production database credential."
+  },
+  {
+    "file": "apps/web/src/server/services/metrics.instrumentation.integration.test.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "53c33d35f714936624e081e44f8e2c70cdc381d9e2f0e0d03f6eb7969ef9ca79",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/src/server/services/personal-trackers.integration.test.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "086597152336935471deb418573cf6a9d7b892277413231e09f8ec9a835e0322",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/src/server/services/personal-trackers.integration.test.ts",
+    "rule": "STATIC_RAW_SQL_REVIEW",
+    "fingerprint": "2ce37df3b404e3b326198f8cc982f18616929e0491c5571e47f42d32cc494bf9",
+    "reason": "Test-only DDL fault injection or generated UUID fixtures; no runtime route input. Whole file pinned for review."
+  },
+  {
+    "file": "apps/web/src/server/services/preferences.integration.test.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "1cc2ded7c9bb70e15d7e4f4cb0e675d0f24cfbdeae56c8a258d046abe903e1bd",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/src/server/services/push-notifications.integration.test.ts",
+    "rule": "STATIC_RAW_SQL_REVIEW",
+    "fingerprint": "19c1b9b1feb89f01e030859e9228448495dc4e8168eae5f19ae3ee06247fbe2a",
+    "reason": "Test-only DDL fault injection or generated UUID fixtures; no runtime route input. Whole file pinned for review."
+  },
+  {
+    "file": "apps/web/src/server/services/recurrence.integration.test.ts",
+    "rule": "STATIC_RAW_SQL_REVIEW",
+    "fingerprint": "29f4f7626f0059fd4903b294d413699dc3a124d3755746c98c52e742a8923ce3",
+    "reason": "Test-only DDL fault injection or generated UUID fixtures; no runtime route input. Whole file pinned for review."
+  },
+  {
+    "file": "apps/web/src/server/services/reminder-workflow.integration.test.ts",
+    "rule": "STATIC_RAW_SQL_REVIEW",
+    "fingerprint": "3755d68d3c5e37a7afd32fc20574c95e2acf84c64159215bf603ff20736196b7",
+    "reason": "Test-only DDL fault injection or generated UUID fixtures; no runtime route input. Whole file pinned for review."
+  },
+  {
+    "file": "apps/web/src/server/services/suggestions.integration.test.ts",
+    "rule": "STATIC_RAW_SQL_REVIEW",
+    "fingerprint": "d97e4f48059a24df6a7777a04d144fad1059154c35d68d7191a2d9c66086335c",
+    "reason": "Test-only DDL fault injection or generated UUID fixtures; no runtime route input. Whole file pinned for review."
+  },
+  {
+    "file": "apps/web/src/server/services/sync-scenarios.integration.test.ts",
+    "rule": "SECRET_CREDENTIAL_URL",
+    "fingerprint": "5d7b5229e6e85ce8ff3ba3aabdcf34dd13d1d8c889f4c2bff15b29e267057488",
+    "reason": "Existing isolated local PostgreSQL test fallback, never a production database credential."
+  },
+  {
+    "file": "apps/web/src/server/services/sync-scenarios.integration.test.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "53c33d35f714936624e081e44f8e2c70cdc381d9e2f0e0d03f6eb7969ef9ca79",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/src/server/services/sync-slo.integration.test.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "53c33d35f714936624e081e44f8e2c70cdc381d9e2f0e0d03f6eb7969ef9ca79",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/src/server/services/sync.integration.test.ts",
+    "rule": "SECRET_CREDENTIAL_URL",
+    "fingerprint": "5d7b5229e6e85ce8ff3ba3aabdcf34dd13d1d8c889f4c2bff15b29e267057488",
+    "reason": "Existing isolated local PostgreSQL test fallback, never a production database credential."
+  },
+  {
+    "file": "apps/web/src/server/services/sync.integration.test.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "53c33d35f714936624e081e44f8e2c70cdc381d9e2f0e0d03f6eb7969ef9ca79",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/src/server/services/tasks.integration.test.ts",
+    "rule": "SECRET_CREDENTIAL_URL",
+    "fingerprint": "5d7b5229e6e85ce8ff3ba3aabdcf34dd13d1d8c889f4c2bff15b29e267057488",
+    "reason": "Existing isolated local PostgreSQL test fallback, never a production database credential."
+  },
+  {
+    "file": "apps/web/src/server/services/tasks.integration.test.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "53c33d35f714936624e081e44f8e2c70cdc381d9e2f0e0d03f6eb7969ef9ca79",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/web/src/server/services/tracking-workflow.integration.test.ts",
+    "rule": "STATIC_RAW_SQL_REVIEW",
+    "fingerprint": "ee49eda944607e1b028fcff04c856a50a049d2a6b0a78834e5da633fb0d3a5ec",
+    "reason": "Test-only DDL fault injection or generated UUID fixtures; no runtime route input. Whole file pinned for review."
+  },
+  {
+    "file": "apps/web/src/server/services/workspaces.integration.test.ts",
+    "rule": "STATIC_RAW_SQL_REVIEW",
+    "fingerprint": "dcd6b148b0d0042546c28ab83fe279156f1b847f565b770d498a790631b9815f",
+    "reason": "Test-only DDL fault injection or generated UUID fixtures; no runtime route input. Whole file pinned for review."
+  },
+  {
+    "file": "apps/worker/src/calendar-sync.integration.test.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "212de392e3b7216606a09419f0647a33ba947702c88a5dbba31e392c65ff26c0",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/worker/src/calendar-sync.integration.test.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "53c33d35f714936624e081e44f8e2c70cdc381d9e2f0e0d03f6eb7969ef9ca79",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/worker/src/calendar-sync.integration.test.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "0c3bf6728a11ee3819438f16b9793cc4c94985b73084561dcc45d4ebd0143e43",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "apps/worker/src/calendar-sync.integration.test.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "bf0ffe6a89b0f2d3f33de6de40dee43674278ba504fc3496a0a8a7334534de5a",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "docs/DEVELOPMENT.md",
+    "rule": "SECRET_CREDENTIAL_URL",
+    "fingerprint": "8c5aa83783ff41de7251f64fe2262210f2130f712e59532d409ddc2ab8393066",
+    "reason": "Reviewed local or CI-only example configuration/credential; not for deployment. Exact value pinned."
+  },
+  {
+    "file": "docs/DEVELOPMENT.md",
+    "rule": "SECRET_CONFIG",
+    "fingerprint": "74075d8d180f52b614a5a34843fd1f4cf1ad5bfa09cb2ac6561801073daf4582",
+    "reason": "Reviewed local or CI-only example configuration/credential; not for deployment. Exact value pinned."
+  },
+  {
+    "file": "docs/M8_i6_GOOGLE_CALENDAR_WEBHOOK_INGRESS_MILESTONE.md",
+    "rule": "SECRET_CREDENTIAL_URL",
+    "fingerprint": "5d7b5229e6e85ce8ff3ba3aabdcf34dd13d1d8c889f4c2bff15b29e267057488",
+    "reason": "Reviewed local or CI-only example configuration/credential; not for deployment. Exact value pinned."
+  },
+  {
+    "file": "packages/billing/src/razorpay.test.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "6c29c6b6ab1481c8e3ced3c10197a777d28faeebb70f2414804780cb7e8d69a5",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "packages/billing/src/razorpay.test.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "2bae056c36ea3c8c6884116ce872182e55bb93b9a7c3387a8bae4b83ad5f116e",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "packages/billing/src/stripe.test.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "ce2484869e449281b60d969e4c745f409d453984ca0a85037bf0a5c4ec6bef05",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "packages/calendar/src/fixture.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "da38f929edc3f2de159db33123d9e2cce7d0d68228a2a3c7274c26242dee9c27",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "packages/calendar/src/fixture.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "dc5cf64b284be47f02ed3f3bdfe485e83336dc6ec6245b7ec88d108b93deeff0",
+    "reason": "Synthetic isolated-test credential used by this exact fixture; never production authentication material."
+  },
+  {
+    "file": "packages/db/drizzle.config.ts",
+    "rule": "SECRET_CREDENTIAL_URL",
+    "fingerprint": "5d7b5229e6e85ce8ff3ba3aabdcf34dd13d1d8c889f4c2bff15b29e267057488",
+    "reason": "Reviewed local or CI-only example configuration/credential; not for deployment. Exact value pinned."
+  },
+  {
+    "file": "packages/db/src/retention.ts",
+    "rule": "STATIC_RAW_SQL_REVIEW",
+    "fingerprint": "f3ec37f33c019e8ef4ddd20dad889db2f8c96297f162fdf67c1b2b2895f66b65",
+    "reason": "Reviewed constant security action names validated against a strict identifier regex before SQL quoting."
+  },
+  {
+    "file": "scripts/db-restore-smoke.mts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "710d46b5853cb98ffd5d6a54713fe817dd71ae7388f23c385b2079d4387582bb",
+    "reason": "Reviewed local or CI-only example configuration/credential; not for deployment. Exact value pinned."
+  },
+  {
+    "file": "scripts/dev-services.mjs",
+    "rule": "SECRET_CREDENTIAL_URL",
+    "fingerprint": "6d9078471219fdeb9901c206a445054cec90fd41d001c63068c5bd63d8791cd6",
+    "reason": "Reviewed local or CI-only example configuration/credential; not for deployment. Exact value pinned."
+  },
+  {
+    "file": "scripts/perf-baseline.mjs",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "655b11b4e122ed6c9dd759e78560bf6e382be8feb5f16a3b8bd5dfd4824345f3",
+    "reason": "Reviewed local or CI-only example configuration/credential; not for deployment. Exact value pinned."
+  }
+]

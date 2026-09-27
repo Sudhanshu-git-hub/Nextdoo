@@ -1,3 +1,5 @@
+> Historical planning review. The separately authorized implementation and current evidence are in [M8_i8_SECURITY_CONTROL_MATRIX.md](M8_i8_SECURITY_CONTROL_MATRIX.md) and [SECURITY.md](../SECURITY.md). External gates below remain separate.
+
 # M8-i8 — Remaining release-gate hardening review
 
 **Status:** REVIEW ONLY — no implementation started.

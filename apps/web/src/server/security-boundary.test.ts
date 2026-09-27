@@ -27,3 +27,11 @@ it('unconfigured production mail never logs raw credentials or claims delivery',
   await expect(sendMail('reset-password', 'private@test.local', 'https://app.test/reset?token=SECRET')).rejects.toMatchObject({ code: 'PROVIDER_UNAVAILABLE' });
   expect(JSON.stringify(logs.mock.calls)).not.toContain('SECRET');
 });
+
+it('redacts nested credential spelling variants without hiding useful route diagnostics', () => {
+  const fields = ['access_token','refresh-token','client_secret','X-API-Key','Set-Cookie','GOOGLE_CLIENT_SECRET','DATABASE_URL','recovery_codes','code_verifier','smtpUrl','AWS_SECRET_ACCESS_KEY','JWT_SIGNING_KEY'];
+  const context = { route: 'security.test', status: 403, nested: fields.map(key => ({ [key]: 'sensitive-fixture-value' })) };
+  const result = redact(context);
+  expect(JSON.stringify(result)).not.toContain('sensitive-fixture-value');
+  expect(result).toMatchObject({ route: 'security.test', status: 403 });
+});

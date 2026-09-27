@@ -8,7 +8,7 @@ Current personal-web follow-up: [Task Center daily workflows](TASK_DAILY_WORKFLO
 extends the PC1–PC7 baseline with Home cards, daily task navigation and durable
 Focus/Pomodoro/manual time commands. The dated M1–M6 ledger below is historical;
 its offline-timer limitation is superseded within that follow-up's stated boundary.
-This does not close the separate M8-i8 security/deployment release gates.
+M8-i8 repository hardening is now separately implemented below; deployment release gates remain open.
 
 Date: 2026-09-09 (Asia/Calcutta). **Status: incomplete — not ready to declare the
 Paid-Quality MVP finished.** The user has requested the next increment and full
@@ -349,3 +349,7 @@ processing or automatic destructive action is introduced by this plan.
 ## Shared Personal Workspace completion (after Task Center dc833df)
 
 The next bounded personal milestone adds a keyboard-accessible command palette, shared search for existing Projects/project sections/saved Calendar events, shared Task/Note tag filtering, task-side Goal/Milestone/Tracker linking and exact Calendar/Knowledge references. Reuses existing services and commands; additive migration 0031 preserves typed reference integrity. Notifications retain Task reminders and existing providers. No AI, collaboration, platform, billing or subsequent milestone work is included. See [audit, implementation boundaries and validation](SHARED_PERSONAL_WORKSPACE_MILESTONE.md).
+
+## M8-i8 bounded security implementation
+
+The requested ASVS L2-oriented mapping and deterministic repository secret/static gate are now implemented; see [control evidence](M8_i8_SECURITY_CONTROL_MATRIX.md) and [release prerequisites](../SECURITY.md). OAuth state account binding/atomic consumption, attachment finalization races, and structured credential redaction were hardened. Repository completion requires full green verification; deployment release readiness remains separate, including the documented production Calendar webhook gate.

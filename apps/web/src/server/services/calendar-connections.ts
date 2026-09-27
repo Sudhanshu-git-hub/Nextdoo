@@ -396,13 +396,15 @@ async function storeOauthState(userId: string, workspaceId: string, mode: 'READ_
   });
 }
 
-async function takeOauthState(state: string) {
+async function takeOauthState(state: string, userId: string) {
   const hash = createHash('sha256').update(state).digest('hex');
   const db = getDb();
-  const [row] = await db.select().from(calendarOauthStates).where(eq(calendarOauthStates.stateHash, hash)).limit(1);
-  if (!row || row.expiresAt.getTime() <= Date.now()) return null;
-  await db.delete(calendarOauthStates).where(eq(calendarOauthStates.stateHash, hash)); // single-use
-  return row;
+  // A single statement consumes the credential; concurrent callbacks cannot
+  // both observe it before deletion and exchange the same authorization code.
+  const [row] = await db.delete(calendarOauthStates).where(and(
+    eq(calendarOauthStates.stateHash, hash), eq(calendarOauthStates.userId, userId), sql`${calendarOauthStates.expiresAt} > clock_timestamp()`,
+  )).returning();
+  return row ?? null;
 }
 
 /**
@@ -424,12 +426,12 @@ export async function startGoogleAuthorization(userId: string, workspaceId: stri
 }
 
 /**
- * The OAuth callback (public; the state hash is the credential). Finishes
+ * The OAuth callback (session-bound, single-use state credential). Finishes
  * the exchange, applies the plan/entitlement rules via the verified
  * upsert, and reports the resulting connection.
  */
-export async function completeGoogleCallback(state: string, code: string): Promise<CalendarConnectionView> {
-  const stored = await takeOauthState(state);
+export async function completeGoogleCallback(state: string, code: string, userId: string): Promise<CalendarConnectionView> {
+  const stored = await takeOauthState(state, userId);
   if (!stored) throw new AppError('VALIDATION_FAILED', 'The calendar sign-in state is missing or expired. Start again.');
   const cfg = googleConfig();
   if (!cfg) throw new AppError('PROVIDER_UNAVAILABLE', 'Calendar sync is not configured in this deployment.');

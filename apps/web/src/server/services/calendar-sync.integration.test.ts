@@ -629,16 +629,28 @@ describe('calendar sync engine + services (integration, fixture provider)', () =
     // The callback finishes the exchange and applies the chosen mode.
     const state = ro.authorizationUrl.match(/state=([^&]+)/)?.[1];
     expect(state).toBeTruthy();
-    const view = await svc.completeGoogleCallback(state!, 'auth-code-1');
+    await expect(svc.completeGoogleCallback(state!, 'auth-code-1', crypto.randomUUID())).rejects.toThrow(/state/i);
+    const view = await svc.completeGoogleCallback(state!, 'auth-code-1', userId);
     expect(view.status).toBe('ACTIVE');
     expect(view.mode).toBe('READ_ONLY');
 
+    // Concurrent callbacks must consume the state before any provider exchange.
+    const provider = flow();
+    let exchanges = 0;
+    const exchange = provider.completeAuthorization.bind(provider);
+    provider.completeAuthorization = async (...args) => { exchanges++; return exchange(...args); };
+    svc.setCalendarProviderFactoryForTests(() => provider);
+    const concurrentState = new URL(rw.authorizationUrl).searchParams.get('state')!;
+    const callbacks = await Promise.allSettled(Array.from({ length: 8 }, () => svc.completeGoogleCallback(concurrentState, 'concurrent-code', userId)));
+    expect(callbacks.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+    expect(exchanges).toBe(1);
+
     // Single-use: replaying the same state fails.
-    await expect(svc.completeGoogleCallback(state!, 'auth-code-1')).rejects.toThrow(/state/i);
+    await expect(svc.completeGoogleCallback(state!, 'auth-code-1', userId)).rejects.toThrow(/state/i);
     // Unknown state fails too.
-    await expect(svc.completeGoogleCallback('never-stored-state', 'auth-code-2')).rejects.toThrow(/state/i);
+    await expect(svc.completeGoogleCallback('never-stored-state', 'auth-code-2', userId)).rejects.toThrow(/state/i);
     // A Google-side denial (error param) maps to a failed sign-in.
-    await expect(svc.completeGoogleCallback('x', '')).rejects.toBeInstanceOf(AppError);
+    await expect(svc.completeGoogleCallback('x', '', userId)).rejects.toBeInstanceOf(AppError);
 
     svc.setGoogleConfigForTests(null);
     svc.setCalendarProviderFactoryForTests(null);

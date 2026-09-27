@@ -128,11 +128,12 @@ function humanBytes(bytes: number): string {
   return `${Math.ceil(bytes / 1024)} KB`;
 }
 
-async function loadAttachmentRow(userId: string, workspaceId: string, id: string) {
+async function loadAttachmentRow(userId: string, workspaceId: string, id: string, lock = false) {
   const db = getDb();
-  const [row] = await db.select().from(attachments)
+  const query = db.select().from(attachments)
     .where(and(eq(attachments.id, id), eq(attachments.workspaceId, workspaceId), eq(attachments.uploaderId, userId), isNull(attachments.deletedAt)))
     .limit(1);
+  const [row] = await (lock ? query.for('update') : query);
   if (!row) throw new AppError('NOT_FOUND', 'Attachment not found.');
   // New owners retain the existing download scan/token gate and add parent visibility.
   if (row.recordId || row.noteId || row.goalId) await authorizeAttachmentOwner({ userId, workspaceId }, { recordId: row.recordId ?? undefined, noteId: row.noteId ?? undefined, goalId: row.goalId ?? undefined });
@@ -231,11 +232,18 @@ export async function writeAttachmentData(auth: AuthContext, id: string, token: 
     throw new AppError('FORBIDDEN', 'The upload token is invalid or has expired. Request a new upload.');
   }
   const data = await readBoundedBody(body, row.sizeBytes);
-  await createDurableFileAttachmentStore().write(row.objectKey, data);
+  // Do not hold a database lock while receiving network bytes. Re-authorize
+  // after reception and serialize the final write with completion/deletion.
+  await withTransaction(async () => {
+    const current = await loadAttachmentRow(auth.userId, auth.workspaceId, id, true);
+    if (current.uploadedAt !== null) throw new AppError('VALIDATION_FAILED', 'This attachment already has file data.');
+    await createDurableFileAttachmentStore().write(current.objectKey, data);
+  });
 }
 
 export async function completeAttachment(auth: AuthContext, id: string): Promise<AttachmentView> {
-  const row = await loadAttachmentRow(auth.userId, auth.workspaceId, id);
+  return withTransaction(async () => {
+  const row = await loadAttachmentRow(auth.userId, auth.workspaceId, id, true);
   if (row.uploadedAt === null) {
     const existing = await createDurableFileAttachmentStore().read(row.objectKey);
     if (existing === null) {
@@ -259,6 +267,7 @@ export async function completeAttachment(auth: AuthContext, id: string): Promise
   const [fresh] = await db.select().from(attachments).where(eq(attachments.id, id)).limit(1);
   if (!fresh) throw new AppError('NOT_FOUND', 'Attachment not found.');
   return toView(fresh, auth.userId);
+  });
 }
 
 export async function listAttachments(auth: AuthContext, owner: string | AttachmentOwner): Promise<AttachmentView[]> {
@@ -321,7 +330,8 @@ export async function streamAttachmentDownload(auth: AuthContext, id: string, to
 }
 
 export async function deleteAttachment(auth: AuthContext, id: string): Promise<void> {
-  const row = await loadAttachmentRow(auth.userId, auth.workspaceId, id);
+  return withTransaction(async () => {
+  const row = await loadAttachmentRow(auth.userId, auth.workspaceId, id, true);
   await withTransaction(async (db) => {
     await db.update(attachments)
       .set({ deletedAt: sql`clock_timestamp()` })
@@ -332,5 +342,6 @@ export async function deleteAttachment(auth: AuthContext, id: string): Promise<v
     userId: auth.userId, workspaceId: auth.workspaceId,
     action: 'attachment.deleted', entityType: 'attachment', entityId: id,
     metadata: { sizeBytes: row.sizeBytes },
+  });
   });
 }

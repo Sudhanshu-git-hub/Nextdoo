@@ -2022,3 +2022,7 @@ CLOSED (`5b3c4e9` + `90e6992`), M8-i5 **BLOCKED at preflight**
 file) and implemented at `29cdf35`, M8-i7 CLOSED at `09ea72e`, M8-i8
 **REVIEW COMPLETE at `f538748` — implementation NOT started**. M8-i8 was
 not started by the consolidation.
+
+## M8-i8 — Security & Release Hardening (2026-09-27)
+
+The separately authorized bounded implementation follows the pre-change audit at `921a1e6`. See [security control matrix](M8_i8_SECURITY_CONTROL_MATRIX.md) and [security/release register](../SECURITY.md). It adds deterministic secret/static CI checks, atomic account-bound OAuth state consumption, serialized attachment finalization to prevent post-scan overwrite, and credential-field redaction. Existing security primitives and provider behavior are preserved. Local validation passed: 99 unit/integration files with 1,126 tests and 94.46% line coverage; 31 scanner/redaction checks after the final credential-alias refinement; 21 production browser checks; production build, lint, seven package type checks, dependency audit and repository security scan. Hosted full-browser, real-ClamAV, migration and restore evidence is recorded in the delivery report after publication. This closes the repository increment only after those gates pass; live providers, deployment controls and broad security qualification remain explicitly open. Prior planning entries remain historical.

@@ -39,6 +39,8 @@ jobs:
           node-version: 22.22.3
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Deterministic repository secret and static security checks
+        run: pnpm security:scan
       - run: pnpm --filter @nextdoo/web exec playwright install --with-deps chromium
       # The attachment E2E suite drives the REAL ClamAV engine end to end and
       # fails closed without it (no mocked scanner, no skip). Install the
