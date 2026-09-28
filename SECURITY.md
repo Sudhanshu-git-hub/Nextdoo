@@ -36,3 +36,8 @@ Structured logging normalizes punctuation/case in credential field names and red
 | E. NOT APPLICABLE | Native-client privilege controls, marketplace/plugin execution and team-role matrices for the present personal web application. These require a fresh assessment if those products are introduced. |
 
 No historical migrations were changed. No new provider, storage system, product feature or deployment was introduced by this milestone. A code milestone may be complete while these production release prerequisites remain open.
+
+
+## Core release closure boundary (2026-09-28)
+
+[Pre-launch correctness closure](docs/PRELAUNCH_CORRECTNESS_CLOSURE.md) withholds Google from the first release using default-false `GOOGLE_CALENDAR_ENABLED`. Credentials alone do not enable provider I/O or webhook ingestion. Normalized fixture tests explicitly opt into a development-only acceptance path; F3 protocol repairs and live header/channel verification are not completed by this gate. Keep the gate false for release. Required GitHub check enforcement remains a documented administrator action, not an application-code guarantee. Other production prerequisites above remain open.

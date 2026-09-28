@@ -25,7 +25,7 @@ export function InsightsView({report=false}:{report?:boolean}){
   async function download(format:'csv'|'json'){
     setExporting(true);setExportError('');try{const result=await api<{content:string;filename:string;type:string}>(`/insights/export?${query}&format=${format}`);const url=URL.createObjectURL(new Blob([result.content],{type:result.type})),a=document.createElement('a');a.href=url;a.download=result.filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}catch(e){setExportError(e instanceof Error?e.message:'Export failed.');}finally{setExporting(false);}
   }
-  return <div className="insights-view">
+  return <div className="insights-view"><p className="muted">Requires connection. Free history includes today and the preceding 30 workspace-local days. Requested and comparison periods must both fit; exports use the same policy.</p>
     <div className="page-head"><div><h1>{report?'Insights report':'Insights'}</h1><p className="subtitle">Your work, progress, and what comes next.</p></div><Link className="insights-controls" href={`${report?'/insights':'/insights/reports'}?${query}`}>{report?'Back to Insights':'Open report'}</Link></div>
     <form className="card insights-controls insights-filters" onSubmit={e=>{e.preventDefault();setRevision(v=>v+1);}}>
       <label>Period<select aria-label="Period" value={period} onChange={e=>setPeriod(e.target.value as InsightsQuery['period'])}><option value="day">Today / Daily</option><option value="week">This week / Weekly</option><option value="month">This month / Monthly</option><option value="quarter">This quarter / Quarterly</option><option value="year">This year / Yearly</option><option value="custom">Custom date range</option></select></label>

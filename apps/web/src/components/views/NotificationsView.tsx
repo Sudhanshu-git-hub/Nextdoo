@@ -45,6 +45,7 @@ export function NotificationsView({ initialTask }: { initialTask: Task | null })
  return <div className="notifications-view">
   <div className="page-head"><div><h1>Notifications</h1><p className="subtitle">Durable in-app reminders and delivery history · {timeZone}</p></div></div>
   <p>WEB / SENT means saved in this notification center, not a browser popup or email. PUSH / SENT additionally delivers a browser notification through your registered devices (when browser push is enabled below). Refresh to check for new deliveries; the worker checks every 30 seconds.</p>
+  <p>Task email reminders are not supported. Account messages and Tracker report emails are separate.</p>
   <BrowserPushSettings controls={controls} disabled={busy} />
   {task && <section className="card" aria-labelledby="schedule-heading"><h2 id="schedule-heading">Reminders for {task.title}</h2>
    <form onSubmit={(e) => { e.preventDefault(); if (!task) return; void command('/reminders', { taskId: task.id, taskVersion: task.version, channel, ...(mode === 'relative' ? { minutesBeforeDue: Number(before) } : { scheduledAt: new Date(when).toISOString() }) }, 'Reminder scheduled.'); }}>

@@ -13,6 +13,7 @@ import { dedicatedDatabase, type DedicatedDatabase } from '../../../../../tests/
  * Live Google verification is separately blocked (see the milestone doc).
  */
 
+process.env.GOOGLE_CALENDAR_ENABLED = 'true'; // Normalized fixture tests, not release acceptance.
 const AUTH_SECRET = 'test-only-secret-0123456789abcdefghij';
 
 // Top-level await (codebase pattern for integration suites): the dedicated

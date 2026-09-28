@@ -32,6 +32,7 @@ export default defineConfig({
     url: 'http://localhost:3100/api/v1/health',
     reuseExistingServer: false,
     timeout: 60000,
-    env: { APP_URL: 'http://localhost:3100', VAPID_PUBLIC_KEY: E2E_VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY: E2E_VAPID_PRIVATE_KEY },
+    // Explicit experimental fixture path; production defaults to Google withheld.
+    env: { GOOGLE_CALENDAR_ENABLED: 'true', APP_URL: 'http://localhost:3100', VAPID_PUBLIC_KEY: E2E_VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY: E2E_VAPID_PRIVATE_KEY },
   },
 });

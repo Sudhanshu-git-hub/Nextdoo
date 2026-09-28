@@ -35,6 +35,7 @@ export function OfflineBadge({ workspaceId }: { workspaceId: string }) {
   return (
     <div className="offline-badge" role="status" aria-live="polite">
       {online ? `Syncing ${queued} ${word(queued)}…` : `Offline — ${queued} ${word(queued)} queued`}
+      {!online && <span> · Cached Today, capture and Focus/time commands are available in an already open app. Queued changes synchronize later. Other edits and modules require a connection.</span>}
       {attention > 0 && (
         <>
           {' · '}

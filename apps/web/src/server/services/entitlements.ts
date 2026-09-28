@@ -51,7 +51,7 @@ export async function enforceProjectLimit(userId: string, workspaceId: string): 
  * `dateKey` is a local calendar date (YYYY-MM-DD) in the workspace time zone,
  * the same convention the tracking endpoints use.
  */
-export async function assertHistoryWindow(userId: string, workspaceId: string, dateKey: string | null): Promise<void> {
+export async function assertHistoryWindow(userId: string, workspaceId: string, dateKey: string | null, now = new Date()): Promise<void> {
   if (dateKey === null) return;
   const days = limitsFor(await getPlan(userId)).trackingHistoryDays;
   if (days === null) return;
@@ -59,7 +59,7 @@ export async function assertHistoryWindow(userId: string, workspaceId: string, d
   const tz = ws?.timeZone ?? 'UTC';
   const [y, m, d] = dateKey.split('-').map(Number) as [number, number, number];
   const requested = Date.UTC(y, m - 1, d);
-  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now);
   const part = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? '0');
   const today = Date.UTC(part('year'), part('month') - 1, part('day'));
   const ageDays = Math.round((today - requested) / 86_400_000);

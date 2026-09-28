@@ -4,7 +4,7 @@ import { knowledgeCsv } from '@nextdoo/core';
 import { knowledgeDatabases as databases, knowledgeProperties as properties, knowledgeRecords as records, knowledgeValues as values, knowledgeNotes as notes, knowledgeNoteTags as noteTags, knowledgeFiles as files, attachments, tags } from '@nextdoo/db';
 import { getDb, withTransaction } from '../db';
 import { loadKnowledgeDatabase, loadKnowledgeRecord, loadKnowledgeNote, knowledgeProperties, knowledgeStoredValue, invalidKnowledge, serialiseKnowledge } from './knowledge';
-import { knowledgeRelationDetails, knowledgeBacklinks } from './knowledge-relations';
+import { knowledgeRelationDetails, knowledgeBacklinks, knowledgeTarget, knowledgeActive } from './knowledge-relations';
 
 /** Search only clean, live resources whose owning item is still available. */
 export async function knowledgeResources(workspaceId:string,userId:string,data:unknown) {
@@ -32,7 +32,7 @@ export async function listKnowledgeNotes(workspaceId: string, data: unknown, par
   const query=knowledgeQuery.parse(data);
   if (parent?.recordId) await loadKnowledgeRecord(workspaceId,parent.recordId,true);
   if (parent?.databaseId) await loadKnowledgeDatabase(workspaceId,parent.databaseId);
-  const rows=await getDb().select().from(notes).where(and(eq(notes.workspaceId,workspaceId),query.includeDeleted?undefined:isNull(notes.deletedAt),parent?.recordId?eq(notes.recordId,parent.recordId):undefined,parent?.databaseId?eq(notes.databaseId,parent.databaseId):undefined,sql`(${notes.title} ilike ${like(query.q)} or ${notes.content} ilike ${like(query.q)})`)).orderBy(desc(notes.updatedAt),asc(notes.id)).limit(query.limit+1).offset(query.offset);
+  const rows=await getDb().select().from(notes).where(and(eq(notes.workspaceId,workspaceId),query.includeDeleted?undefined:knowledgeActive("note"),parent?.recordId?eq(notes.recordId,parent.recordId):undefined,parent?.databaseId?eq(notes.databaseId,parent.databaseId):undefined,sql`(${notes.title} ilike ${like(query.q)} or ${notes.content} ilike ${like(query.q)})`)).orderBy(desc(notes.updatedAt),asc(notes.id)).limit(query.limit+1).offset(query.offset);
   return serialiseKnowledge({data:rows.slice(0,query.limit),nextOffset:rows.length>query.limit?query.offset+query.limit:null});
 }
 function scalar(property: typeof properties.$inferSelect): SQL {
@@ -93,7 +93,11 @@ export async function knowledgeNoteDetail(workspaceId: string,id: string) {
   return withTransaction(async db=>{
     const note=await loadKnowledgeNote(workspaceId,id,true);
     const tagRows=await db.select({id:tags.id,name:tags.name}).from(noteTags).innerJoin(tags,eq(tags.id,noteTags.tagId)).where(and(eq(noteTags.noteId,id),eq(noteTags.workspaceId,workspaceId)));
-    return serialiseKnowledge({note,tags:tagRows,relations:await knowledgeRelationDetails(workspaceId,'note',id),backlinks:await knowledgeBacklinks(workspaceId,'note',id)});
+    const availability=await knowledgeTarget(workspaceId,"note",id,false);
+    const parentRecord=note.recordId?await loadKnowledgeRecord(workspaceId,note.recordId,true):null;
+    const parentDatabaseId=note.databaseId??parentRecord?.databaseId;
+    const parentDatabase=parentDatabaseId?await loadKnowledgeDatabase(workspaceId,parentDatabaseId):null;
+    return serialiseKnowledge({note,unavailable:availability.unavailable,parentUnavailable:!!parentRecord?.deletedAt||!!parentDatabase?.archived,tags:tagRows,relations:await knowledgeRelationDetails(workspaceId,'note',id),backlinks:await knowledgeBacklinks(workspaceId,'note',id)});
   },{isolationLevel:'repeatable read'});
 }
 /** Bounded page export; account export remains the complete structured boundary. */

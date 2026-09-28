@@ -11,7 +11,8 @@ const envSchema = z.object({
   AUTH_SECRET: z.string().min(32),
   APP_URL: z.string().url().default('http://localhost:3000'),
   REDIS_URL: z.string().optional(),
-  /** Google Calendar OAuth (optional in dev; the feature is gated on presence). */
+  /** Google is withheld by default; isolated provider acceptance must explicitly opt in. */
+  GOOGLE_CALENDAR_ENABLED: z.enum(["true", "false"]).default("false"),
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   /**
@@ -65,6 +66,7 @@ export function getEnv(): Env {
     AUTH_SECRET: process.env.AUTH_SECRET,
     APP_URL: process.env.APP_URL,
     REDIS_URL: process.env.REDIS_URL,
+    GOOGLE_CALENDAR_ENABLED: process.env.GOOGLE_CALENDAR_ENABLED,
     GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
     STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
@@ -99,7 +101,7 @@ export function getEnv(): Env {
 export function features() {
   const env = getEnv();
   return {
-    googleCalendar: Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET),
+    googleCalendar: env.GOOGLE_CALENDAR_ENABLED === "true" && Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET),
     // Browser push needs both VAPID keys (public for subscription, private for
     // signing); with either missing the UI degrades and delivery is a no-op.
     browserPush: Boolean(env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY),

@@ -43,6 +43,9 @@ async function loadAllPages(page: Page, total: number) {
   await expect(page.getByRole('button', { name: 'Load more tasks' })).toHaveCount(0);
   // The Load-more clicks scroll the pagination control into view; reset to the list top.
   await page.evaluate(() => window.scrollTo(0, 0));
+  // scrollTo dispatches its scroll event asynchronously. Wait for React's
+  // virtual window to contain the actual first task before resolving .first().
+  await expect(page.locator('ul[data-virtualized="true"] > li[data-task-id]').first().locator('.task-title')).toHaveText(title(total - 1));
 }
 
 test('a 250-task list paginates fully, virtualizes, and keeps order without duplicates', async ({ page }) => {
@@ -190,6 +193,7 @@ test('virtualized list keeps focus pinned and passes axe', async ({ page }) => {
   // Row controls are keyboard focusable.
   const firstCheck = realRows.first().locator('button.check');
   await firstCheck.focus();
+  await expect(firstCheck).toBeFocused();
   const focusedAtTop = await page.evaluate(() => document.activeElement?.closest('li')?.getAttribute('data-task-id'));
   expect(focusedAtTop).toBe(ids[249]);
 

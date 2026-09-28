@@ -3,8 +3,8 @@
 | Field | Value |
 |---|---|
 | Document status | Authoritative product and technical blueprint |
-| Version | 1.2 |
-| Last updated | 2026-09-23 |
+| Version | 1.3 |
+| Last updated | 2026-09-28 |
 | Product | NEXTDOO |
 | Initial platform | Web |
 | Client sequence | Web → Windows → Android → iOS/macOS |
@@ -2218,3 +2218,12 @@ Shared tags cover Tasks and Notes only; Goal categories/identifiers, Tracker sta
 The personal web implementation has an ASVS **4.0.3 L2-oriented control-group map**, deterministic local/CI secret scanning and bounded TypeScript AST security guards. It is not ASVS certification or comprehensive SAST. Existing password/reset/MFA/session, owner checks, CSP, attachment scan gates and webhook ledgers have source and regression evidence. This increment fixes atomic account-bound OAuth state consumption, delayed-upload finalization races and structured credential-key redaction. See [SECURITY.md](../SECURITY.md) and [the control matrix](M8_i8_SECURITY_CONTROL_MATRIX.md).
 
 Production security remains unqualified until the explicit release prerequisites are satisfied: trusted proxy/TLS, request and distributed abuse limits, managed secrets/rotation, scanner/storage configuration, live Google/push/mail/billing acceptance, encrypted backups/PITR, rollback, monitoring/on-call and independent assessment. In particular, production Calendar webhook ingress must not be accepted solely on the existing normalized connection-ID token fixture. CSP permits inline styles; cryptographic secrets use purpose-derived AES-GCM keys, not a proven managed rotating KEK system; CSRF protection is Origin/Fetch-Metadata plus SameSite, not a separate CSRF-token system. There is no current production container image scan or proof of platform push protection.
+
+
+## Pre-launch correctness closure — current release boundary (2026-09-28)
+
+The current core personal-web release follows [Pre-launch correctness closure](PRELAUNCH_CORRECTNESS_CLOSURE.md). Its explicit lifecycle, offline, history and provider boundaries supersede broader historical wording. Task reminders use the existing task-filtered Notifications page. Unavailable Knowledge relations retain history but lose active selection/navigation until restored. Insights, actual comparisons and CSV/JSON exports share the existing Free history policy (today plus the preceding 30 workspace-local dates); paid historical age is unlimited within report-size bounds. Unauthorized ranges fail explicitly, without partial reports.
+
+Offline support is limited to supported capture, cached Today and queued Focus/time/completion commands in an already loaded app. General TaskEditor/lifecycle and newer modules require connection; the push-only service worker provides no offline cold-start guarantee. Task EMAIL is unsupported regardless of SMTP; account and Tracker report email are separate. Google is withheld from the first public release by default, including webhook/provider execution, pending a separate F3 repair and live-acceptance track. Native and ICS Calendar remain in scope. No Google production-readiness claim follows from normalized fixtures.
+
+CI requires repeated focus acceptance and full browser acceptance without retries. GitHub required-check enforcement remains an administrator action until live settings prove otherwise. M8-i8 remains repository-level hardening, not production qualification. Historical counts in earlier milestone sections are dated evidence; current exact-commit acceptance belongs to the closure delivery report.

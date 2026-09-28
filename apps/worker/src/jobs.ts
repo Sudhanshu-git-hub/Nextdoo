@@ -505,6 +505,7 @@ export function openCalendarTokens(row: {
 }
 
 function calendarProviderFor(row: { id: string; provider: string; status: string; accessTokenEncrypted: string | null; refreshTokenEncrypted?: string | null; tokenExpiresAt?: Date | null; scopes?: string | null }): CalendarProvider | null {
+  if (process.env.GOOGLE_CALENDAR_ENABLED !== "true") return null;
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
   if (row.provider !== 'google') return null;

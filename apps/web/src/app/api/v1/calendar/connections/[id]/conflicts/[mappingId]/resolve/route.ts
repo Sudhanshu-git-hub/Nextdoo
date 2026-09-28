@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { AppError } from '@nextdoo/contracts';
+import { getEnv } from '@/server/env';
 import { authedRoute, parseBody } from '@/server/http';
 import { resolveCalendarConflict } from '@/server/services/calendar-connections';
 
@@ -18,6 +20,7 @@ const body = z.object({ action: z.enum(['KEEP_TASK', 'KEEP_CALENDAR', 'UNLINK'])
 export async function POST(request: Request, { params }: Params) {
   const { id, mappingId } = await params;
   return authedRoute({ routeName: 'calendar.conflicts.resolve', rateLimitPerMinute: 120, idempotent: true }, async (r, ctx) => {
+    if (getEnv().GOOGLE_CALENDAR_ENABLED !== "true") throw new AppError("PROVIDER_UNAVAILABLE", "Google Calendar is withheld from this release.");
     const input = await parseBody(request, body);
     return resolveCalendarConflict(ctx.auth.userId, id, mappingId, input.action);
   })(request);

@@ -10,16 +10,18 @@ import { loadKnowledgeDatabase, loadKnowledgeRecord, loadKnowledgeNote, knowledg
 
 export type KnowledgeKind = z.infer<typeof knowledgeTargetKind>;
 const targets = {
-  record: { table: 'knowledge_records', title: 'title', active: 'deleted_at is null', column: 'targetRecordId', path: '/knowledge/records/' },
+  record: { table: 'knowledge_records', title: 'title', active: 'deleted_at is null and exists(select 1 from knowledge_databases d where d.id=knowledge_records.database_id and d.workspace_id=knowledge_records.workspace_id and not d.archived)', column: 'targetRecordId', path: '/knowledge/records/' },
   database: { table: 'knowledge_databases', title: 'name', active: 'not archived', column: 'targetDatabaseId', path: '/knowledge/databases/' },
-  note: { table: 'knowledge_notes', title: 'title', active: 'deleted_at is null', column: 'targetNoteId', path: '/knowledge/notes/' },
+  note: { table: 'knowledge_notes', title: 'title', active: 'deleted_at is null and (record_id is null or exists(select 1 from knowledge_records r join knowledge_databases d on d.id=r.database_id and d.workspace_id=r.workspace_id where r.id=knowledge_notes.record_id and r.workspace_id=knowledge_notes.workspace_id and r.deleted_at is null and not d.archived)) and (database_id is null or exists(select 1 from knowledge_databases d where d.id=knowledge_notes.database_id and d.workspace_id=knowledge_notes.workspace_id and not d.archived))', column: 'targetNoteId', path: '/knowledge/notes/' },
   task: { table: 'tasks', title: 'title', active: "status<>'DELETED'", column: 'taskId', path: null },
   goal: { table: 'goals', title: 'title', active: "status<>'ARCHIVED'", column: 'goalId', path: '/goals/' },
-  milestone: { table: 'milestones', title: 'title', active: "status<>'ARCHIVED'", column: 'milestoneId', path: '/goals/' },
+  milestone: { table: 'milestones', title: 'title', active: "status<>'ARCHIVED' and exists(select 1 from goals g where g.id=milestones.goal_id and g.workspace_id=milestones.workspace_id and g.status<>'ARCHIVED')", column: 'milestoneId', path: '/goals/' },
   tracker: { table: 'personal_trackers', title: 'name', active: "state<>'ARCHIVED'", column: 'trackerId', path: '/trackers/' },
   native_event: { table: 'calendar_native_events', title: 'title', active: "deleted_at is null and exists(select 1 from calendar_sources s join workspaces w on w.id=s.workspace_id and w.owner_id=s.user_id where s.id=calendar_native_events.source_id and s.workspace_id=calendar_native_events.workspace_id and s.kind='NATIVE' and not s.archived)", column: 'nativeEventId', path: '/calendar/events/' },
-  calendar: { table: 'calendar_events', title: 'title', active: 'true', column: 'calendarEventId', path: '/calendar' },
+  calendar: { table: 'calendar_events', title: 'title', active: "exists(select 1 from calendar_connections c join workspaces w on w.id=c.workspace_id and w.owner_id=c.user_id where c.id=calendar_events.connection_id and c.workspace_id=calendar_events.workspace_id and c.status='ACTIVE')", column: 'calendarEventId', path: '/calendar' },
 } as const;
+/** Finite, reviewed SQL predicates shared by selectors and normal Knowledge lists. */
+export const knowledgeActive = (kind: KnowledgeKind) => sql.raw(targets[kind].active);
 const like = (term: string) => '%' + term.replace(/[\\%_]/g, '\\$&') + '%';
 export async function knowledgeTarget(workspaceId: string, kind: KnowledgeKind, id: string, active = true) {
   knowledgeTargetKind.parse(kind); uuid.parse(id); const target = targets[kind];
@@ -78,7 +80,7 @@ export async function knowledgeRelationDetails(workspaceId: string, kind: 'recor
 }
 export async function knowledgeBacklinks(workspaceId: string, kind: KnowledgeKind, id: string, offset=0) {
   await knowledgeTarget(workspaceId,kind,id,false); z.number().int().min(0).max(1000000).parse(offset);
-  const rows=await getDb().execute<{ id:string; record_id:string|null; note_id:string|null; title:string }>(sql`select l.id,l.record_id,l.note_id,coalesce(r.title,n.title) title from knowledge_relations l left join knowledge_records r on r.id=l.record_id left join knowledge_notes n on n.id=l.note_id where l.workspace_id=${workspaceId} and l.kind=${kind} and l.target_id=${id} and (r.deleted_at is null and n.deleted_at is null) order by l.id limit 41 offset ${offset}`);
+  const rows=await getDb().execute<{ id:string; record_id:string|null; note_id:string|null; title:string }>(sql`select l.id,l.record_id,l.note_id,coalesce(r.title,n.title) title from knowledge_relations l left join knowledge_records r on r.id=l.record_id left join knowledge_notes n on n.id=l.note_id where l.workspace_id=${workspaceId} and l.kind=${kind} and l.target_id=${id} and ((l.record_id is not null and exists(select 1 from knowledge_records where id=l.record_id and workspace_id=l.workspace_id and (${sql.raw(targets.record.active)}))) or (l.note_id is not null and exists(select 1 from knowledge_notes where id=l.note_id and workspace_id=l.workspace_id and (${sql.raw(targets.note.active)})))) order by l.id limit 41 offset ${offset}`);
   return { data:rows.slice(0,40).map(r=>({id:r.id,title:r.title,href:r.record_id?'/knowledge/records/'+r.record_id:'/knowledge/notes/'+r.note_id})),nextOffset:rows.length>40?offset+40:null };
 }
 export async function linkKnowledgeFile(actor: KnowledgeActor, recordId: string, data: unknown) {

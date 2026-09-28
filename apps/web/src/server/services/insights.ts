@@ -4,6 +4,7 @@ import { goals,personalTrackers,personalTrackerEntries,type Database } from '@ne
 import { insightsWindow,previousInsightsWindow,personalTrackerReport,personalTrackerStreaks,trackerDate } from '@nextdoo/core';
 import { withTransaction } from '../db';
 import { assertWorkspaceAccess } from '../auth';
+import { assertHistoryWindow } from './entitlements';
 import { loadWorkspaceSettings } from './workspaces';
 import { getWellbeingPreferences } from './preferences';
 import { progressFor,type GoalActor } from './goals';
@@ -134,10 +135,13 @@ export async function getInsights(actor:GoalActor,raw:unknown,now=new Date()){
   return withTransaction(async db=>{
     await assertWorkspaceAccess(actor.userId,actor.workspaceId);
     const workspace=await loadWorkspaceSettings(actor.workspaceId,actor.workspaceId),prefs=await getWellbeingPreferences(actor.userId),window=insightsWindow(query,workspace.timeZone,workspace.weekStart,now);
+    await assertHistoryWindow(actor.userId,actor.workspaceId,window.from,now);
     const current=await periodMetrics(db,actor,window,now,prefs);
     let comparison:null|{window:InsightsWindow;tasksCompleted:number;completionRate:number|null;focusMinutes:number;trackerStars:number|null;trackedDays:number|null}=null;
     let comparisonReason=prefs.disableComparativeMetrics?'Period comparisons are hidden in Wellbeing settings.':!window.complete?'Comparisons require a completed date range.':query.compare!=='true'?'Choose Compare to the previous equal-length period.':null;
-    if(!comparisonReason){const previousWindow=previousInsightsWindow(window,workspace.weekStart,now),previous=await periodMetrics(db,actor,previousWindow,now,prefs);
+    if(!comparisonReason){const previousWindow=previousInsightsWindow(window,workspace.weekStart,now);
+      await assertHistoryWindow(actor.userId,actor.workspaceId,previousWindow.from,now);
+      const previous=await periodMetrics(db,actor,previousWindow,now,prefs);
       const trackerComparable=current.trackers.items.every(t=>{const prior=previous.trackers.items.find(p=>p.id===t.id);return prior?.calendarDays===t.calendarDays&&t.to===window.to;});
       comparison={window:previousWindow,tasksCompleted:current.tasks.completed-previous.tasks.completed,completionRate:current.tasks.completionRate!==null&&previous.tasks.completionRate!==null?current.tasks.completionRate-previous.tasks.completionRate:null,focusMinutes:round(current.tasks.focusMinutes-previous.tasks.focusMinutes),trackerStars:!prefs.disableScores&&trackerComparable?current.trackers.totalStars-previous.trackers.totalStars:null,trackedDays:trackerComparable?current.trackers.trackedDays-previous.trackers.trackedDays:null};
       if(!trackerComparable)comparisonReason='Tracker star comparison unavailable: eligible tracker dates differ. Other comparisons remain available.';

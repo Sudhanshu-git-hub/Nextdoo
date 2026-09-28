@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { z, ZodError } from 'zod';
 import { AppError } from '@nextdoo/contracts';
 import { rateLimit } from '@/server/auth';
+import { getEnv } from '@/server/env';
 import { assertRequestOrigin } from '@/server/request-security';
 import { jsonResponse, problemResponse, toProblem } from '@/server/http';
 import { logger, newRequestId } from '@/server/observability';
@@ -73,6 +74,7 @@ export async function POST(request: Request) {
   const ip = clientIp(request);
   const started = performance.now();
   try {
+    if (getEnv().GOOGLE_CALENDAR_ENABLED !== "true") throw new AppError("PROVIDER_UNAVAILABLE", "Google Calendar is withheld from this release.");
     assertRequestOrigin(request);
     let raw: unknown;
     try {

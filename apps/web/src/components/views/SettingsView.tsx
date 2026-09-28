@@ -282,7 +282,7 @@ export function SettingsView({
 
         </SettingsGroup>
         <SettingsGroup id="security"><MfaSettings /><SessionSettings /><AuditLog /><p>Data export and account deletion are in Sync & Data. Account deletion retains its password confirmation and 30-day grace window.</p></SettingsGroup>
-        <SettingsGroup id="integrations"><CalendarSettings /><p>Google Calendar is the supported connected provider. Imported ICS snapshots and source visibility are managed in Calendar. No additional provider connection is implied.</p></SettingsGroup>
+        <SettingsGroup id="integrations"><CalendarSettings /><p>Google Calendar is withheld from the first release pending a separate repair and provider acceptance track. Imported ICS snapshots and source visibility are managed in Calendar. No additional provider connection is implied.</p></SettingsGroup>
         <SettingsGroup id="billing"><PlanSettings status={center.status} />
         <section className="card" aria-labelledby="usage-heading">
           <h2 id="usage-heading">Usage</h2>

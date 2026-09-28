@@ -5,6 +5,7 @@ import { getDb, withTransaction } from '../db';
 import { loadTask } from './tasks';
 import { loadWorkspaceSettings } from './workspaces';
 import { listCenterEvents } from './calendar-center';
+import { knowledgeActive } from './knowledge-relations';
 
 const like=(value:string)=>'%'+value.replace(/[\\%_]/g,'\\$&')+'%';
 const page=<T>(rows:T[],limit:number,offset:number)=>({data:rows.slice(0,limit),nextOffset:rows.length>limit?offset+limit:null});
@@ -19,7 +20,7 @@ export async function searchConnected(workspaceId:string,data:unknown,userId?:st
     union all select id,'tracker',name,'/trackers/'||id::text,'Tracker',state,coalesce(description,'') from personal_trackers where workspace_id=${workspaceId} and state<>'ARCHIVED'
     union all select id,'database',name,'/knowledge/databases/'||id::text,'Database','ACTIVE',coalesce(description,'') from knowledge_databases where workspace_id=${workspaceId} and not archived
     union all select r.id,'record',r.title,'/knowledge/records/'||r.id::text,'Record · '||d.name,'ACTIVE',r.content from knowledge_records r join knowledge_databases d on d.id=r.database_id and d.workspace_id=r.workspace_id where r.workspace_id=${workspaceId} and r.deleted_at is null and not d.archived
-    union all select n.id,'note',n.title,'/knowledge/notes/'||n.id::text,'Note','ACTIVE',n.content from knowledge_notes n left join knowledge_records r on r.id=n.record_id left join knowledge_databases d on d.id=coalesce(n.database_id,r.database_id) where n.workspace_id=${workspaceId} and n.deleted_at is null and r.deleted_at is null and not coalesce(d.archived,false)
+    union all select n.id,'note',n.title,'/knowledge/notes/'||n.id::text,'Note','ACTIVE',n.content from knowledge_notes n left join knowledge_records r on r.id=n.record_id left join knowledge_databases d on d.id=coalesce(n.database_id,r.database_id) where n.workspace_id=${workspaceId} and exists(select 1 from knowledge_notes where id=n.id and workspace_id=n.workspace_id and (${knowledgeActive("note")}))
     union all select id,'project',name,'/tasks?projectId='||id::text,'Project',status::text,coalesce(description,'') from projects where workspace_id=${workspaceId} and status='ACTIVE' and deleted_at is null
     union all select s.id,'list',s.name,'/tasks?projectId='||s.project_id::text||'&sectionId='||s.id::text,'List · '||p.name,'ACTIVE','' from sections s join projects p on p.id=s.project_id and p.workspace_id=s.workspace_id where s.workspace_id=${workspaceId} and s.deleted_at is null and p.deleted_at is null and p.status='ACTIVE'
     union all select e.id,'calendar',e.title,'/calendar/events/'||e.id::text,'Calendar · '||s.name,s.kind,e.description from calendar_native_events e join calendar_sources s on s.id=e.source_id and s.workspace_id=e.workspace_id where e.workspace_id=${workspaceId} and s.user_id=coalesce(${userId??null}::uuid,(select owner_id from workspaces where id=${workspaceId})) and not s.archived and e.deleted_at is null

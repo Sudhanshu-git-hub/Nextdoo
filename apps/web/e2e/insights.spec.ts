@@ -1,10 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { test,expect,type Page } from '@playwright/test';
+import { eq } from 'drizzle-orm';
+import { createDb,subscriptions } from '@nextdoo/db';
+const connection=createDb(process.env.DATABASE_URL!,{max:2});
+test.afterAll(()=>connection.close());
 import { createTrackerDefinition } from '@nextdoo/core';
 let ip=10;
 const headers=()=>({Origin:'http://localhost:3100','Idempotency-Key':randomUUID()});
 const today=()=>new Date().toISOString().slice(0,10);
-async function fixture(page:Page){const r=await page.request.post('/api/v1/auth/register',{headers:{...headers(),'X-Forwarded-For':`203.0.113.${ip++}`},data:{email:`pc6-${randomUUID()}@test.local`,password:'insights-test-password-123',timeZone:'UTC'}});expect(r.status()).toBe(200);return r.json();}
+async function fixture(page:Page){const r=await page.request.post('/api/v1/auth/register',{headers:{...headers(),'X-Forwarded-For':`203.0.113.${ip++}`},data:{email:`pc6-${randomUUID()}@test.local`,password:'insights-test-password-123',timeZone:'UTC'}});expect(r.status()).toBe(200);const user=await r.json();await connection.db.update(subscriptions).set({plan:'PRO',status:'ACTIVE',currentPeriodEnd:new Date(Date.now()+86400000)}).where(eq(subscriptions.userId,user.id));return user;}
 async function post(page:Page,path:string,data:unknown){const r=await page.request.post('/api/v1/'+path,{headers:headers(),data});expect(r.status(),await r.text()).toBe(200);return r.json();}
 const metric=(page:Page,label:string)=>page.locator('dl > div').filter({has:page.getByText(label,{exact:true})}).locator('dd');
 test('opens Insights from navigation with honest empty metrics',async({page})=>{await fixture(page);await page.goto('/today');await page.getByRole('link',{name:'Insights',exact:true}).click();await expect(page.getByRole('heading',{name:'Insights',exact:true})).toBeVisible();await expect(page.getByText('No activity to summarize yet.',{exact:false})).toBeVisible();await expect(metric(page,'Completion rate')).toHaveText('Not available');});

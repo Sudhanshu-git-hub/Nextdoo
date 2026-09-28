@@ -44,14 +44,16 @@ export function CalendarSettings() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [unavailable, setUnavailable] = useState(false);
+  const [enabled, setEnabled] = useState(false);
   const [syncSummary, setSyncSummary] = useState<string | null>(null);
 
   const marker = searchParams.get('calendar');
 
   const load = useCallback(async () => {
     try {
-      const result = await api<{ connections: ConnectionView[] }>('/calendar/connections');
+      const result = await api<{ enabled: boolean; connections: ConnectionView[] }>('/calendar/connections');
       setConnections(result.connections);
+      setEnabled(result.enabled);
     } catch {
       setConnections([]);
     }
@@ -146,6 +148,8 @@ export function CalendarSettings() {
       setBusy(false);
     }
   }
+
+  if (connections !== null && !enabled) return <section className="card" data-testid="calendar-card"><h2>Calendar</h2><p>Google Calendar is withheld from this release. Native calendars and ICS imports are available in Calendar. Existing Google data is retained; provider actions require a separately accepted integration release.</p></section>;
 
   const google = connections?.find((c) => c.provider === 'google') ?? null;
 

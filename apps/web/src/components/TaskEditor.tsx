@@ -89,6 +89,7 @@ function TaskEditorForm({ task, onClose, onSaved, onNavigate, onBack }: {
   function change<K extends keyof Draft>(key: K, value: Draft[K]) { setDraft((d) => d && ({ ...d, [key]: value })); }
   return <dialog ref={dialog} aria-labelledby="task-editor-title" className="task-editor" onCancel={(e) => { e.preventDefault(); close(); }}>
     <h2 id="task-editor-title">Edit task</h2>
+    <p className="muted">Editing and lifecycle changes require a connection. Unsaved drafts are kept only while this editor stays open.</p>
     <p className="muted">Task state: {taskStatus.toLowerCase()}</p>
     {onBack && <button disabled={busy || relationsBusy || lifecycleBusy || recurrenceBusy} onClick={() => navigate(onBack)}>Back to previous task</button>}
     {error && <div className="banner banner-error" role="alert" id="task-editor-error">{error}</div>}

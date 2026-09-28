@@ -1,7 +1,6 @@
 # Development and verification
 
-The recovered implementation is not a release-complete personal workspace. `docs/PRD.md` on
-main is the product authority and `docs/PERSONAL_CORE_AUDIT.md` records the current inspected boundary. This guide describes development and verification behavior; historical limitation notes below must be read with their dates and milestone references.
+Current release scope and verification policy: [Pre-launch correctness closure](PRELAUNCH_CORRECTNESS_CLOSURE.md). The PRD remains authoritative. Counts and missing-feature statements later in this guide describe historical milestones; use the latest exact-commit delivery/CI evidence for current acceptance. Production/provider qualification remains separate. Google is default-off for the first release; task EMAIL is unsupported.
 
 ## Toolchain and local services
 
@@ -335,7 +334,7 @@ create and drop its uniquely named disposable test database (`CREATEDB`, as in C
 This privilege is for testing, not a requirement for the production application
 role. The test migrates and replays that database independently and cleans it up.
 
-Current local full acceptance: **422 tests / 46 files and 75 browser/API scenarios**,
+Historical checkpoint local acceptance: **422 tests / 46 files and 75 browser/API scenarios**,
 all gates green and zero dependency findings. The report distinguishes this slice
 from full corrections/range backfill, workspace-local review, wellbeing/retention
 policies and the remaining operational/provider qualifications.

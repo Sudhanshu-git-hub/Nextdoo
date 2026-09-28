@@ -16,9 +16,13 @@ export class ApiError extends Error {
 }
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const method = (init.method ?? 'GET').toUpperCase();
+  if (typeof navigator !== 'undefined' && navigator.onLine === false && !['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+    throw new ApiError({ type: 'about:blank', title: 'Connection required', status: 503, code: 'PROVIDER_UNAVAILABLE', detail: 'Requires connection. This operation was not saved or queued. Reconnect and try again.' });
+  }
   const headers = new Headers(init.headers);
   if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
-  if (!['GET', 'HEAD', 'OPTIONS'].includes((init.method ?? 'GET').toUpperCase()) && !headers.has('Idempotency-Key')) headers.set('Idempotency-Key', crypto.randomUUID());
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(method) && !headers.has('Idempotency-Key')) headers.set('Idempotency-Key', crypto.randomUUID());
   const response = await fetch(`/api/v1${path}`, { ...init, headers });
 
   if (response.status === 204) return undefined as T;

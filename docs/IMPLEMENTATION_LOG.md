@@ -1,3 +1,11 @@
+# Current state — Pre-launch correctness closure (2026-09-28)
+
+Baseline main: `7a530e13e3945e58a1f65b2423451f3ea7c99fd2`. See [closure policy and release gates](PRELAUNCH_CORRECTNESS_CLOSURE.md) for F1/F4/F5, bounded offline support, the focus synchronization repair and required-check administrator actions. Task EMAIL is excluded; Google is withheld by the user decision and a default-off gate. Native/ICS Calendar remain included. Final validation and exact commit provenance are supplied in the delivery report; no targeted-only completion claim is made.
+
+The personal-core deliveries PC1–PC7, Task Center Daily Workflow and Shared Personal Workspace are current implementations, with their acceptance boundaries in the PRD and linked milestone documents. Older feature-gap lists and test counts below describe their historical checkpoints, not the present product. M8-i8 security controls remain bounded repository evidence; deployment/provider/security qualification is separate.
+
+---
+
 # Approved continuation: quality gates and integrity only
 
 Baseline: `49b2e68`, preserved on remote `feat/mvp-implementation`. Work stays on

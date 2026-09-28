@@ -92,13 +92,10 @@ jobs:
           pg_restore --version
       - name: Smoke PostgreSQL backup restore and post-restore migration
         run: pnpm db:restore-smoke
-      # --retries=2: one non-deterministic browser test (task-virtualization
-      # focus-pinning, M4) intermittently fails on slow CI runners while
-      # passing in every local run and on at least one full CI run of each
-      # commit (see docs/M6_ENTITLEMENTS_EXPORT_MILESTONE.md, CI section).
-      # Retries do not weaken any assertion: a genuinely broken test still
-      # fails the run after both attempts.
-      - run: pnpm --filter @nextdoo/web exec playwright test --retries=2
+      - name: Repeated virtualized focus acceptance (no retries)
+        run: pnpm --filter @nextdoo/web exec playwright test task-virtualization.spec.ts --grep "virtualized list keeps focus pinned and passes axe" --repeat-each=10 --retries=0
+      - name: Complete browser acceptance (first attempt)
+        run: pnpm --filter @nextdoo/web exec playwright test --retries=0
       - name: Surface failed E2E tests as annotations
         if: failure()
         run: node .github/scripts/e2e-failures-annotations.mjs

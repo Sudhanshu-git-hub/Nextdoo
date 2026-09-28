@@ -24,8 +24,8 @@ export async function createReminder(actor: ReminderActor, raw: { taskId: string
   const task = await activeTask(actor, input.taskId);
   if (input.taskVersion !== undefined && task.version !== input.taskVersion) throw versionConflict('task', task.id);
   // WEB = durable in-app notification; PUSH = browser push (PRD §6.6, M8-i1).
-  // DESKTOP/EMAIL remain unavailable (no provider configured on this stack).
-  if (input.channel !== 'WEB' && input.channel !== 'PUSH') throw new AppError('VALIDATION_FAILED', 'Only in-app and browser-push reminders are enabled. Other channels are not configured.');
+  // DESKTOP/EMAIL are not implemented for task reminders; SMTP serves other workflows.
+  if (input.channel !== 'WEB' && input.channel !== 'PUSH') throw new AppError('VALIDATION_FAILED', 'Only in-app and browser-push reminders are enabled. Other task reminder channels are not supported.');
   // A PUSH reminder on an unconfigured deployment can never deliver: fail at
   // creation instead of accumulating a guaranteed failure (honest degrade).
   if (input.channel === 'PUSH' && !features().browserPush) throw new AppError('PROVIDER_UNAVAILABLE', 'Browser push is not configured on this deployment.');

@@ -398,14 +398,14 @@
   {
     "file": "apps/web/src/server/services/knowledge-query.ts",
     "rule": "STATIC_RAW_SQL_REVIEW",
-    "fingerprint": "aee52a4d32c940d05535baddbfab620fe6181001c6ed034b46bf183f5db68726",
-    "reason": "Reviewed finite column/table/operator choices and Zod enum direction; values remain parameters."
+    "fingerprint": "cd5e8d1f44b118a1f68531da01b4d6782957dcd5af3bf86235e80469b8b0c0c8",
+    "reason": "Reviewed finite property/type and lifecycle SQL maps only; all user values stay bound parameters. Closure adds owned parent/connection eligibility without accepting SQL from input."
   },
   {
     "file": "apps/web/src/server/services/knowledge-relations.ts",
     "rule": "STATIC_RAW_SQL_REVIEW",
-    "fingerprint": "53de125a8eced8864abf7e88904e04bb5a3c2dc96a1300266f5cc28b0e828f7e",
-    "reason": "Reviewed fixed targets map after kind validation; IDs and user values are parameters."
+    "fingerprint": "7370926d5d5509ddfd1d49741bd089e5c145c79c26ef7d6e2863f8faa64004b5",
+    "reason": "Reviewed finite property/type and lifecycle SQL maps only; all user values stay bound parameters. Closure adds owned parent/connection eligibility without accepting SQL from input."
   },
   {
     "file": "apps/web/src/server/services/metrics.instrumentation.integration.test.ts",
@@ -616,5 +616,11 @@
     "rule": "SECRET_LITERAL",
     "fingerprint": "655b11b4e122ed6c9dd759e78560bf6e382be8feb5f16a3b8bd5dfd4824345f3",
     "reason": "Reviewed local or CI-only example configuration/credential; not for deployment. Exact value pinned."
+  },
+  {
+    "file": "apps/web/e2e/correctness-closure.spec.ts",
+    "rule": "SECRET_LITERAL",
+    "fingerprint": "8424723e0e756a1c449f0fb26a9e9928502a96baf5fac7fa1886ff20d06e85dd",
+    "reason": "Exact synthetic browser registration password for isolated test accounts; never production authentication material."
   }
 ]

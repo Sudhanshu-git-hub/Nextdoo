@@ -315,7 +315,7 @@ export async function busyIntervalsForDay(
 /* ------------------------------------------------------------------ */
 
 /**
- * Google OAuth configuration. The feature is gated on presence (like
+ * Google OAuth configuration. Explicit release opt-in plus credentials (like
  * billing): an unconfigured deployment answers 503 PROVIDER_UNAVAILABLE
  * and the UI degrades honestly — there is no stub provider.
  */
@@ -335,7 +335,7 @@ export function setGoogleConfigForTests(fn: (() => GoogleConfig | null) | null):
 export function googleConfig(): GoogleConfig | null {
   if (googleConfigOverride) return googleConfigOverride();
   const env = getEnv();
-  if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) return null;
+  if (env.GOOGLE_CALENDAR_ENABLED !== "true" || !env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) return null;
   return {
     clientId: env.GOOGLE_CLIENT_ID,
     clientSecret: env.GOOGLE_CLIENT_SECRET,
