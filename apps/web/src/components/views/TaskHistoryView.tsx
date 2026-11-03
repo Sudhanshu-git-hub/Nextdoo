@@ -27,7 +27,7 @@ function HistoryTasks({ workspaceId, filter }: { workspaceId: string; filter: Hi
   {filter === 'DELETED' ? <>
    <p className="muted">Trash is read-only. Restore returns a task to Active without changing its project or related tasks. Canceled reminders stay canceled. Expired items are not shown here; retained tracking history is separate. There is no permanent-delete control.</p>
    {page.loading && !page.tasks.length && <p role="status">Loading Trash…</p>}
-   {!page.loading && !page.error && !page.tasks.length && <div className="empty"><h2>No recoverable tasks</h2><p>Deleted tasks appear here only during their recovery window.</p></div>}
+   {!page.loading && !page.error && !page.tasks.length && <div className="empty"><div className="empty-icon" aria-hidden="true">♻️</div><h2>No recoverable tasks</h2><p>Deleted tasks appear here only during their recovery window.</p></div>}
    {page.tasks.map((task) => <article key={task.id} className="card" aria-label={`Deleted task "${task.title}"`} style={{ marginBottom: 12 }}>
     <h2>{task.title}</h2>
     <p className="muted">Deleted: {task.deletedAt ? new Date(task.deletedAt).toLocaleString() : 'Unavailable'}<br />Restore before: {task.restoreUntil ? new Date(task.restoreUntil).toLocaleString() : 'Unavailable'}</p>

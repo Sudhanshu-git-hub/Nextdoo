@@ -162,6 +162,7 @@ export function TaskList({
   if (!tasks.length) {
     return (
       <div className="empty">
+        <div className="empty-icon" aria-hidden="true">📝</div>
         <div className="empty-title">{emptyTitle}</div>
         <p style={{ maxWidth: 380, margin: '0 auto' }}>{emptyBody}</p>
       </div>

@@ -147,9 +147,9 @@ h2 { font-size: 16.5px; margin: 0 0 10px; font-weight: 650; letter-spacing: -.01
 .card {
   background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 18px;
-  transition: border-color var(--transition), box-shadow var(--transition);
+  transition: border-color var(--transition), box-shadow var(--transition), transform var(--transition);
 }
-.card-hover:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
+.card-hover:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); transform: translateY(-2px); }
 .grid { display: grid; gap: 16px; }
 .grid-3 { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
 .grid-2 { grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); }
@@ -489,15 +489,28 @@ th { color: var(--text-dim); font-weight: 600; font-size: 12px; text-transform: 
 .home-items span { display:block; margin-top:3px; font-size:.85rem; }
 .home-card-link { margin-top:auto; padding-top:10px; font-size:13px; font-weight:600; }
 .home-stats { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
-.home-stats a { text-decoration:none; display:flex; flex-direction:column; gap:8px; color:inherit; padding:14px; border:1px solid var(--border); border-radius: var(--radius); background: var(--bg-elev); transition: border-color var(--transition), box-shadow var(--transition); }
-.home-stats a:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
+.home-stats a {
+  text-decoration: none; display: flex; flex-direction: column; gap: 6px; color: inherit;
+  padding: 16px 18px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--bg-elev); position: relative; overflow: hidden;
+  transition: border-color var(--transition), box-shadow var(--transition), transform var(--transition);
+}
+.home-stats a::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(160deg, var(--accent-soft), transparent 60%); opacity: 0; transition: opacity var(--transition);
+}
+.home-stats a:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); transform: translateY(-2px); }
+.home-stats a:hover::after { opacity: 1; }
 .home-stats strong { font-size:1.9rem; font-variant-numeric: tabular-nums; }
 .home-stats span { font-size:.85rem; color: var(--text-dim); }
 .home-card-picker { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
 .home-card-picker label { display:flex; align-items:center; gap:8px; }
 .home-card-picker input { width:auto; }
 .daily-controls { margin-bottom:20px; align-items:end; }
-.focus-card { padding:28px; margin-bottom:24px; }
+.focus-card {
+  padding: 28px; margin-bottom: 24px;
+  background: linear-gradient(160deg, var(--accent-soft), transparent 55%), var(--bg-elev);
+}
 .focus-clock { font-size:clamp(2.4rem,8vw,4rem); font-variant-numeric:tabular-nums; margin-top:28px; font-weight:700; letter-spacing:-.03em; }
 .focus-tasks { margin-bottom:24px; }
 .sidebar { overflow-y:auto; }
@@ -510,7 +523,17 @@ th { color: var(--text-dim); font-weight: 600; font-size: 12px; text-transform: 
 .focus-times strong { font-size:1.25rem; font-variant-numeric:tabular-nums; }
 .focus-card input[type=checkbox] { width:auto; min-height:0; display:inline-block; margin-right:6px; }
 
-.command-launcher { position:fixed; right:20px; bottom:20px; z-index:30; box-shadow:var(--shadow); border-radius: 999px; }
+.command-launcher {
+  position: fixed; right: 20px; bottom: 20px; z-index: 30;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 9px 14px 9px 12px; border-radius: 999px;
+  background: var(--bg-elev); border: 1px solid var(--border-strong);
+  color: var(--text-dim); font-size: 13.5px; font-weight: 550;
+  box-shadow: var(--shadow); cursor: pointer;
+  transition: border-color var(--transition), color var(--transition), transform var(--transition);
+}
+.command-launcher:hover { border-color: var(--accent); color: var(--text); transform: translateY(-1px); }
+.command-launcher .command-hint { padding: 1px 6px; margin-left: 2px; }
 .command-palette { width:min(640px,calc(100vw - 32px)); max-height:80vh; overflow:auto; padding:24px; border-radius: 16px; box-shadow: var(--shadow-lg); }
 .command-palette li { margin:10px 0; overflow-wrap:anywhere; }
 .command-palette a:focus { outline:2px solid currentColor; outline-offset:4px; }

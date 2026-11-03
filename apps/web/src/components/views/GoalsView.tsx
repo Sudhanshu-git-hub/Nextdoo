@@ -67,7 +67,7 @@ export function GoalsView({ workspaceId }: { workspaceId: string }) {
       <button disabled={loading} onClick={() => void load()}>Refresh goals</button></div>
     {error && <p role="alert">{error}</p>}
     {loading && <p role="status">Loading goals…</p>}
-    {!loading && !error && !rows.length && <div className="empty"><h2>No goals yet</h2><p>Start with one outcome you care about, then add milestones and link tasks.</p></div>}
+    {!loading && !error && !rows.length && <div className="empty"><div className="empty-icon" aria-hidden="true">🎯</div><h2>No goals yet</h2><p>Start with one outcome you care about, then add milestones and link tasks.</p></div>}
     <div className="grid grid-2">{rows.map(({ goal, progress }) => <article className="card" key={goal.id}>
       <p className="muted">{goal.identifier} · {goal.status.toLowerCase()}{goal.category ? ` · ${goal.category}` : ''}</p>
       <h2><Link href={`/goals/${goal.id}`}>{goal.title}</Link></h2>

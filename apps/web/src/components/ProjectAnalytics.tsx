@@ -48,7 +48,7 @@ export function ProjectAnalytics({ projectId }: { projectId: string }) {
       <p role="status">
         Report window: {new Intl.DateTimeFormat('en-CA', { timeZone: report.timeZone }).format(new Date(report.from))} through {new Intl.DateTimeFormat('en-CA', { timeZone: report.timeZone }).format(new Date(report.to))}, inclusive ({report.timeZone}).
       </p>
-      {report.plannedCount === 0 ? <div className="empty"><h3>No tasks due in this window</h3><p>Choose another date or add a due date to a project task. No score or rate can be measured for an empty window.</p></div> : <>
+      {report.plannedCount === 0 ? <div className="empty"><div className="empty-icon" aria-hidden="true">📈</div><h3>No tasks due in this window</h3><p>Choose another date or add a due date to a project task. No score or rate can be measured for an empty window.</p></div> : <>
         <dl className="grid grid-3">
           <Metric id="plannedCount" label="Tasks due" value={String(report.plannedCount)} note="Current non-deleted tasks due in the selected window" />
           <Metric id="completionRate" label="Completion rate" value={percent(report.completionRate)} note={`${report.completedCount} currently completed of ${report.plannedCount} due`} />
