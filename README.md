@@ -253,6 +253,35 @@ To run the background worker alongside the web app (reminders, recurrence, track
 pnpm dev:worker
 ```
 
+## Deployment
+
+NEXTDOO ships with complete deployment infrastructure — a multi-stage
+Dockerfile (web + worker), `docker-compose.yml` (Postgres + migrations + web +
+worker in one command), and platform configs for Fly.io, Vercel, and Railway.
+
+**Quickest path — Docker:**
+
+```bash
+cp .env.example .env          # edit AUTH_SECRET, APP_URL
+# Set DATABASE_URL in .env to point at the compose db service (host: db, port: 5432)
+docker compose up --build -d
+# → http://localhost:3000
+```
+
+| Platform | Config | Notes |
+|---|---|---|
+| **Docker** | `Dockerfile` + `docker-compose.yml` | Full stack (web + worker + Postgres), one command |
+| **Fly.io** | `fly.toml` | Web + worker as two processes; bring your own Postgres |
+| **Vercel** | `vercel.json` | Web only — run the worker on a separate host |
+| **Railway** | `railway.toml` | Web + worker as two Railway services |
+
+**No public demo is claimed yet.** The deployment infrastructure is complete and
+verified (the standalone Next.js server boots, connects to Postgres, and serves
+the health endpoint). Deploying to a real host requires the maintainer to
+provide credentials and accept the provider gating decisions. See
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full guide with platform-specific
+steps, environment variables, health checks, and cost estimates.
+
 ## Environment configuration
 
 The required and optional environment variables are documented in [.env.example](.env.example).
@@ -318,6 +347,7 @@ Detailed instructions, current verification results, and known test limitations 
 |---|---|
 | [docs/PRD.md](docs/PRD.md) | Authoritative product requirements and technical blueprint (v1.3) |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Toolchain, local services, quality gates, migrations, environment |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Docker, Fly.io, Vercel, Railway deployment guides |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Current status, completed milestones, priorities, known limitations |
 | [docs/MAINTENANCE.md](docs/MAINTENANCE.md) | Maintenance process, issue handling, supported versions, release policy |
 | [docs/QUALITY_AND_TESTING.md](docs/QUALITY_AND_TESTING.md) | Testing infrastructure, commands, current verification evidence |
@@ -354,7 +384,7 @@ This license covers the repository source code and documentation. Runtime data, 
 
 ## Project maturity and current limitations
 
-NEXTDOO is a substantial, actively maintained personal-workspace implementation with real test coverage, security gates, and CI — **but it is not a release-complete product and no public deployment exists.**
+NEXTDOO is a substantial, actively maintained personal-workspace implementation with real test coverage, security gates, and CI — **but it is not a release-complete product and no public deployment exists.** Deployment infrastructure (Docker, Fly.io, Vercel, Railway) is complete and verified; a hosted demo requires maintainer credentials and provider acceptance. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 **What is solid today**
 

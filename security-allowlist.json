@@ -664,5 +664,17 @@
     "rule": "SECRET_CREDENTIAL_URL",
     "fingerprint": "1ea8e2aca360472f1c9fc6a50e06c86615c21f0c57afa5a5fcfe43087e967288",
     "reason": "Reviewed local or CI-only example configuration for the embedded dev PostgreSQL; never production material. Exact value pinned."
+  },
+  {
+    "file": "docker-compose.yml",
+    "rule": "SECRET_CREDENTIAL_URL",
+    "fingerprint": "a7b65f60f0952f124c1be30b0d5009f9ed61b66b1f6e4d431456d59db42e7f93",
+    "reason": "Docker Compose service connection string built from POSTGRES_USER/POSTGRES_PASSWORD variables; local demo defaults, not production credentials."
+  },
+  {
+    "file": "docs/QUALITY_AND_TESTING.md",
+    "rule": "SECRET_CREDENTIAL_URL",
+    "fingerprint": "1ea8e2aca360472f1c9fc6a50e06c86615c21f0c57afa5a5fcfe43087e967288",
+    "reason": "Isolated test database connection string documented in verification commands; CI/test-only credentials, never production."
   }
 ]

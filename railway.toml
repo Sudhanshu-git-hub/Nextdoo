@@ -1,0 +1,21 @@
+# Railway deployment config for NEXTDOO (web process).
+#
+# Railway detects Next.js automatically. This file pins the build command
+# and output directory for the monorepo. The worker runs as a second
+# Railway service (duplicate this app, change the command).
+#
+#    railway init
+#    railway vars set AUTH_SECRET=... DATABASE_URL=... APP_URL=...
+#    railway up
+
+[build]
+  command = "pnpm install --frozen-lockfile && pnpm turbo run build --filter=@nextdoo/web --concurrency=1"
+  outputDirectory = "apps/web/.next"
+
+[run]
+  command = "node apps/web/.next/standalone/apps/web/server.js"
+  healthcheckPath = "/api/v1/health"
+
+[env]
+  NODE_ENV = "production"
+  NEXT_TELEMETRY_DISABLED = "1"
