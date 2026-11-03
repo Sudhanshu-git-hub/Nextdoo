@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import { uuid, timeZone } from './schemas';
 
 export const trackerDaySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((day) => {

@@ -10,7 +10,7 @@ import { serialiseTask, loadTask, createTask, updateTask, completeTask, reopenTa
 import { withTransaction } from '../db';
 import { withWorkspaceTransaction } from './transactions';
 import { assertTaskReferences } from './task-references';
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import { startTimer, updateTimer, logTime, createTimeEntry, reviseTimeEntry } from './timers';
 import { logTimeSchema } from '@nextdoo/contracts';
 

@@ -52,7 +52,7 @@ export async function subscribeToPush(vapidPublicKey: string): Promise<{ ok: boo
   if (permission !== 'granted') return { ok: false, total: 0 };
   const registration = (await navigator.serviceWorker.getRegistration().catch(() => null)) ?? (await registerServiceWorker());
   if (!registration) return { ok: false, total: 0 };
-  let subscription: PushSubscription | null = null;
+  let subscription: PushSubscription | null;
   try {
     subscription = await registration.pushManager.subscribe({
       userVisibleOnly: true,
@@ -80,7 +80,7 @@ export async function unsubscribeFromPush(): Promise<boolean> {
   if (!registration) return false;
   const subscription = await registration.pushManager.getSubscription().catch(() => null);
   if (!subscription) return true;
-  let removed = false;
+  let removed: boolean;
   try {
     await api<{ removed: boolean }>('/push/subscriptions', {
       method: 'DELETE',
@@ -102,7 +102,7 @@ export async function fetchPushStatus(): Promise<{
 }> {
   const support = pushSupport();
   const permission = support.kind === 'supported' ? Notification.permission : 'unsupported';
-  let configured = false;
+  let configured: boolean;
   try {
     await api<{ vapidPublicKey: string }>('/push/public-key');
     configured = true;

@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import { authedRoute, parseBody } from '@/server/http';
 import { startGoogleAuthorization } from '@/server/services/calendar-connections';
 

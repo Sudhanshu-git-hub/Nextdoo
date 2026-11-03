@@ -16,7 +16,7 @@
  *     (disableSounds=false) per the "independently disable" framing; overload
  *     warnings shown (disableOverloadWarnings=false, established in M8-i2).
  */
-import { z } from 'zod';
+import { z } from 'zod/v4';
 
 export const WELLBEING_PREFERENCE_KEYS = [
   'disableScores',

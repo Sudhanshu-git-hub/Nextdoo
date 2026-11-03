@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import {
   MUTATION_RESULT_STATUS,
   RECURRENCE_FREQ,
@@ -363,7 +363,7 @@ export const mutationSchema = z.object({
   entityId: uuid,
   operation: z.enum(SYNC_OPERATION),
   baseVersion: z.number().int().min(0).nullable(),
-  payload: z.record(z.unknown()),
+  payload: z.record(z.string(), z.unknown()),
   createdAt: isoDateTime,
 });
 
@@ -382,8 +382,8 @@ export const syncPullSchema = z.object({
 export const mutationResultSchema = z.object({
   mutationId: uuid,
   status: z.enum(MUTATION_RESULT_STATUS),
-  entity: z.record(z.unknown()).optional(),
-  serverEntity: z.record(z.unknown()).optional(),
+  entity: z.record(z.string(), z.unknown()).optional(),
+  serverEntity: z.record(z.string(), z.unknown()).optional(),
   error: z.object({ code: z.string(), detail: z.string() }).optional(),
 });
 
@@ -393,8 +393,8 @@ export const conflictSnapshotSchema = z.object({
   entityType: z.string(),
   entityId: uuid,
   deviceId: z.string().nullable(),
-  localPayload: z.record(z.unknown()),
-  serverPayload: z.record(z.unknown()),
+  localPayload: z.record(z.string(), z.unknown()),
+  serverPayload: z.record(z.string(), z.unknown()),
   createdAt: isoDateTime,
   expiresAt: isoDateTime,
 });

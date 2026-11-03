@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import { AppError } from '@nextdoo/contracts';
 import { authedRoute,parseBody,problemResponse,toProblem } from '@/server/http';
 import * as service from '@/server/services/calendar-center';

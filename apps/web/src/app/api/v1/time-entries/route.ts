@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import { authedRoute } from '@/server/http';
 import { listTimeEntries } from '@/server/services/timers';
 export const dynamic='force-dynamic';

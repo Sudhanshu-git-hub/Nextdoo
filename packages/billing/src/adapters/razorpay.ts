@@ -105,7 +105,7 @@ export class RazorpayProvider implements PaymentProvider {
   async verifyWebhook(rawBody: string, headers: Record<string, string>): Promise<{ occurredAt: Date }> {
     const signature = headers['x-razorpay-signature'];
     if (!signature) throw new AppError('UNAUTHENTICATED', 'Webhook signature is missing.');
-    let createdAt: number | null = null;
+    let createdAt: number | null;
     try {
       createdAt = num(asObject(JSON.parse(rawBody)).created_at);
     } catch {

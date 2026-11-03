@@ -1,5 +1,5 @@
 import { and, eq, isNull, sql } from 'drizzle-orm';
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import { knowledgeRelationInput, knowledgeFileInput, knowledgeTargetKind, uuid, notFound } from '@nextdoo/contracts';
 import { knowledgeRelations as relations, knowledgeFiles as files, knowledgeRecords as records, knowledgeNotes as notes, attachments, type Database } from '@nextdoo/db';
 import { getDb } from '../db';

@@ -2,6 +2,9 @@ name: Quality and integrity
 on:
   pull_request:
   push:
+  # Manual re-run of the full quality gate (e.g. after a conflict resolution,
+  # a dependency remediation, or before a release cut).
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:

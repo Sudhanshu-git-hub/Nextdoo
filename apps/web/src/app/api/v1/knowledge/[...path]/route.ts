@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import { AppError, uuid, knowledgeDatabaseInput, knowledgeDatabaseUpdate, knowledgeRecordInput, knowledgeRecordUpdate, knowledgeNoteInput, knowledgeNoteUpdate, knowledgeVersion, knowledgeRelationInput, knowledgeFileInput, knowledgeTargetKind } from '@nextdoo/contracts';
 import { knowledgeTemplates } from '@nextdoo/core';
 import { authedRoute, parseBody } from '@/server/http';

@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import { RazorpayProvider } from './adapters/razorpay';
 import { StripeProvider } from './adapters/stripe';
 import type { RazorpayPlanMapping, StripePlanMapping } from './plans';

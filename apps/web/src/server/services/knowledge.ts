@@ -1,5 +1,5 @@
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import { AppError, knowledgeDatabaseInput, knowledgeDatabaseUpdate, knowledgePropertyInput, knowledgeRecordInput, knowledgeRecordUpdate, knowledgeNoteInput, knowledgeNoteUpdate, knowledgeVersion, validKnowledgeValue, uuid, notFound, versionConflict, type KnowledgeValue } from '@nextdoo/contracts';
 import { knowledgeTemplates } from '@nextdoo/core';
 import { knowledgeDatabases as databases, knowledgeProperties as properties, knowledgeRecords as records, knowledgeValues as values, knowledgeNotes as notes, knowledgeNoteTags as noteTags, knowledgeRelations as relations, knowledgeFiles as files, tags, auditLogs, outbox, syncChanges, type Database } from '@nextdoo/db';

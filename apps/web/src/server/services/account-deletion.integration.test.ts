@@ -197,7 +197,11 @@ describe('account deletion lifecycle (integration)', () => {
 
     // During the window the account is still live: a reset credential is a
     // normal operation (the PRD does not mandate suppression while pending).
-    await requestAt(user.userId, -1 * DAY);
+    // Anchor to REAL time for this step: the suppression check
+    // (deletionExpired) evaluates against Date.now(), so a fixed-clock anchor
+    // (NOW - 1 day) drifts out of its 30-day validity window as real time
+    // advances. The boundary assertions below intentionally keep the fixed NOW.
+    await ctx!.db.update(s.users).set({ deletionRequestedAt: new Date(Date.now() - DAY) }).where(eq(s.users.id, user.userId));
     await ctx!.tokens.requestPasswordReset(user.email);
     expect(await unconsumedResetTokens()).toBe(1);
 

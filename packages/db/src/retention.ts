@@ -210,7 +210,7 @@ export async function runRetentionPurge(
   const taskCutoffIso = iso(taskCutoff);
   const failedJobCutoffIso = iso(failedJobCutoff);
   let taskBatch: { id: string }[];
-  let batchProgress = 0;
+  let batchProgress: number;
   do {
     taskBatch = (await db.execute(sql`
       select id from tasks

@@ -1,5 +1,5 @@
 import { AppError, pushSubscriptionSchema, type PushSubscriptionInput } from '@nextdoo/contracts';
-import { ZodError } from 'zod';
+import { ZodError } from 'zod/v4';
 import {
   listPushSubscriptions as dbListPushSubscriptions,
   registerPushSubscription as dbRegisterPushSubscription,

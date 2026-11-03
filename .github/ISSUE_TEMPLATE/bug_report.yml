@@ -1,0 +1,99 @@
+name: Bug report
+description: Report a problem in NEXTDOO so it can be investigated and fixed
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please fill in as much as
+        you can — a good report lets us fix it faster. **Do not include
+        credentials, tokens, or private account data.**
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem description
+      description: What went wrong, and when did you notice it?
+      placeholder: "Something behaves incorrectly…"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: The exact steps that lead to the problem
+      placeholder: |
+        1. Go to …
+        2. Click …
+        3. Observe …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What actually happened?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area affected
+      description: Which part of NEXTDOO is affected?
+      options:
+        - Tasks / Task Center
+        - Goals
+        - Trackers
+        - Knowledge & Data
+        - Calendar
+        - Insights / Analytics
+        - Settings / Account
+        - Authentication / Sessions
+        - Sync / Offline
+        - Attachments
+        - Worker / Notifications
+        - Exports / Billing
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment information
+      description: |
+        Include your Node version, pnpm version, browser/version, OS, and
+        deployment details (self-hosted / local dev). Run `node --version`
+        and `pnpm --version` to confirm.
+      placeholder: |
+        - Node: v22.22.3
+        - pnpm: 9.15.4
+        - Browser: Chrome 130 on Linux
+        - OS: Ubuntu 24.04
+        - Deployment: local dev / self-hosted (no version)
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Paste relevant log lines with any secrets, tokens, or personal data removed.
+      placeholder: "…"
+    validations:
+      required: false
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmations
+      options:
+        - label: I have removed all credentials, tokens, and private data from this report.
+          required: true
+        - label: I am reporting a security vulnerability (if checked, please use the GitHub Security Advisories tab instead of this public form).
+          required: false

@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import { authedRoute, parseQuery } from '@/server/http';
 import { listCalendarEvents } from '@/server/services/calendar-connections';
 

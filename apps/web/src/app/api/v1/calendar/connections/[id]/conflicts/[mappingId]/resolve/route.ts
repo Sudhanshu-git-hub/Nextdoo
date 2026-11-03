@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import { AppError } from '@nextdoo/contracts';
 import { getEnv } from '@/server/env';
 import { authedRoute, parseBody } from '@/server/http';

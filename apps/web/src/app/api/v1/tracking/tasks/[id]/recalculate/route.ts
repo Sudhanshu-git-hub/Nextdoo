@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import { uuid } from '@nextdoo/contracts';
 import { authedRoute, parseBody } from '@/server/http';
 import { requestTrackingRecalculation } from '@/server/services/tracking-freshness';

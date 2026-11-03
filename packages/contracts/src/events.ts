@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v4';
 
 /** PRD §15.1 — every domain event shares this envelope. */
 export const DOMAIN_EVENT_TYPE = [
@@ -71,7 +71,7 @@ export const eventEnvelopeSchema = z.object({
   entity_type: z.string(),
   entity_id: z.string(),
   correlation_id: z.string().nullable(),
-  payload: z.record(z.unknown()),
+  payload: z.record(z.string(), z.unknown()),
 });
 
 export type EventEnvelope = z.infer<typeof eventEnvelopeSchema>;

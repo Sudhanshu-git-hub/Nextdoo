@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import { uuid } from './schemas';
 export const connectedSearchQuery = z.object({
   q: z.string().trim().max(200).default(''),

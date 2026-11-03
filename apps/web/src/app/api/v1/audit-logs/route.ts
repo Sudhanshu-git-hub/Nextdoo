@@ -1,5 +1,5 @@
 import { limitsFor } from '@nextdoo/contracts';
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import { authedRoute, parseQuery } from '@/server/http';
 import { getPlan } from '@/server/services/accounts';
 import { listAuditLogs } from '@/server/services/data-rights';

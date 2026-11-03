@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { NextResponse } from 'next/server';
-import { z, ZodError } from 'zod';
+import { z, ZodError } from 'zod/v4';
 import { AppError } from '@nextdoo/contracts';
 import { rateLimit } from '@/server/auth';
 import { getEnv } from '@/server/env';

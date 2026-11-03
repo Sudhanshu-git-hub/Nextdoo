@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import { taskQuerySchema } from '@nextdoo/contracts';
 import { assertWorkspaceAccess } from '../auth';
 import { getDb } from '../db';

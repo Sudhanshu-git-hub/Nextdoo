@@ -1,0 +1,75 @@
+name: Feature request
+description: Suggest an improvement or new capability for NEXTDOO
+title: "[Feature]: "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for sharing your idea. Please describe the problem first, then
+        your proposed solution. Feature requests are assessed against the PRD
+        and roadmap before acceptance.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem being solved
+      description: What problem or need does this address? What are you doing today that is hard?
+      placeholder: "I struggle to …"
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: What would you like NEXTDOO to do?
+      placeholder: "NEXTDOO could …"
+    validations:
+      required: true
+  - type: textarea
+    id: benefit
+    attributes:
+      label: User benefit
+      description: Who benefits and how? How does this fit the personal-workspace goal?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What other ways did you consider? Why would this be better?
+      placeholder: "I could use X instead, but it doesn't …"
+    validations:
+      required: false
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area affected
+      description: Which part of NEXTDOO would this affect?
+      options:
+        - Tasks / Task Center
+        - Goals
+        - Trackers
+        - Knowledge & Data
+        - Calendar
+        - Insights / Analytics
+        - Settings / Account
+        - Sync / Offline
+        - Attachments
+        - Worker / Notifications
+        - Exports / Billing
+        - Platforms (Windows/Android/iOS/macOS)
+        - AI / Voice
+        - Collaboration
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmations
+      options:
+        - label: I have searched existing issues and this request is not duplicated.
+          required: true
+        - label: This request does not expose credentials or private data.
+          required: true

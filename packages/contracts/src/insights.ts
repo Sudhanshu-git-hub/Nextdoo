@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v4';
 export const insightsQuerySchema=z.object({
   period:z.enum(['day','week','month','quarter','year','custom']).default('month'),
   date:z.string().date().optional(),from:z.string().date().optional(),to:z.string().date().optional(),

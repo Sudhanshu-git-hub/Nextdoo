@@ -1,6 +1,6 @@
 import { assertRequestOrigin } from './request-security';
 import { NextResponse } from 'next/server';
-import { ZodError, type ZodTypeAny, type z } from 'zod';
+import { ZodError, type ZodTypeAny, type z } from 'zod/v4';
 import { AppError, uuid, type ProblemDetails } from '@nextdoo/contracts';
 import { lt } from 'drizzle-orm';
 import { idempotencyKeys } from '@nextdoo/db';

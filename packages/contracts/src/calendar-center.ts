@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import { uuid } from './schemas';
 const zone=z.string().max(64).refine(v=>{try{new Intl.DateTimeFormat('en',{timeZone:v});return true;}catch{return false;}},'Choose a valid time zone.');
 export const calendarColor=z.string().regex(/^#[0-9a-fA-F]{6}$/,'Use a six-digit hex color.');

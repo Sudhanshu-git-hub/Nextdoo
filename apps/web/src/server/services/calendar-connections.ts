@@ -502,7 +502,7 @@ export async function syncConnectionNow(userId: string, connectionId: string): P
   // M8-i4 (T1): the baseline the provider was opened with (null when the
   // envelope is missing/tampered — in which case there is nothing to compare
   // against and nothing to re-seal).
-  let initial: CalendarTokenSet | null = null;
+  let initial: CalendarTokenSet | null;
   try { initial = calendarProviderTokens(row); } catch { initial = null; }
   const ctx = { db, connectionId: row.id, provider, initialTokens: initial };
   const imp = await runCalendarImport(ctx);
@@ -512,7 +512,7 @@ export async function syncConnectionNow(userId: string, connectionId: string): P
   // the next pass runs with the new credentials (PRD §16.1 "cached until
   // expiry"). No plaintext at rest; no write when the set is unchanged.
   if (initial) {
-    let current: CalendarTokenSet | null = null;
+    let current: CalendarTokenSet | null;
     try { current = provider.currentTokens(); } catch { current = null; }
     if (current && tokensChanged(initial, current)) {
       await db

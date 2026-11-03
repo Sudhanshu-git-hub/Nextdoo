@@ -414,7 +414,7 @@ async function drainDevice(
     if (!batch.length) break;
     pass += 1;
     const t0 = process.hrtime.bigint();
-    let results: MutationResult[] | null = null;
+    let results: MutationResult[] | null;
     if (opts.failDevicePasses?.(dev.name, pass)) {
       results = null; // simulated server 500 (connection-level failure)
     } else {

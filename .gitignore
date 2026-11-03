@@ -19,3 +19,9 @@ target/
 src-tauri/target/
 .pgdata/
 
+
+# Embedded dev/test PostgreSQL data directory
+.pgdata-test/
+
+# Scratch test-run capture logs
+.test-run-capture.log

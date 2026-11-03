@@ -27,6 +27,6 @@
     "embedded-postgres": "18.4.0-beta.17",
     "tsx": "4.23.13",
     "typescript": "5.7.2",
-    "vitest": "4.1.11"
+    "vitest": "4.1.12"
   }
 }

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import { authedRoute, parseBody } from '@/server/http';
 import { getDb } from '@/server/db';
 import { getEnv } from '@/server/env';

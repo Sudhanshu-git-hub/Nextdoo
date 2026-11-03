@@ -30,7 +30,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       if (!snapshot) throw notFound('conflict', id);
 
       if (resolution === 'local' && snapshot.entityType === 'task') {
-        let target: { status: string } | null = null;
+        let target: { status: string } | null;
         try {
           target = await loadTask(ctx.auth.workspaceId, snapshot.entityId);
         } catch {

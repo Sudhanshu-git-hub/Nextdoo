@@ -404,7 +404,7 @@
   {
     "file": "apps/web/src/server/services/knowledge-relations.ts",
     "rule": "STATIC_RAW_SQL_REVIEW",
-    "fingerprint": "7370926d5d5509ddfd1d49741bd089e5c145c79c26ef7d6e2863f8faa64004b5",
+    "fingerprint": "069323e88e79eb2475f786d497882efe2cefed427db7b3c9bf3b41dd1d6f87dd",
     "reason": "Reviewed finite property/type and lifecycle SQL maps only; all user values stay bound parameters. Closure adds owned parent/connection eligibility without accepting SQL from input."
   },
   {
@@ -596,7 +596,7 @@
   {
     "file": "packages/db/src/retention.ts",
     "rule": "STATIC_RAW_SQL_REVIEW",
-    "fingerprint": "f3ec37f33c019e8ef4ddd20dad889db2f8c96297f162fdf67c1b2b2895f66b65",
+    "fingerprint": "0a4c6069b95eb5d71039cdd2a93e07911593ffe8479d56078a8524898d0bb619",
     "reason": "Reviewed constant security action names validated against a strict identifier regex before SQL quoting."
   },
   {
@@ -622,5 +622,47 @@
     "rule": "SECRET_LITERAL",
     "fingerprint": "8424723e0e756a1c449f0fb26a9e9928502a96baf5fac7fa1886ff20d06e85dd",
     "reason": "Exact synthetic browser registration password for isolated test accounts; never production authentication material."
+  },
+  {
+    "file": "CONTRIBUTING.md",
+    "rule": "SECRET_CREDENTIAL_URL",
+    "fingerprint": "1ea8e2aca360472f1c9fc6a50e06c86615c21f0c57afa5a5fcfe43087e967288",
+    "reason": "Reviewed local or CI-only example configuration for the embedded dev PostgreSQL; never production material. Exact value pinned."
+  },
+  {
+    "file": "CONTRIBUTING.md",
+    "rule": "SECRET_CONFIG",
+    "fingerprint": "963f8133ca6fadb6bac872cb006551a9232cf3ba2356125e46b42e925ea19d15",
+    "reason": "Reviewed local or CI-only test secret example for documentation; never production material. Exact value pinned."
+  },
+  {
+    "file": "README.md",
+    "rule": "SECRET_CREDENTIAL_URL",
+    "fingerprint": "1ea8e2aca360472f1c9fc6a50e06c86615c21f0c57afa5a5fcfe43087e967288",
+    "reason": "Reviewed local or CI-only example configuration for the embedded dev PostgreSQL; never production material. Exact value pinned."
+  },
+  {
+    "file": "README.md",
+    "rule": "SECRET_CONFIG",
+    "fingerprint": "963f8133ca6fadb6bac872cb006551a9232cf3ba2356125e46b42e925ea19d15",
+    "reason": "Reviewed local or CI-only test secret example for documentation; never production material. Exact value pinned."
+  },
+  {
+    "file": "docs/SHOWCASE.md",
+    "rule": "SECRET_CREDENTIAL_URL",
+    "fingerprint": "1ea8e2aca360472f1c9fc6a50e06c86615c21f0c57afa5a5fcfe43087e967288",
+    "reason": "Reviewed local or CI-only example configuration for the embedded dev PostgreSQL; never production material. Exact value pinned."
+  },
+  {
+    "file": "docs/SHOWCASE.md",
+    "rule": "SECRET_CONFIG",
+    "fingerprint": "963f8133ca6fadb6bac872cb006551a9232cf3ba2356125e46b42e925ea19d15",
+    "reason": "Reviewed local or CI-only test secret example for documentation; never production material. Exact value pinned."
+  },
+  {
+    "file": "scripts/screenshot-demo.mjs",
+    "rule": "SECRET_CREDENTIAL_URL",
+    "fingerprint": "1ea8e2aca360472f1c9fc6a50e06c86615c21f0c57afa5a5fcfe43087e967288",
+    "reason": "Reviewed local or CI-only example configuration for the embedded dev PostgreSQL; never production material. Exact value pinned."
   }
 ]

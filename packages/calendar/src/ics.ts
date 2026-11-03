@@ -64,7 +64,7 @@ export function parseCalendarIcs(content:string,timeZone:string,from:string,thro
     }
     if(components.some(c=>c.hasProperty('recurrence-id')&&!masters.some(m=>m.getFirstPropertyValue('uid')===c.getFirstPropertyValue('uid'))))fail('A recurrence exception has no matching series.');
     return [...result.values()].sort((a,b)=>a.startsAt.localeCompare(b.startsAt)||a.uid.localeCompare(b.uid));
-  }catch(error){throw new Error(error instanceof Error?error.message:'Malformed ICS file.');}
+  }catch(error){throw new Error(error instanceof Error?error.message:'Malformed ICS file.',{cause:error});}
 }
 
 /** Authenticated file export, not a published subscription. Text is escaped to prevent property injection. */

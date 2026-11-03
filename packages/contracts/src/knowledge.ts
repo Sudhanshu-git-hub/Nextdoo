@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import { uuid } from './schemas';
 import { trackerDaySchema } from './trackers';
 
@@ -6,7 +6,7 @@ export const KNOWLEDGE_TYPES = ['TITLE', 'TEXT', 'RICH_TEXT', 'NUMBER', 'CHECKBO
 export const knowledgeType = z.enum(KNOWLEDGE_TYPES);
 export const knowledgeTargetKind = z.enum(['record', 'database', 'note', 'task', 'goal', 'milestone', 'tracker', 'calendar', 'native_event']);
 export const knowledgeConfig = z.object({ options: z.array(z.string().trim().min(1).max(80)).max(50).default([]), relationKind: knowledgeTargetKind.default('record'), relationDatabaseId: uuid.nullable().default(null) }).strict();
-export const knowledgePropertyInput = z.object({ name: z.string().trim().min(1).max(80), type: knowledgeType, hidden: z.boolean().default(false), config: knowledgeConfig.default({}) }).strict().superRefine((p, ctx) => {
+export const knowledgePropertyInput = z.object({ name: z.string().trim().min(1).max(80), type: knowledgeType, hidden: z.boolean().default(false), config: knowledgeConfig.default({ options: [], relationKind: 'record', relationDatabaseId: null }) }).strict().superRefine((p, ctx) => {
   if (['SELECT', 'MULTI_SELECT'].includes(p.type) && (!p.config.options.length || new Set(p.config.options).size !== p.config.options.length)) ctx.addIssue({ code: 'custom', message: 'Select properties require unique choices.' });
   if (p.type === 'TITLE' && p.hidden) ctx.addIssue({ code: 'custom', message: 'The title property stays visible.' });
   if (p.config.relationDatabaseId && (p.type !== 'RELATION' || p.config.relationKind !== 'record')) ctx.addIssue({ code: 'custom', message: 'A related database applies only to record relations.' });

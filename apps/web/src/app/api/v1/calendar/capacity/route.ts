@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v4';
 import { assertWorkspaceAccess } from '@/server/auth';
 import { authedRoute, parseQuery } from '@/server/http';
 import { getDayCapacity } from '@/server/services/capacity';
