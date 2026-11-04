@@ -23,6 +23,43 @@ interface TaskRowProps {
 function TaskRow({ task, timeZone, busy, rowError, onToggle, onOpen, onTaskDrag, taskActions, rowRef }: TaskRowProps) {
   const done = task.status === 'COMPLETED';
   const overdue = task.status === 'ACTIVE' && task.dueAt && new Date(task.dueAt) < new Date();
+  const swipeStart = useRef<{ x: number; y: number } | null>(null);
+  const swipeDelta = useRef(0);
+  const [swiped, setSwiped] = useState(false);
+
+  // Swipe-to-complete gesture handlers (touch devices only).
+  const onTouchStart = (e: React.TouchEvent) => {
+    if (task.status !== 'ACTIVE') return;
+    const touch = e.touches[0];
+    if (!touch) return;
+    swipeStart.current = { x: touch.clientX, y: touch.clientY };
+    swipeDelta.current = 0;
+  };
+
+  const onTouchMove = (e: React.TouchEvent) => {
+    if (!swipeStart.current || task.status !== 'ACTIVE') return;
+    const touch = e.touches[0];
+    if (!touch) return;
+    const dx = touch.clientX - swipeStart.current.x;
+    const dy = touch.clientY - swipeStart.current.y;
+    // Only track horizontal swipes (allow vertical scroll).
+    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 10) {
+      e.preventDefault();
+      swipeDelta.current = Math.max(-120, Math.min(0, dx));
+      if (swipeDelta.current < -60) setSwiped(true);
+    }
+  };
+
+  const onTouchEnd = () => {
+    if (!swipeStart.current) return;
+    swipeStart.current = null;
+    if (swiped && task.status === 'ACTIVE' && !busy) {
+      onToggle(task);
+    }
+    swipeDelta.current = 0;
+    setSwiped(false);
+  };
+
   return (
     <li
       ref={rowRef}
@@ -30,7 +67,17 @@ function TaskRow({ task, timeZone, busy, rowError, onToggle, onOpen, onTaskDrag,
       draggable={!!onTaskDrag}
       onDragStart={onTaskDrag ? (event) => onTaskDrag(task, event) : undefined}
     >
-      <div className={`task-row${done ? ' done' : ''}`}>
+      <div
+        className={`task-row${done ? ' done' : ''}${swiped ? ' swiped-complete' : ''}`}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+      >
+        {!done && (
+          <div className="swipe-complete-layer" aria-hidden="true">
+            <span>✓</span> Complete
+          </div>
+        )}
         {(task.status === 'ACTIVE' || done) && <button
           className="check"
           aria-pressed={done}

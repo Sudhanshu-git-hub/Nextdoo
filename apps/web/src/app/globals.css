@@ -552,3 +552,322 @@ th { color: var(--text-dim); font-weight: 600; font-size: 12px; text-transform: 
   .pwa-install { left: 16px; right: 16px; transform: none; border-radius: var(--radius); }
   .pwa-install-text { font-size: 13px; }
 }
+
+/* ============================================================ Phase 2: Mobile nav */
+
+/* Bottom navigation bar — visible only on mobile (≤ 900px). */
+.mobile-nav-bar {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .mobile-nav-bar {
+    display: flex;
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    z-index: 50;
+    background: var(--bg-elev);
+    border-top: 1px solid var(--border);
+    padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+    justify-content: space-around;
+    align-items: stretch;
+  }
+
+  .mobile-nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    flex: 1;
+    min-height: 52px;
+    padding: 4px 2px;
+    border-radius: var(--radius-sm);
+    color: var(--text-faint);
+    text-decoration: none;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: color var(--transition), background var(--transition);
+    -webkit-tap-highlight-color: transparent;
+    background: none;
+    border: none;
+    font-family: inherit;
+  }
+
+  .mobile-nav-item:active {
+    background: var(--bg-elev-2);
+  }
+
+  .mobile-nav-item.active {
+    color: var(--accent);
+  }
+
+  .mobile-nav-icon {
+    font-size: 20px;
+    line-height: 1;
+  }
+
+  .mobile-nav-label {
+    font-size: 10.5px;
+    line-height: 1.2;
+  }
+
+  /* Push content above the bottom nav bar. */
+  .app {
+    padding-bottom: 64px;
+  }
+
+  .main {
+    padding: 18px 16px 80px;
+  }
+
+  /* Reposition command launcher — top-right on mobile to avoid bottom nav. */
+  .command-launcher {
+    right: 16px;
+    bottom: auto;
+    top: 16px;
+  }
+
+  /* Move PWA install banner above the bottom nav bar. */
+  .pwa-install {
+    bottom: 70px;
+  }
+
+  /* Move offline badge above the bottom nav bar. */
+  .offline-badge {
+    bottom: 70px;
+  }
+
+  /* Move command launcher above everything on mobile. */
+  .command-launcher {
+    top: 12px;
+    right: 12px;
+  }
+}
+
+/* Hamburger drawer for secondary pages. */
+.mobile-drawer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.mobile-drawer {
+  background: var(--bg-elev);
+  border-top: 1px solid var(--border);
+  border-radius: 16px 16px 0 0;
+  width: 100%;
+  max-width: 520px;
+  max-height: 75vh;
+  overflow-y: auto;
+  padding: 8px 0 calc(20px + env(safe-area-inset-bottom));
+  animation: drawer-slide-up 0.2s ease-out;
+}
+
+@keyframes drawer-slide-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.mobile-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--bg-elev);
+  z-index: 1;
+}
+
+.mobile-drawer-title {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.mobile-drawer-close {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: var(--bg-elev-2);
+  color: var(--text-dim);
+  font-size: 16px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-drawer-close:active {
+  background: var(--bg-elev-3);
+}
+
+.mobile-drawer-group {
+  padding: 12px 16px 4px;
+}
+
+.mobile-drawer-group-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+  margin-bottom: 6px;
+}
+
+.mobile-drawer-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  text-decoration: none;
+  font-size: 14px;
+  min-height: 44px;
+  -webkit-tap-highlight-color: transparent;
+  transition: background var(--transition), color var(--transition);
+}
+
+.mobile-drawer-link:active {
+  background: var(--bg-elev-2);
+}
+
+.mobile-drawer-link.active {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.mobile-drawer-link .mobile-nav-icon {
+  font-size: 16px;
+}
+
+/* ============================================================ Touch target bumps (mobile) */
+
+@media (max-width: 900px) {
+  /* Checkboxes: 20px → 44px minimum touch target */
+  .check {
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+    margin-top: -4px;
+  }
+
+  /* Icon buttons: 34px → 44px */
+  .icon-btn {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 10px 12px;
+  }
+
+  /* Small buttons: 32px → 44px */
+  .btn-sm {
+    min-height: 44px;
+    padding: 8px 14px;
+  }
+
+  /* Standard buttons: 38px → 44px */
+  button, .btn {
+    min-height: 44px;
+  }
+
+  /* Nav links in drawer already at 44px; ensure drawer close is 44px */
+  .mobile-drawer-close {
+    width: 44px;
+    height: 44px;
+  }
+
+  /* Task rows — larger padding for touch */
+  .task-row {
+    padding: 16px 14px;
+    gap: 14px;
+  }
+
+  /* Task title — larger touch target */
+  .task-edit-button {
+    min-height: 44px;
+  }
+
+  /* Pills — slightly larger tap areas */
+  .pill {
+    min-height: 32px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  /* Ensure links in task meta are touch-friendly */
+  .task-meta .history-link {
+    min-height: 32px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  /* Skeleton heights match new row heights */
+  .skeleton {
+    min-height: 68px;
+  }
+
+  /* Calendar chips — full-width on mobile */
+  .cal-chip {
+    min-height: 44px;
+  }
+
+  /* Card hover effects disabled on touch devices */
+  .card-hover:hover {
+    transform: none;
+    box-shadow: none;
+    border-color: var(--border);
+  }
+
+  .task-row:hover {
+    border-color: var(--border);
+    box-shadow: none;
+  }
+}
+
+/* ============================================================ Swipe-to-complete (mobile) */
+
+@media (hover: none) and (pointer: coarse) {
+  .task-row {
+    touch-action: pan-y;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .task-row .swipe-complete-layer {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: 20px;
+    background: var(--ok);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    gap: 8px;
+    z-index: 0;
+    transform: translateX(100%);
+    transition: transform 0.2s ease;
+  }
+
+  .task-row.swiped-complete .swipe-complete-layer {
+    transform: translateX(0);
+  }
+
+  .task-row > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .task-row.swiped-complete > * {
+    opacity: 0.4;
+  }
+}
