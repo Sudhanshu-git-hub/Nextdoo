@@ -48,8 +48,10 @@ RUN mkdir -p /app/var/exports /app/var/logs
 # project structure: the server entry is at
 # apps/web/.next/standalone/apps/web/server.js.
 COPY --from=build /app/apps/web/.next/standalone ./apps/web/.next/standalone
-COPY --from=build /app/apps/web/.next/static ./apps/web/.next/static
-COPY --from=build /app/apps/web/public ./apps/web/public
+# The standalone server does process.chdir(__dirname) → apps/web/.next/standalone/apps/web/.
+# Public files and client static assets must live inside that directory for Next.js to serve them.
+COPY --from=build /app/apps/web/public ./apps/web/.next/standalone/apps/web/public
+COPY --from=build /app/apps/web/.next/static ./apps/web/.next/standalone/apps/web/.next/static
 
 # --- Worker: source + workspace packages + shared node_modules ---
 # The worker runs via tsx and resolves @nextdoo/* packages through pnpm
