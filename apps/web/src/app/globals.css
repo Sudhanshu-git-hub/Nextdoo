@@ -89,6 +89,10 @@ a:hover { color: var(--accent-strong); }
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
 }
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+}
 .skip-link {
   position: absolute; left: -9999px; top: 0; z-index: 100;
   background: var(--accent); color: #fff; padding: 10px 16px; border-radius: 0 0 var(--radius) 0;
@@ -1309,4 +1313,155 @@ th { color: var(--text-dim); font-weight: 600; font-size: 12px; text-transform: 
     display: inline-flex;
     align-items: center;
   }
+}
+
+/* ============================================================ Phase 8: Accessibility pass */
+
+/* --- Enhanced focus indicators --- */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+  border-radius: var(--radius-sm);
+}
+/* Ensure buttons and links always have visible focus */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* Nav links get accent ring on focus */
+.nav-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+/* Mobile nav items */
+.mobile-nav-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+/* Skip link — highly visible on focus */
+.skip-link:focus {
+  left: 0;
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* --- Screen reader only for decorative icons --- */
+.icon-decorative {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* --- High contrast mode enhancements --- */
+:root[data-contrast="high"] {
+  --border: #6f7889;
+  --border-strong: #98a2b3;
+  --text-dim: #d7dce5;
+  --text-faint: #c2c9d4;
+}
+:root[data-contrast="high"] a:focus-visible,
+:root[data-contrast="high"] button:focus-visible,
+:root[data-contrast="high"] input:focus-visible,
+:root[data-contrast="high"] [tabindex]:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* --- Reduced motion --- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+:root[data-motion="reduced"] *,
+:root[data-motion="reduced"] *::before,
+:root[data-motion="reduced"] *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
+/* --- Form field accessibility --- */
+label { display: block; font-size: 13px; color: var(--text-dim); margin-bottom: 5px; font-weight: 550; }
+.field { margin-bottom: 14px; }
+/* Ensure error states are announced */
+[role="alert"] {
+  animation: alert-pulse 0.3s ease-in-out;
+}
+@keyframes alert-pulse {
+  0% { box-shadow: 0 0 0 0 var(--danger); }
+  100% { box-shadow: 0 0 0 8px transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  [role="alert"] { animation: none; }
+}
+
+/* --- Table accessibility --- */
+table { border-collapse: collapse; }
+th { text-align: left; }
+caption { text-align: left; padding: 8px 0; font-weight: 650; }
+
+/* --- Calendar chip accessibility --- */
+.cal-chip { min-height: 44px; }
+
+/* --- Mobile nav active state --- */
+.mobile-nav-item.active {
+  color: var(--accent);
+}
+
+/* --- Drawer accessibility --- */
+.mobile-drawer {
+  animation: drawer-slide-up 0.2s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mobile-drawer { animation: none; }
+}
+
+/* --- Focus trap for dialogs --- */
+dialog {
+  outline: none;
+}
+dialog:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+
+/* --- Accessibility helper: link that looks like button --- */
+.link-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elev);
+  color: var(--text);
+  text-decoration: none;
+  font: inherit;
+  font-weight: 550;
+  cursor: pointer;
+  transition: border-color var(--transition), background var(--transition);
+}
+.link-button:hover { border-color: var(--accent); background: var(--accent-soft); }
+.link-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* --- Ensure draggable elements are keyboard accessible --- */
+[draggable="true"] {
+  cursor: grab;
+}
+[draggable="true"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
