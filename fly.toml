@@ -1,0 +1,41 @@
+# Fly.io deployment config for NEXTDOO.
+#
+# Fly runs each service as a separate app or process. This file configures
+# the web process. The worker runs as a second process in the same app
+# (see `[app]` → `[[processes]]`). Postgres is a Fly Postgres cluster.
+#
+#    fly app create nextdoo
+#    fly secrets set AUTH_SECRET=$(openssl rand -hex 32) DATABASE_URL=... APP_URL=https://nextdoo.app
+#    fly deploy
+#    fly migrate    # or: fly ssh console -- pnpm --filter @nextdoo/db migrate
+#
+# Requirements: a Fly Postgres cluster (or any Postgres reachable over TLS).
+
+app = "nextdoo"
+primary_region = "iad"
+console_command = "/app/node/bin/node"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  NEXT_TELEMETRY_DISABLED = "1"
+
+[[services]]
+  protocol = "tcp"
+  internal_port = 3000
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["web"]
+
+[[processes]]
+  name = "web"
+  command = "node apps/web/.next/standalone/apps/web/server.js"
+  auto_restart = "true"
+
+[[processes]]
+  name = "worker"
+  command = "pnpm --filter @nextdoo/worker start"
+  auto_restart = "true"

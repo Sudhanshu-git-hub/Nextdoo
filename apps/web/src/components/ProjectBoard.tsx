@@ -110,7 +110,7 @@ export function ProjectBoard({ project, tasks, loading, error: taskError, onChan
       <input id="new-section" maxLength={200} value={name} disabled={disabled} onChange={(event) => setName(event.target.value)} />
       <button disabled={disabled || !name.trim()} type="submit">Add section</button>
     </form>
-    {sectionsLoading && <p role="status">Loading sections…</p>}
+    {sectionsLoading && <><div className="skeleton" style={{width:"40%",height:20,marginBottom:16}} aria-hidden="true"/><div className="skeleton" style={{width:"100%",height:120}} aria-hidden="true"/></>}
     <fieldset disabled={!!pendingMove} style={{ border: 0, padding: 0, minWidth: 0 }} aria-label="Board task movement"><div className="board-columns" aria-busy={loading || sectionsLoading || !!pendingMove}>
       {columns.map((section, index) => {
         const rows = displayedTasks.filter((task) => section.id ? task.sectionId === section.id : !task.sectionId || !known.has(task.sectionId));

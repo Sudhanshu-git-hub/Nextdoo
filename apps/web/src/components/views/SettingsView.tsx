@@ -197,7 +197,7 @@ export function SettingsView({
             year: 'numeric', month: 'long', day: 'numeric',
           })}
           .{' '}
-          <button className="btn-sm" onClick={cancelDeletion} disabled={busy} style={{ marginLeft: 8 }}>
+          <button className="btn-sm" aria-label="Keep my account and cancel deletion" onClick={cancelDeletion} disabled={busy} style={{ marginLeft: 8 }}>
             Keep my account
           </button>
         </div>
@@ -208,7 +208,7 @@ export function SettingsView({
         <SettingsGroup id="account">
         <section className="card" aria-labelledby="account-heading">
           <h2 id="account-heading">Account</h2>
-          <table>
+          <div className="table-scroll"><table>
             <tbody>
               <tr>
                 <th scope="row">Email</th>
@@ -224,7 +224,7 @@ export function SettingsView({
               <tr><th scope="row">Browser time zone</th><td>{timeZone}</td></tr>
               <tr><th scope="row">Plan</th><td>{entitlements.plan}</td></tr>
             </tbody>
-          </table>
+          </table></div>
 
           <form onSubmit={saveProfile} aria-label="Profile" style={{ marginTop: 14 }}>
             <div className="field">
@@ -268,7 +268,7 @@ export function SettingsView({
                 ? 'Verification email sent — check your inbox.'
                 : 'Confirm your email address so you can recover your account if you lose your password.'}
               {resendState === 'idle' && (
-                <button className="btn-sm" onClick={resendVerification} disabled={busy} style={{ marginLeft: 8 }}>
+                <button className="btn-sm" aria-label="Resend verification email" onClick={resendVerification} disabled={busy} style={{ marginLeft: 8 }}>
                   Resend
                 </button>
               )}
@@ -364,7 +364,7 @@ export function SettingsView({
                   Hide overload warnings
                 </label>
               </div>
-              {(['disableStreaks','disableComparativeMetrics'] as const).map(key=><div className="field" key={key}><label><input type="checkbox" checked={prefs[key]} disabled={prefsBusy} onChange={e=>void setPreference(key,e.target.checked)} style={{width:'auto',minHeight:'auto',marginRight:8}} />{key==='disableStreaks'?'Hide tracker streaks':'Hide period comparisons'}</label></div>)}
+              {(['disableStreaks','disableComparativeMetrics'] as const).map(key=><div className="field" key={key}><label htmlFor={`pref-${key}`}>{key==='disableStreaks'?'Hide tracker streaks':'Hide period comparisons'}</label><input id={`pref-${key}`} type="checkbox" checked={prefs[key]} disabled={prefsBusy} onChange={e=>void setPreference(key,e.target.checked)} style={{width:'auto',minHeight:'auto',marginRight:8}} /></div>)}
               {prefsError && (
                 <p role="alert">{prefsError}</p>
               )}
@@ -428,6 +428,7 @@ export function SettingsView({
                 </div>
                 <button
                   type="submit"
+                  aria-label="Delete my account permanently"
                   style={{ borderColor: 'var(--danger)', color: 'var(--danger)' }}
                   disabled={busy || confirmText !== 'DELETE' || !password}
                 >

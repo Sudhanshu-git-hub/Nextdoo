@@ -9,7 +9,7 @@ const destinations=[['Home','/home'],['Inbox','/inbox'],['Today','/today'],['Tom
 export function CommandPalette(){
   const [open,setOpen]=useState(false);
   useEffect(()=>{const handler=(e:KeyboardEvent)=>{const target=e.target as HTMLElement|null;if(e.key==='?'&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.repeat&&!target?.closest('input,textarea,select,[contenteditable],dialog')){e.preventDefault();setOpen(true);}};window.addEventListener('keydown',handler);return()=>window.removeEventListener('keydown',handler);},[]);
-  return <><button className="command-launcher" aria-haspopup="dialog" aria-keyshortcuts="?" onClick={()=>setOpen(true)}>Commands <span aria-hidden="true">?</span></button>{open&&<Palette onClose={()=>setOpen(false)}/>}</>;
+  return <><button className="command-launcher" aria-haspopup="dialog" aria-keyshortcuts="?" onClick={()=>setOpen(true)}><span aria-hidden="true">⌘</span> Commands <span className="kbd command-hint" aria-hidden="true">?</span></button>{open&&<Palette onClose={()=>setOpen(false)}/>}</>;
 }
 function Palette({onClose}:{onClose:()=>void}){
   const ref=useRef<HTMLDialogElement>(null),input=useRef<HTMLInputElement>(null),[query,setQuery]=useState(''),[items,setItems]=useState<ConnectedItem[]>([]),[error,setError]=useState(''),[loading,setLoading]=useState(false);

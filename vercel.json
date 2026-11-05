@@ -1,0 +1,16 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "pnpm install --frozen-lockfile && pnpm turbo run build --filter=@nextdoo/web --concurrency=1",
+  "outputDirectory": "apps/web/.next",
+  "framework": "nextjs",
+  "installCommand": "pnpm install --frozen-lockfile",
+  "regions": ["sfo1", "iad1"],
+  "healthchecks": [
+    { "path": "/api/v1/health", "checkEnabled": true }
+  ],
+  "functions": {
+    "apps/web/.next/server/app/**/*.ts": {
+      "memory": 1024
+    }
+  }
+}

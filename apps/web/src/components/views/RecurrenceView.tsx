@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import { Breadcrumb } from '@/components/Breadcrumb';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { RecurrenceRuleInput } from '@nextdoo/contracts';
 import { api, ApiError, type Task } from '@/lib/api';
@@ -43,10 +44,11 @@ export function RecurrenceView({ id }: { id: string }) {
   } catch { setError('Check the frequency, interval, time zone and end condition.'); }
  }
  return <div className="recurrence-view">
+  <Breadcrumb items={[{label:'Home',href:'/'},{label:'Recurrences',href:'/recurrences'},{label:'Series'}]} />
   <Link className="history-link" href="/tasks">Browse tasks</Link><h1>Recurrence</h1>
   <p className="subtitle">Real task occurrences, generated online by the worker. Edit or complete each task normally; skip records a distinct outcome.</p>
   {error && <div role="alert" className="banner banner-error">{error} <button disabled={busy || loading} onClick={review}>Reload series</button></div>}
-  <p role="status">{notice || (loading ? 'Loading recurrence…' : series ? `${series.occurrences.length} occurrences loaded.` : '')}</p>
+  <p role="status">{notice || (loading ? <div className="skeleton" style={{width:"40%",height:16}} aria-hidden="true"/> : series ? `${series.occurrences.length} occurrences loaded.` : "")}</p>
   {series && draft && <>
    <p>Generation: <strong>{series.active ? 'Active' : 'Paused'}</strong>. Schedule time zone: {series.rule.timeZone}.</p>
    {series.generationError && <p className="banner banner-warn" role="status">Generation needs attention: {series.generationError}. Free capacity or restore unavailable references, then retry. {series.failureCount >= 5 ? 'Automatic retries stopped after five failures.' : ''}</p>}

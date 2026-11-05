@@ -98,6 +98,7 @@ export function ProjectsView({ workspaceId, initialProjects }: { workspaceId: st
       </div>
       {!visible.length ? (
         <div className="empty">
+          <div className="empty-icon" aria-hidden="true">📁</div>
           <div className="empty-title">{showArchived ? 'No archived projects' : 'No active projects yet'}</div>
           <p>Projects are optional — unfiled work lives in your Inbox until you are ready to organise it.</p>
         </div>

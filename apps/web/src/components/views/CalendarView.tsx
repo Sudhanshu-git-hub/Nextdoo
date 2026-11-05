@@ -211,7 +211,7 @@ export function CalendarView({ workspaceId }: { workspaceId: string }) {
   function chip(task: Task, compact: boolean) {
     const done = task.status === 'COMPLETED';
     return (
-      <div key={task.id} style={{borderLeft:`4px solid ${center.color('internal:task')}`}} className={`cal-chip${done ? ' cal-done' : ''}`} draggable onDragStart={(e) => e.dataTransfer.setData('text/plain', task.id)}>
+      <div key={task.id} style={{borderLeft:`4px solid ${center.color('internal:task')}`}} className={`cal-chip${done ? ' cal-done' : ''}`} draggable onDragStart={(e) => e.dataTransfer.setData('text/plain', task.id)} role="group" aria-label={`${task.title}, ${timeLabel(task)}${done ? ', completed' : ', active'}`}>
         <button
           type="button"
           className="check"

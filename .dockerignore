@@ -1,0 +1,36 @@
+# Version control
+.git
+.github
+.gitignore
+.gitattributes
+
+# CI / test artifacts
+.next
+coverage
+test-results
+playwright-report
+.playwright-cli
+
+# Local dev
+node_modules
+.env
+.env.local
+.env.*.local
+.data
+.pgdata*
+var
+
+# Documentation (not needed in the image)
+docs
+*.md
+!README.md
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode
+.idea
+
+# Misc
+*.log
+.turbo

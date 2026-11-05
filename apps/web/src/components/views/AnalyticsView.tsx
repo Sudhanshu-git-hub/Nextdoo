@@ -104,6 +104,7 @@ export function AnalyticsView({ workspaceId, taskId }: { workspaceId: string; ta
 
       {!loading && summary && summary.plannedCount === 0 && (
         <div className="empty">
+          <div className="empty-icon" aria-hidden="true">📊</div>
           <div className="empty-title">Nothing to review yet</div>
           <p>Once you have planned and completed some work, this page will show how the two compared.</p>
         </div>
