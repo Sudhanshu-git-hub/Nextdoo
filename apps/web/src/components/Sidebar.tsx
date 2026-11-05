@@ -3,33 +3,34 @@
 import { useRouter, usePathname } from 'next/navigation';
 import { useCallback } from 'react';
 import Link from 'next/link';
+import { Icon, type IconName } from '@/components/Icon';
 
 /** The primary navigation surface, shared by desktop and mobile. */
-function navItems(): { href: string; label: string; icon: string; group: string }[] {
+function navItems(): { href: string; label: string; icon: IconName; group: string }[] {
   return [
-    { href: '/', label: 'Home', icon: '⌂', group: 'Start' },
-    { href: '/inbox', label: 'Inbox', icon: '▣', group: 'Start' },
-    { href: '/today', label: 'Today', icon: '◎', group: 'Start' },
-    { href: '/tomorrow', label: 'Tomorrow', icon: '◴', group: 'Start' },
-    { href: '/upcoming', label: 'Upcoming', icon: '▦', group: 'Start' },
-    { href: '/tasks', label: 'Tasks', icon: '☑', group: 'Plan' },
-    { href: '/task-history', label: 'Task History', icon: '⟳', group: 'Plan' },
-    { href: '/focus', label: 'Focus', icon: '◐', group: 'Plan' },
-    { href: '/overdue', label: 'Overdue', icon: '!', group: 'Plan' },
-    { href: '/backlog', label: 'Backlog', icon: '✓', group: 'Plan' },
-    { href: '/completed', label: 'Completed', icon: '⌖', group: 'Plan' },
-    { href: '/goals', label: 'Goals', icon: '◇', group: 'Plan' },
-    { href: '/trackers', label: 'Trackers', icon: '◷', group: 'Plan' },
-    { href: '/knowledge', label: 'Knowledge', icon: '❏', group: 'Plan' },
-    { href: '/projects', label: 'Projects', icon: '▥', group: 'Plan' },
-    { href: '/calendar', label: 'Calendar', icon: '◲', group: 'Plan' },
-    { href: '/recurrences', label: 'Recurrences', icon: '↻', group: 'Plan' },
-    { href: '/search', label: 'Search', icon: '⌕', group: 'Find' },
-    { href: '/insights', label: 'Insights', icon: '♧', group: 'Insights' },
-    { href: '/analytics', label: 'Analytics', icon: '↗', group: 'Insights' },
-    { href: '/notifications', label: 'Notifications', icon: '◔', group: 'System' },
-    { href: '/conflicts', label: 'Sync Conflicts', icon: '⇄', group: 'System' },
-    { href: '/settings', label: 'Settings', icon: '⚙', group: 'System' },
+    { href: '/', label: 'Home', icon: 'home', group: 'Start' },
+    { href: '/inbox', label: 'Inbox', icon: 'inbox', group: 'Start' },
+    { href: '/today', label: 'Today', icon: 'today', group: 'Start' },
+    { href: '/tomorrow', label: 'Tomorrow', icon: 'tomorrow', group: 'Start' },
+    { href: '/upcoming', label: 'Upcoming', icon: 'upcoming', group: 'Start' },
+    { href: '/tasks', label: 'Tasks', icon: 'tasks', group: 'Plan' },
+    { href: '/task-history', label: 'Task History', icon: 'task-history', group: 'Plan' },
+    { href: '/focus', label: 'Focus', icon: 'focus', group: 'Plan' },
+    { href: '/overdue', label: 'Overdue', icon: 'overdue', group: 'Plan' },
+    { href: '/backlog', label: 'Backlog', icon: 'backlog', group: 'Plan' },
+    { href: '/completed', label: 'Completed', icon: 'completed', group: 'Plan' },
+    { href: '/goals', label: 'Goals', icon: 'goals', group: 'Plan' },
+    { href: '/trackers', label: 'Trackers', icon: 'trackers', group: 'Plan' },
+    { href: '/knowledge', label: 'Knowledge', icon: 'knowledge', group: 'Plan' },
+    { href: '/projects', label: 'Projects', icon: 'projects', group: 'Plan' },
+    { href: '/calendar', label: 'Calendar', icon: 'calendar', group: 'Plan' },
+    { href: '/recurrences', label: 'Recurrences', icon: 'recurrences', group: 'Plan' },
+    { href: '/search', label: 'Search', icon: 'search', group: 'Find' },
+    { href: '/insights', label: 'Insights', icon: 'insights', group: 'Insights' },
+    { href: '/analytics', label: 'Analytics', icon: 'analytics', group: 'Insights' },
+    { href: '/notifications', label: 'Notifications', icon: 'notifications', group: 'System' },
+    { href: '/conflicts', label: 'Sync Conflicts', icon: 'sync', group: 'System' },
+    { href: '/settings', label: 'Settings', icon: 'settings', group: 'System' },
   ];
 }
 
@@ -60,7 +61,7 @@ export function MobileNavigation({ compact }: { compact?: boolean }) {
       </option>
       {items.map((item, index) => (
         <option key={item.href} value={index + 1}>
-          {item.icon} {item.label}
+          {item.label}
         </option>
       ))}
     </select>
@@ -127,7 +128,7 @@ export function Sidebar() {
                 tabIndex={item.tabindex}
                 className="nav-link"
               >
-                <span className="nav-icon">{item.icon}</span>
+                <span className="nav-icon"><Icon name={item.icon} size={18} /></span>
                 <span className="nav-label">{item.label}</span>
               </a>
             ))}

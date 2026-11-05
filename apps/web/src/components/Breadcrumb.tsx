@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { Icon } from '@/components/Icon';
 
 export interface Breadcrumb {
   label: string;
@@ -18,13 +19,11 @@ export function Breadcrumb({ items }: { items: Breadcrumb[] }) {
 
   if (items.length === 0) return null;
 
-  // First item is always the root — no link needed if it matches current path
   return (
     <nav aria-label="Breadcrumb" className="breadcrumb-nav">
       <ol className="breadcrumb-list">
         {items.map((item, index) => {
           const isLast = index === items.length - 1;
-          const isActive = isLast;
           return (
             <li key={`${item.label}-${index}`} className="breadcrumb-item">
               {isLast || !item.href ? (
@@ -35,13 +34,11 @@ export function Breadcrumb({ items }: { items: Breadcrumb[] }) {
                 <Link
                   href={item.href}
                   className="breadcrumb-link"
-                  // Pass through for nested routes
-                  aria-current={isActive ? 'page' : undefined}
                 >
                   {item.label}
                 </Link>
               )}
-              {!isLast && <span className="breadcrumb-sep" aria-hidden="true">›</span>}
+              {!isLast && <span className="breadcrumb-sep" aria-hidden="true"><Icon name="chevron-right" size={14} /></span>}
             </li>
           );
         })}
@@ -54,7 +51,7 @@ export function Breadcrumb({ items }: { items: Breadcrumb[] }) {
           else router.push('/');
         }}
       >
-        ← Back
+        <Icon name="arrow-left" size={14} /> Back
       </button>
     </nav>
   );

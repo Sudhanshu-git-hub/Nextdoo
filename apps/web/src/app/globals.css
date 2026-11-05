@@ -132,8 +132,7 @@ a:hover { color: var(--accent-strong); }
   width: 3px; height: 22px; border-radius: 999px; background: var(--accent);
 }
 .nav-icon {
-  width: 20px; text-align: center; opacity: .85; font-size: 15px;
-  display: inline-grid; place-items: center;
+  display: inline-grid; place-items: center; opacity: .85;
 }
 .nav-link[aria-current="page"] .nav-icon { opacity: 1; }
 
@@ -153,7 +152,7 @@ a:hover { color: var(--accent-strong); }
 }
 .breadcrumb-link:hover { color: var(--text); background: var(--bg-elev-2); }
 .breadcrumb-current { color: var(--text); font-weight: 600; }
-.breadcrumb-sep { color: var(--text-faint); font-size: 14px; user-select: none; }
+.breadcrumb-sep { color: var(--text-faint); display: inline-grid; place-items: center; }
 .breadcrumb-back {
   border: 1px solid var(--border); background: var(--bg-elev);
   color: var(--text-dim); padding: 6px 14px; border-radius: var(--radius-sm);
@@ -631,8 +630,8 @@ th { color: var(--text-dim); font-weight: 600; font-size: 12px; text-transform: 
   }
 
   .mobile-nav-icon {
-    font-size: 20px;
-    line-height: 1;
+    display: inline-grid;
+    place-items: center;
   }
 
   .mobile-nav-label {
@@ -773,7 +772,8 @@ th { color: var(--text-dim); font-weight: 600; font-size: 12px; text-transform: 
 }
 
 .mobile-drawer-link .mobile-nav-icon {
-  font-size: 16px;
+  display: inline-grid;
+  place-items: center;
 }
 
 /* ============================================================ Touch target bumps (mobile) */
