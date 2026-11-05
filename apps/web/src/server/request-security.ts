@@ -7,7 +7,10 @@ export function assertRequestOrigin(request: Request): void {
   const site = request.headers.get('sec-fetch-site');
   const expected = new URL(request.url).origin;
   const configured = process.env.APP_URL ? new URL(process.env.APP_URL).origin : null;
-  if (site === 'cross-site' || (origin !== null && origin !== expected && origin !== configured)
+  const host = request.headers.get('host');
+  const hostOrigins = host ? [`http://${host}`, `https://${host}`].map((h) => new URL(h).origin) : [];
+  if (site === 'cross-site'
+      || (origin !== null && origin !== expected && origin !== configured && !hostOrigins.includes(origin))
       || (origin === null && request.headers.has('cookie') && site !== 'same-origin')) {
     throw new AppError('FORBIDDEN', 'Cross-origin mutations are not permitted.');
   }
