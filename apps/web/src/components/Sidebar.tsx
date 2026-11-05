@@ -111,7 +111,7 @@ export function Sidebar() {
         Skip to content
       </Link>
       <div className="brand">
-        <span className="brand-mark">N</span>
+        <span className="brand-mark"><img src="/icons/brand-mark-40.png" alt="" /></span>
         NEXT<span>DOO</span>
       </div>
       {(['Start', 'Plan', 'Find', 'Insights', 'System'] as const).map((group) => (
