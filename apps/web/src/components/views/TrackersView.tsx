@@ -1,6 +1,7 @@
 'use client';
 import { KnowledgeBacklinks } from '@/components/knowledge/shared';
 import Link from 'next/link';
+import { Breadcrumb } from '@/components/Breadcrumb';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { TrackerDefinition, TrackerValue } from '@nextdoo/contracts';
 import { createTrackerDefinition, trackerDate } from '@nextdoo/core/personal-tracker';
@@ -119,7 +120,7 @@ export function TrackerDetailView({ workspaceId, id }: { workspaceId: string; id
   async function link(taskId: string, linked: boolean) { if (detail && await command.send(`/trackers/${id}/tasks`, { version: detail.tracker.version, taskId, linked })) void load(); }
   async function openTask(taskId: string) { try { setTask(await api<Task>(`/tasks/${taskId}`)); } catch (e) { setError(message(e)); } }
   const currentStatus = detail?.report.trend.at(-1)?.statusName ?? 'Not measured';
-  return <div className="goals-view tracker-view"><Link href="/trackers">Back to trackers</Link>{loading && <><div className="skeleton" style={{width:"50%",height:20,marginBottom:16}} aria-hidden="true"/><div className="skeleton" style={{width:"100%",height:40,marginBottom:12}} aria-hidden="true"/><div className="skeleton" style={{width:"80%",height:40}} aria-hidden="true"/></>}{error && <p role="alert">{error}</p>}<button disabled={loading} onClick={() => void load()}>Refresh tracker</button>
+  return <div className="goals-view tracker-view"><Breadcrumb items={[{label:"Home",href:"/"},{label:"Trackers",href:"/trackers"},{label:"Tracker"}]} />{loading && <><div className="skeleton" style={{width:"50%",height:20,marginBottom:16}} aria-hidden="true"/><div className="skeleton" style={{width:"100%",height:40,marginBottom:12}} aria-hidden="true"/><div className="skeleton" style={{width:"80%",height:40}} aria-hidden="true"/></>}{error && <p role="alert">{error}</p>}<button disabled={loading} onClick={() => void load()}>Refresh tracker</button>
     {detail && <><h1>{detail.tracker.name}</h1><p>{detail.tracker.description}</p>{detail.goal && <Link href={`/goals/${detail.goal.id}`}>Goal: {detail.goal.title}</Link>}
       <div className="grid grid-2" aria-label="Tracker summary">{[['Total Stars', detail.report.totalStars], ['Average Stars', format(detail.report.averageStars)], ['Relative Stars', format(detail.report.relativeStars)], ['Tracked Days', detail.report.trackedDays], ['Current Status', currentStatus]].map(([label, value]) => <div className="card" key={label}><strong>{label}</strong><p>{value}</p></div>)}</div>
       <p>{detail.tracker.state.toLowerCase()} · One scored record per tracked day · Time zone: {detail.tracker.timeZone}</p>

@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 /** Primary navigation items shown in the mobile bottom bar. */
 const PRIMARY_ITEMS = [
   { href: '/', label: 'Home', icon: '⌂' },
-  { href: '/inbox', label: 'Inbox', icon: '▤' },
+  { href: '/inbox', label: 'Inbox', icon: '▣' },
   { href: '/today', label: 'Today', icon: '◎' },
   { href: '/focus', label: 'Focus', icon: '◐' },
   { href: '/settings', label: 'Settings', icon: '⚙' },
@@ -16,19 +16,22 @@ const PRIMARY_ITEMS = [
 const SECONDARY_ITEMS = [
   { href: '/tomorrow', label: 'Tomorrow', icon: '◴', group: 'Plan' },
   { href: '/upcoming', label: 'Upcoming', icon: '▦', group: 'Plan' },
+  { href: '/tasks', label: 'Tasks', icon: '☑', group: 'Plan' },
+  { href: '/task-history', label: 'Task History', icon: '⟳', group: 'Plan' },
   { href: '/overdue', label: 'Overdue', icon: '!', group: 'Plan' },
   { href: '/backlog', label: 'Backlog', icon: '✓', group: 'Plan' },
-  { href: '/completed', label: 'Completed', icon: '⌕', group: 'Plan' },
+  { href: '/completed', label: 'Completed', icon: '⌖', group: 'Plan' },
   { href: '/goals', label: 'Goals', icon: '◇', group: 'Plan' },
-  { href: '/trackers', label: 'Tracker', icon: '◷', group: 'Plan' },
+  { href: '/trackers', label: 'Trackers', icon: '◷', group: 'Plan' },
   { href: '/knowledge', label: 'Knowledge', icon: '❏', group: 'Plan' },
   { href: '/projects', label: 'Projects', icon: '▥', group: 'Plan' },
   { href: '/calendar', label: 'Calendar', icon: '◲', group: 'Plan' },
-  { href: '/insights', label: 'Insights', icon: '♧', group: 'Insights' },
-  { href: '/analytics', label: 'Analytics', icon: '⇄', group: 'Insights' },
-  { href: '/notifications', label: 'Notifications', icon: '⚙', group: 'System' },
-  { href: '/conflicts', label: 'Sync conflicts', icon: '⇄', group: 'System' },
+  { href: '/recurrences', label: 'Recurrences', icon: '↻', group: 'Plan' },
   { href: '/search', label: 'Search', icon: '⌕', group: 'Find' },
+  { href: '/insights', label: 'Insights', icon: '♧', group: 'Insights' },
+  { href: '/analytics', label: 'Analytics', icon: '↗', group: 'Insights' },
+  { href: '/notifications', label: 'Notifications', icon: '◔', group: 'System' },
+  { href: '/conflicts', label: 'Sync Conflicts', icon: '⇄', group: 'System' },
 ] as const;
 
 export function MobileNavBar() {
@@ -62,7 +65,10 @@ export function MobileNavBar() {
   }, [drawerOpen]);
 
   const isActive = useCallback(
-    (href: string) => pathname === href || (href !== '/' && pathname.startsWith(href)),
+    (href: string) => {
+      if (href === '/') return pathname === '/';
+      return pathname === href || pathname.startsWith(href + '/');
+    },
     [pathname],
   );
 
@@ -119,7 +125,7 @@ export function MobileNavBar() {
                 ✕
               </button>
             </div>
-            {(['Plan', 'Insights', 'System', 'Find'] as const).map((group) => (
+            {(['Plan', 'Find', 'Insights', 'System'] as const).map((group) => (
               <div key={group} className="mobile-drawer-group">
                 <div className="mobile-drawer-group-label">{group}</div>
                 {SECONDARY_ITEMS.filter((item) => item.group === group).map((item) => (
