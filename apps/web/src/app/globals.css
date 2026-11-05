@@ -1122,3 +1122,191 @@ th { color: var(--text-dim); font-weight: 600; font-size: 12px; text-transform: 
 .knowledge-status-loading {
   padding: 8px 0;
 }
+
+/* ============================================================ Phase 7: Responsive mobile layout */
+
+/* --- Safe area insets (notch, home indicator) --- */
+@supports (padding: max(0px)) {
+  .app { padding-top: env(safe-area-inset-top); }
+  .mobile-nav-bar { padding-bottom: max(6px, env(safe-area-inset-bottom)); }
+  .main { padding-top: max(18px, env(safe-area-inset-top)); }
+  .mobile-drawer { padding-bottom: max(20px, env(safe-area-inset-bottom)); }
+  .command-launcher { top: max(12px, env(safe-area-inset-top)); right: 12px; }
+  .pwa-install { bottom: max(70px, calc(70px + env(safe-area-inset-bottom))); }
+  .offline-badge { bottom: max(70px, calc(70px + env(safe-area-inset-bottom))); }
+}
+
+/* --- Mobile typography --- */
+@media (max-width: 900px) {
+  h1 { font-size: 20px; margin-bottom: 8px; }
+  h2 { font-size: 15.5px; }
+  .subtitle { font-size: 12.5px; }
+  .muted { font-size: 12.5px; }
+  body { font-size: 14.5px; }
+}
+
+@media (max-width: 600px) {
+  h1 { font-size: 18px; }
+  h2 { font-size: 14.5px; }
+  .subtitle { font-size: 12px; }
+  body { font-size: 14px; }
+  table { font-size: 12.5px; }
+  th, td { padding: 7px 9px; }
+}
+
+/* --- Mobile card padding --- */
+@media (max-width: 600px) {
+  .card { padding: 14px; }
+  .home-card-skeleton { padding: 12px; }
+}
+
+/* --- Mobile grid collapse --- */
+@media (max-width: 600px) {
+  .grid-3 { grid-template-columns: 1fr; }
+  .grid-2 { grid-template-columns: 1fr; }
+  .grid { grid-template-columns: 1fr !important; }
+  .home-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .home-stats a { padding: 12px 14px; }
+  .home-grid { grid-template-columns: 1fr; gap: 14px; }
+  .focus-times { grid-template-columns: 1fr; }
+}
+
+/* --- Mobile page head --- */
+@media (max-width: 600px) {
+  .page-head { flex-direction: column; gap: 10px; margin-bottom: 14px; }
+  .page-head > * { width: 100%; }
+}
+
+/* --- Mobile tables: ensure horizontal scroll --- */
+@media (max-width: 700px) {
+  .insights-table { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .insights-table table { min-width: 480px; }
+  .settings-panels table { table-layout: auto; min-width: 320px; }
+  .conflict-table { overflow-x: auto; }
+  .conflict-table table { min-width: 400px; }
+  .tracker-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .tracker-table-wrap table { min-width: 360px; }
+}
+
+/* --- Mobile forms: full-width inputs, comfortable spacing --- */
+@media (max-width: 600px) {
+  input, textarea, select {
+    min-height: 44px;
+    padding: 12px 14px;
+    font-size: 16px; /* Prevents iOS auto-zoom */
+  }
+  label { font-size: 13px; margin-bottom: 6px; }
+  .field { margin-bottom: 16px; }
+  .task-editor { width: 100%; max-width: none; border-radius: 0; padding: 20px 16px; }
+}
+
+/* --- Mobile board: full-width columns --- */
+@media (max-width: 700px) {
+  .board-columns { grid-auto-flow: row; grid-auto-columns: auto; gap: 12px; overflow-x: visible; }
+  .board-column { min-width: 0; }
+}
+
+/* --- Mobile calendar --- */
+@media (max-width: 600px) {
+  .cal-chip { padding: 8px 6px; min-height: 44px; }
+  .cal-month .card { min-height: 72px; padding: 8px; }
+  .cal-title { font-size: 13px; }
+  .cal-time { font-size: 10px; }
+}
+
+/* --- Mobile command palette --- */
+@media (max-width: 600px) {
+  .command-palette { width: 100%; max-width: none; padding: 16px; border-radius: 12px 12px 0 0; position: fixed; bottom: 0; left: 0; right: 0; }
+}
+
+/* --- Mobile task rows --- */
+@media (max-width: 600px) {
+  .task-row { padding: 14px 12px; gap: 10px; }
+  .task-meta { font-size: 12px; }
+}
+
+/* --- Mobile breadcrumb --- */
+@media (max-width: 600px) {
+  .breadcrumb-nav { margin-bottom: 12px; }
+  .breadcrumb-list { font-size: 12.5px; }
+  .breadcrumb-link { padding: 3px 6px; }
+}
+
+/* --- Mobile nav badge positioning --- */
+@media (max-width: 900px) {
+  .mobile-nav-item { position: relative; }
+  .mobile-nav-item .nav-badge { top: 4px; right: calc(50% - 22px); }
+}
+
+/* --- Mobile knowledge views --- */
+@media (max-width: 600px) {
+  .knowledge-grid { grid-template-columns: 1fr; }
+  .knowledge-view .card { margin-block: 12px; }
+}
+
+/* --- Mobile goals view --- */
+@media (max-width: 600px) {
+  .goals-view .grid-2 { grid-template-columns: 1fr; }
+}
+
+/* --- Mobile focus view --- */
+@media (max-width: 600px) {
+  .focus-card { padding: 14px; }
+}
+
+/* --- Mobile settings --- */
+@media (max-width: 600px) {
+  .settings-panels .card { padding: 14px; }
+  .settings-nav { gap: 6px; margin-bottom: 16px; }
+  .settings-nav button { font-size: 13px; padding: 8px 12px; }
+}
+
+/* --- Mobile analytics --- */
+@media (max-width: 600px) {
+  .insights-kpis { grid-template-columns: 1fr !important; }
+  .insights-filters { flex-direction: column; align-items: stretch; }
+}
+
+/* --- Mobile notifications --- */
+@media (max-width: 600px) {
+  .notification-card { padding: 14px; }
+}
+
+/* --- Mobile tracker detail --- */
+@media (max-width: 600px) {
+  .tracker-view fieldset { padding: 12px; }
+  .tracker-trend { max-height: 280px; }
+}
+
+/* --- Mobile recurrence view --- */
+@media (max-width: 600px) {
+  .recurrence-view fieldset { padding: 12px; }
+}
+
+/* --- Mobile project board --- */
+@media (max-width: 600px) {
+  .project-board > form input { min-width: 0; }
+}
+
+/* --- Mobile auth pages --- */
+@media (max-width: 600px) {
+  .auth-wrap { padding: 16px; }
+  .auth-card { max-width: 100%; }
+}
+
+/* --- Prevent horizontal overflow on small screens --- */
+@media (max-width: 600px) {
+  .main { overflow-x: hidden; }
+  .app { overflow-x: hidden; }
+}
+
+/* --- Larger touch targets on mobile for interactive elements --- */
+@media (max-width: 900px) {
+  .nav-link { min-height: 44px; }
+  .pill { min-height: 36px; }
+  a:not(.nav-link):not(.breadcrumb-link):not(.mobile-nav-item):not(.mobile-drawer-link) {
+    min-height: 36px;
+    display: inline-flex;
+    align-items: center;
+  }
+}

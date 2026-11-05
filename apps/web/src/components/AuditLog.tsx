@@ -72,7 +72,7 @@ export function AuditLog() {
       )}
 
       {entries.length > 0 && (
-        <table>
+        <div className="table-scroll"><table>
           <caption className="sr-only">Security-relevant events on your account, most recent first</caption>
           <thead>
             <tr>
@@ -96,7 +96,7 @@ export function AuditLog() {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
     </section>
   );

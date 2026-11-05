@@ -208,7 +208,7 @@ export function SettingsView({
         <SettingsGroup id="account">
         <section className="card" aria-labelledby="account-heading">
           <h2 id="account-heading">Account</h2>
-          <table>
+          <div className="table-scroll"><table>
             <tbody>
               <tr>
                 <th scope="row">Email</th>
@@ -224,7 +224,7 @@ export function SettingsView({
               <tr><th scope="row">Browser time zone</th><td>{timeZone}</td></tr>
               <tr><th scope="row">Plan</th><td>{entitlements.plan}</td></tr>
             </tbody>
-          </table>
+          </table></div>
 
           <form onSubmit={saveProfile} aria-label="Profile" style={{ marginTop: 14 }}>
             <div className="field">
