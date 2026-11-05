@@ -1067,3 +1067,20 @@ th { color: var(--text-dim); font-weight: 600; font-size: 12px; text-transform: 
   height: 16px;
   font-size: 9px;
 }
+
+/* ============================================================ Phase 4: Skeleton screens */
+
+/* Home overview stats skeleton */
+.home-overview-skeleton {
+  margin-bottom: 16px;
+}
+
+/* Home card skeleton */
+.home-card-skeleton {
+  padding: 16px;
+}
+
+/* Knowledge status loading skeleton */
+.knowledge-status-loading {
+  padding: 8px 0;
+}

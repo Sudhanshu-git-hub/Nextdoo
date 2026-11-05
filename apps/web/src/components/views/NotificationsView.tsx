@@ -60,7 +60,7 @@ export function NotificationsView({ initialTask }: { initialTask: Task | null })
   {!task && <p>Use a task’s <strong>Reminders</strong> link to schedule a new reminder.</p>}
   {error && <p className="banner banner-error" role="alert">{error}</p>}{message && <p role="status">{message}</p>}
   <section aria-labelledby="notice-heading"><h2 id="notice-heading">Delivered notifications{notices.rows.some((n) => !n.readAt) && <span className="nav-badge" style={{ marginLeft: 8, verticalAlign: 'middle' }}>{notices.rows.filter((n) => !n.readAt).length}</span>}</h2><button disabled={notices.busy || busy} onClick={() => void notices.reload()}>Refresh notifications</button>
-   {notices.error && <p role="alert">{notices.error}</p>}{notices.busy && <p role="status">Loading notifications…</p>}
+   {notices.error && <p role="alert">{notices.error}</p>}{notices.busy && <><div className="skeleton" style={{width:"50%",height:20,marginBottom:16}} aria-hidden="true"/><div className="skeleton" style={{width:"100%",height:60,marginBottom:12}} aria-hidden="true"/><div className="skeleton" style={{width:"80%",height:60}} aria-hidden="true"/></>}
    {!notices.busy && !notices.rows.length && !notices.error && <p>No delivered notifications yet.</p>}
    {notices.rows.map((n) => <article className="card" key={n.id} data-notification-id={n.id} style={{ marginTop: 12 }}><h3>{n.title}</h3><p>{n.body}</p><p>{date(n.createdAt)} · {n.readAt ? <span className="delivery-chip delivery-chip-canceled">Read</span> : <span className="delivery-chip delivery-chip-pending">Unread</span>}</p>
     {!n.readAt && <button disabled={busy} onClick={() => void command(`/notifications/${n.id}/read`, {}, 'Notification marked read.')}>Mark read</button>}{' '}
@@ -70,7 +70,7 @@ export function NotificationsView({ initialTask }: { initialTask: Task | null })
   </section>
   <section aria-labelledby="history-heading" style={{ marginTop: 24 }}><h2 id="history-heading">Reminder delivery history</h2><button disabled={history.busy || busy} onClick={() => void history.reload()}>Refresh reminders</button>
    <p>Snooze creates a new, absolute reminder ten minutes from now. Earlier delivery history is preserved. Pending reminders are canceled when their task is completed, archived, skipped or deleted.</p>
-   {history.error && <p role="alert">{history.error}</p>}{history.busy && <p role="status">Loading reminders…</p>}
+   {history.error && <p role="alert">{history.error}</p>}{history.busy && <><div className="skeleton" style={{width:"50%",height:20,marginBottom:16}} aria-hidden="true"/><div className="skeleton" style={{width:"100%",height:60,marginBottom:12}} aria-hidden="true"/><div className="skeleton" style={{width:"80%",height:60}} aria-hidden="true"/></>}
    {!history.busy && !history.rows.length && !history.error && <p>No reminders scheduled.</p>}
    {history.rows.map((r) => <article className="card" key={r.id} data-reminder-id={r.id} style={{ marginTop: 12 }}><h3>{r.task?.title ?? 'Unavailable task'}</h3><p><span className={`delivery-chip delivery-chip-${r.status.toLowerCase()}`}>{r.status}</span> · {r.channel} · scheduled {date(r.scheduledAt)} · attempts {r.attempts}</p>
     {r.lastError && <p>{r.lastError}{r.status === 'SCHEDULED' ? ` · next retry ${date(r.nextAttemptAt)}` : ' · delivery stopped; review before scheduling again'}</p>}

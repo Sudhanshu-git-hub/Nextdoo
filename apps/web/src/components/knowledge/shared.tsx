@@ -27,7 +27,7 @@ export function useKnowledgeCommand() {
   }
   return {send,busy,error};
 }
-export function KnowledgeStatus({error,loading}:{error?:string;loading?:boolean}) {return <>{loading&&<p role="status">Loading…</p>}{error&&<p role="alert">{error}</p>}</>;}
+export function KnowledgeStatus({error,loading}:{error?:string;loading?:boolean}) {return <>{loading&&<div className="knowledge-status-loading"><div className="skeleton" style={{width:"60%",height:16,marginBottom:8}} aria-hidden="true"/><div className="skeleton" style={{width:"100%",height:14,marginBottom:6}} aria-hidden="true"/><div className="skeleton" style={{width:"80%",height:14}} aria-hidden="true"/></div>}{error&&<p role="alert">{error}</p>}</>;}
 export function KnowledgePager({offset,nextOffset,setOffset,label='Knowledge pages'}:{offset:number;nextOffset:number|null;setOffset:(value:number)=>void;label?:string}) {return <nav className="row" aria-label={label}><button type="button" disabled={!offset} onClick={()=>setOffset(Math.max(0,offset-40))}>Previous page</button><span>Page {Math.floor(offset/40)+1}</span><button type="button" disabled={nextOffset===null} onClick={()=>setOffset(nextOffset!)}>Next page</button></nav>;}
 export function KnowledgeHeader() {return <><Link href="/knowledge">Knowledge &amp; Data</Link><p className="muted">Notes, files and structured records connected to your work. Online connection required; changes are saved to your account.</p></>;}
 export function ValueInput({property,value,onChange}:{property:Property;value:KnowledgeValue|undefined;onChange:(value:KnowledgeValue)=>void}) {

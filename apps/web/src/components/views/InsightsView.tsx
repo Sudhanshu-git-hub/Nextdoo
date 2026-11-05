@@ -33,7 +33,7 @@ export function InsightsView({report=false}:{report?:boolean}){
       <label className="insights-check"><input type="checkbox" checked={compare} onChange={e=>setCompare(e.target.checked)} />Compare previous period</label><button type="submit">Refresh</button>
     </form>
     {!ready&&<p role="status">Choose both dates to load a custom report (up to 366 days).</p>}
-    {error&&<p role="alert">{error}</p>}{ready&&!data&&!error&&<p role="status">Loading Insights…</p>}
+    {error&&<p role="alert">{error}</p>}{ready&&!data&&!error&&<div role="status" aria-busy="true"><div className="skeleton" style={{width:"40%",height:20,marginBottom:16}} aria-hidden="true"/><div className="skeleton" style={{width:"100%",height:80,marginBottom:12}} aria-hidden="true"/><div className="skeleton" style={{width:"100%",height:200}} aria-hidden="true"/></div>}
     {data&&<>
       <p className="insights-period">{data.window.from} – {data.window.to} · {data.window.timeZone}</p><p className="muted">Snapshot: {new Date(data.generatedAt).toLocaleString()}. Activity uses the selected dates. Current status and upcoming deadlines are as of this snapshot.</p>
       <div className="row insights-controls"><button disabled={exporting} onClick={()=>void download('csv')}>Download CSV</button><button disabled={exporting} onClick={()=>void download('json')}>Download JSON</button>{report&&<button onClick={()=>window.print()}>Print report</button>}</div>{exportError&&<p role="alert">{exportError}</p>}

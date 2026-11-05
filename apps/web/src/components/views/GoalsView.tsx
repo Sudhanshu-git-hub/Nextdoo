@@ -66,7 +66,7 @@ export function GoalsView({ workspaceId }: { workspaceId: string }) {
     <div className="row"><label><input type="checkbox" checked={archived} onChange={(e) => setArchived(e.target.checked)} /> Include archived goals</label>
       <button disabled={loading} onClick={() => void load()}>Refresh goals</button></div>
     {error && <p role="alert">{error}</p>}
-    {loading && <p role="status">Loading goals…</p>}
+    {loading && <><div className="skeleton" style={{width:"40%",height:20,marginBottom:16}} aria-hidden="true"/><div className="skeleton" style={{width:"100%",height:60,marginBottom:12}} aria-hidden="true"/><div className="skeleton" style={{width:"100%",height:60,marginBottom:12}} aria-hidden="true"/></>}
     {!loading && !error && !rows.length && <div className="empty"><div className="empty-icon" aria-hidden="true">🎯</div><h2>No goals yet</h2><p>Start with one outcome you care about, then add milestones and link tasks.</p></div>}
     <div className="grid grid-2">{rows.map(({ goal, progress }) => <article className="card" key={goal.id}>
       <p className="muted">{goal.identifier} · {goal.status.toLowerCase()}{goal.category ? ` · ${goal.category}` : ''}</p>
@@ -155,7 +155,7 @@ export function GoalDetailView({ workspaceId, goalId }: { workspaceId: string; g
   }, [goalId]);
   useEffect(() => { void load(); return () => controller.current?.abort(); }, [load]);
   async function openTask(id: string) { try { setTask(await api<Task>(`/tasks/${id}`)); } catch (caught) { setError(errorText(caught)); } }
-  if (!detail) return <><Link href="/goals">Back to goals</Link>{loading ? <p role="status">Loading goal…</p> : <p role="alert">{error}</p>}<button onClick={() => void load()}>Retry</button></>;
+  if (!detail) return <><Link href="/goals">Back to goals</Link>{loading ? <><div className="skeleton" style={{width:"50%",height:20,marginBottom:16}} aria-hidden="true"/><div className="skeleton" style={{width:"100%",height:40,marginBottom:12}} aria-hidden="true"/><div className="skeleton" style={{width:"80%",height:40,marginBottom:12}} aria-hidden="true"/><div className="skeleton" style={{width:"60%",height:40}} aria-hidden="true"/></> : <p role="alert">{error}</p>}<button onClick={() => void load()}>Retry</button></>;
   const { goal } = detail;
   return <div className="goals-view">
     <Link href="/goals">Back to goals</Link>{detail.parent && <> · <Link href={`/goals/${detail.parent.id}`}>Parent: {detail.parent.title}</Link></>}
