@@ -13,18 +13,17 @@ export function WorkspaceSettings() {
  const [busy, setBusy] = useState(false), [error, setError] = useState<string | null>(null), [notice, setNotice] = useState('');
  const attempt = useRef<{ body: string; key: string } | null>(null), locked = useRef(false);
  const dirty = JSON.stringify(draft) !== JSON.stringify(asDraft(current));
- useEffect(() => {
-  if (!dirty && !busy) return;
-  const unload = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
-  const navigate = (e: MouseEvent) => {
-   if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
-   const link = e.target instanceof Element ? e.target.closest('a[href]') as HTMLAnchorElement | null : null;
-   if (!link || link.target === '_blank' || link.hasAttribute('download') || link.href === location.href || link.getAttribute('href')?.startsWith('#')) return;
-   if (locked.current || !window.confirm('Discard unsaved workspace settings and leave?')) { e.preventDefault(); e.stopPropagation(); }
-  };
-  window.addEventListener('beforeunload', unload); document.addEventListener('click', navigate, true);
-  return () => { window.removeEventListener('beforeunload', unload); document.removeEventListener('click', navigate, true); };
- }, [dirty, busy]);
+  useEffect(() => {
+   if (!dirty && !busy) return;
+   const navigate = (e: MouseEvent) => {
+    if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+    const link = e.target instanceof Element ? e.target.closest('a[href]') as HTMLAnchorElement | null : null;
+    if (!link || link.target === '_blank' || link.hasAttribute('download') || link.href === location.href || link.getAttribute('href')?.startsWith('#')) return;
+    if (locked.current || !window.confirm('Discard unsaved workspace settings and leave?')) { e.preventDefault(); e.stopPropagation(); }
+   };
+   document.addEventListener('click', navigate, true);
+   return () => { document.removeEventListener('click', navigate, true); };
+  }, [dirty, busy]);
  const accept = (row: WorkspaceSnapshot) => { setCurrent(row); setDraft(asDraft(row)); attempt.current = null; router.refresh(); };
  async function save(e: React.FormEvent) {
   e.preventDefault(); if (locked.current || !dirty) return;
