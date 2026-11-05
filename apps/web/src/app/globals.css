@@ -1465,3 +1465,316 @@ dialog:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* ============================================================ Phase 9: Polish & theming */
+
+/* --- Custom scrollbars --- */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong); border-radius: 999px; border: 2px solid var(--bg);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }
+* { scrollbar-width: thin; scrollbar-color: var(--border-strong) var(--bg); }
+
+/* --- Selection --- */
+::selection { background: var(--accent-soft); color: var(--accent); }
+::moz-selection { background: var(--accent-soft); color: var(--accent); }
+
+/* --- Smooth scroll --- */
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+/* --- Brand gradient text --- */
+.brand-gradient-text {
+  background: var(--accent-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* --- Enhanced transitions --- */
+:root {
+  --transition: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-fast: 100ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* --- Enhanced hover: nav links get accent gradient glow --- */
+.nav-link:hover {
+  background: var(--bg-elev-2);
+  color: var(--text);
+}
+.nav-link:hover .nav-icon {
+  color: var(--accent);
+  filter: drop-shadow(0 0 6px var(--accent-glow));
+}
+
+/* --- Enhanced card hover: accent glow on hover --- */
+.card-hover { transition: border-color var(--transition), box-shadow var(--transition), transform var(--transition-slow); }
+.card-hover:hover {
+  border-color: var(--accent);
+  box-shadow: var(--shadow), 0 0 20px var(--accent-glow);
+  transform: translateY(-3px);
+}
+
+/* --- Enhanced task row hover --- */
+.task-row { transition: border-color var(--transition), box-shadow var(--transition), background var(--transition); }
+.task-row:hover {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-sm), 0 0 12px var(--accent-glow);
+  background: var(--bg-elev);
+}
+
+/* --- Enhanced button interactions --- */
+button, .btn { transition: border-color var(--transition), background var(--transition), transform var(--transition-fast), box-shadow var(--transition); }
+button:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--bg-elev-3);
+  box-shadow: 0 2px 8px rgba(0,0,0,.15);
+}
+button:active:not(:disabled) { transform: translateY(1px) scale(0.98); }
+.btn-primary { transition: background var(--transition), border-color var(--transition), box-shadow var(--transition), transform var(--transition-fast); }
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+  box-shadow: var(--shadow-sm), 0 4px 12px var(--accent-glow);
+  transform: translateY(-1px);
+}
+.btn-primary:active:not(:disabled) { transform: translateY(0) scale(0.98); }
+.btn-ghost:hover { background: var(--accent-soft); color: var(--accent); }
+
+/* --- Enhanced pill/badge with transitions --- */
+.pill { transition: border-color var(--transition), color var(--transition), background var(--transition), transform var(--transition-fast); }
+.pill:hover { transform: translateY(-1px); }
+.pill-high:hover { box-shadow: 0 2px 8px rgba(244,104,95,.15); }
+.pill-medium:hover { box-shadow: 0 2px 8px rgba(245,185,66,.15); }
+.pill-ok:hover { box-shadow: 0 2px 8px rgba(62,207,142,.15); }
+
+/* --- Enhanced check button --- */
+.check { transition: border-color var(--transition), background var(--transition), transform var(--transition-fast), box-shadow var(--transition); }
+.check:hover { border-color: var(--accent); box-shadow: 0 0 8px var(--accent-glow); }
+.check:active { transform: scale(0.85); }
+.check[aria-pressed="true"] {
+  background: var(--ok); border-color: var(--ok); color: #fff;
+  box-shadow: 0 0 8px rgba(62,207,142,.3);
+}
+
+/* --- Enhanced home stats with gradient hover --- */
+.home-stats a { transition: border-color var(--transition), box-shadow var(--transition), transform var(--transition-slow); }
+.home-stats a:hover {
+  border-color: var(--accent);
+  box-shadow: var(--shadow), 0 0 16px var(--accent-glow);
+  transform: translateY(-3px);
+}
+
+/* --- Enhanced command launcher --- */
+.command-launcher { transition: border-color var(--transition), color var(--transition), transform var(--transition), box-shadow var(--transition); }
+.command-launcher:hover {
+  border-color: var(--accent);
+  color: var(--text);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow), 0 4px 12px var(--accent-glow);
+}
+.command-launcher:active { transform: translateY(0); }
+
+/* --- Enhanced skeleton shimmer --- */
+.skeleton {
+  background: linear-gradient(90deg, var(--bg-elev) 0%, var(--bg-elev-2) 50%, var(--bg-elev) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+  border-radius: var(--radius-sm);
+}
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* --- Enhanced detail/summary --- */
+details summary {
+  transition: color var(--transition);
+}
+details summary:hover { color: var(--accent); }
+details[open] summary {
+  color: var(--text);
+  border-radius: var(--radius-sm);
+}
+details summary::-webkit-details-marker { display: none; }
+details summary::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: 6px;
+  color: var(--text-faint);
+  transition: transform var(--transition);
+}
+details[open] summary::before {
+  content: "▾";
+  color: var(--accent);
+}
+
+/* --- Enhanced banner transitions --- */
+.banner { transition: border-color var(--transition), background var(--transition), transform var(--transition-fast); }
+.banner-error { transition: border-color var(--transition), background var(--transition), color var(--transition); }
+.banner-warn { transition: border-color var(--transition), background var(--transition), color var(--transition); }
+.banner-info { transition: border-color var(--transition), background var(--transition); }
+
+/* --- Enhanced focus clock --- */
+.focus-clock {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.03em;
+  background: var(--accent-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* --- Page load fade-in --- */
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.main > * {
+  animation: fade-in var(--transition-slow) ease-out both;
+}
+.main > *:nth-child(1) { animation-delay: 0ms; }
+.main > *:nth-child(2) { animation-delay: 50ms; }
+.main > *:nth-child(3) { animation-delay: 100ms; }
+.main > *:nth-child(4) { animation-delay: 150ms; }
+.main > *:nth-child(5) { animation-delay: 200ms; }
+.main > *:nth-child(n+6) { animation-delay: 250ms; }
+@media (prefers-reduced-motion: reduce) {
+  .main > * { animation: none; }
+}
+
+/* --- Enhanced mobile nav bar --- */
+.mobile-nav-item { transition: color var(--transition), background var(--transition), transform var(--transition-fast); }
+.mobile-nav-item:active { transform: scale(0.92); }
+.mobile-nav-item.active {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.mobile-nav-item.active .mobile-nav-icon {
+  filter: drop-shadow(0 0 6px var(--accent-glow));
+}
+
+/* --- Enhanced mobile drawer link --- */
+.mobile-drawer-link { transition: background var(--transition), color var(--transition), transform var(--transition-fast); }
+.mobile-drawer-link:active { transform: scale(0.97); }
+
+/* --- Enhanced breadcrumb --- */
+.breadcrumb-link { transition: color var(--transition), background var(--transition), transform var(--transition-fast); }
+.breadcrumb-link:hover { transform: translateX(2px); }
+.breadcrumb-back { transition: color var(--transition), border-color var(--transition), background var(--transition), transform var(--transition-fast); }
+.breadcrumb-back:hover { transform: translateX(-2px); border-color: var(--accent); }
+
+/* --- Enhanced empty states --- */
+.empty { transition: opacity var(--transition-slow); }
+.empty-icon {
+  transition: transform var(--transition-slow), border-color var(--transition), color var(--transition);
+}
+.empty:hover .empty-icon {
+  transform: scale(1.05) rotate(-2deg);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* --- Enhanced bar/meter --- */
+.bar { transition: background var(--transition); }
+.bar > i { transition: width var(--transition-slow), background var(--transition); }
+meter { transition: width var(--transition-slow); }
+
+/* --- Enhanced sidebar footer --- */
+.sidebar > .muted {
+  transition: color var(--transition);
+}
+.sidebar > .muted:hover { color: var(--accent); }
+
+/* --- Enhanced nav group label --- */
+.nav-group-label { transition: color var(--transition); }
+
+/* --- Enhanced brand mark glow on hover --- */
+.brand .brand-mark {
+  transition: box-shadow var(--transition), transform var(--transition-slow);
+}
+.brand:hover .brand-mark {
+  transform: scale(1.05);
+  box-shadow: var(--shadow-sm), 0 0 20px var(--accent-glow);
+}
+
+/* --- Enhanced task editor --- */
+.task-editor { transition: border-color var(--transition), box-shadow var(--transition); }
+
+/* --- Enhanced insight table --- */
+.insights-table { transition: box-shadow var(--transition); }
+.insights-table:hover { box-shadow: var(--shadow-sm); }
+
+/* --- Enhanced offline badge --- */
+.offline-badge { transition: opacity var(--transition), border-color var(--transition); }
+.offline-badge.offline { border-color: var(--warn); }
+
+/* --- Enhanced loading states --- */
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+.loading-pulse {
+  animation: pulse-soft 1.5s ease-in-out infinite;
+}
+
+/* --- Enhanced transition for page transitions --- */
+@keyframes slide-in-right {
+  from { opacity: 0; transform: translateX(12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.slide-in {
+  animation: slide-in-right var(--transition-slow) ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .slide-in { animation: none; }
+}
+
+/* --- Enhanced scroll-to-top button --- */
+.scroll-to-top {
+  position: fixed;
+  bottom: 90px;
+  right: 20px;
+  z-index: 25;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--bg-elev);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition), transform var(--transition), border-color var(--transition);
+}
+.scroll-to-top.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.scroll-to-top:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow), 0 4px 12px var(--accent-glow);
+}
+@media (max-width: 900px) {
+  .scroll-to-top { bottom: 80px; right: 12px; }
+}
+
+/* --- Enhanced notification badge pulse --- */
+@keyframes badge-pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+.nav-badge.has-notification {
+  animation: badge-pulse 2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .nav-badge.has-notification { animation: none; }
+}

@@ -9,6 +9,7 @@ import { getPersonalization } from '@/server/services/personalization';
 import { PersonalizationProvider } from '@/components/PersonalizationContext';
 import { PWAInstallPrompt } from '@/components/PWAInstallPrompt';
 import { MobileNavBar } from '@/components/MobileNavBar';
+import { ScrollToTop } from '@/components/ScrollToTop';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,7 +22,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <PersonalizationProvider key={auth.workspaceId} initial={preferences}><WorkspaceProvider value={workspace}><div className="app">
       <a className="skip-link" href="#main">Skip to main content</a>
-      <Sidebar /><CommandPalette /><PWAInstallPrompt /><MobileNavBar />
+      <Sidebar /><CommandPalette /><PWAInstallPrompt /><MobileNavBar /><ScrollToTop />
       <main className="main" id="main" tabIndex={-1}>{children}</main>
       <OfflineBadge workspaceId={auth.workspaceId} />
     </div></WorkspaceProvider></PersonalizationProvider>
