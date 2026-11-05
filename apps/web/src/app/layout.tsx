@@ -41,6 +41,9 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
+      <head>
+        <meta name="description" content="Plan work against available time, execute it, and see whether execution matched intention." />
+      </head>
       <body>
         <ServiceWorkerRegister />
         {children}
