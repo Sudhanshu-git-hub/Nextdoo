@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api, ApiError } from '@/lib/api';
 
@@ -13,7 +12,6 @@ import { api, ApiError } from '@/lib/api';
  * issued a session.
  */
 export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
-  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [totp, setTotp] = useState('');
@@ -41,14 +39,9 @@ export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
       });
 
       setBusy(false);
-      if (result?.deletionCancelled) {
-        // Signing in during the grace window revives the account; say so rather
-        // than letting a scheduled deletion vanish silently.
-        router.push('/settings?deletion=cancelled');
-      } else {
-        router.push('/');
-      }
-      router.refresh();
+      // Full page reload ensures the server-side auth check re-runs with the new session cookie.
+      // router.push('/') doesn't navigate when already on '/', leaving the form stuck.
+      window.location.href = result?.deletionCancelled ? '/settings?deletion=cancelled' : '/';
     } catch (caught) {
       if (caught instanceof ApiError && caught.code === 'MFA_REQUIRED') {
         setNeedsMfa(true);
