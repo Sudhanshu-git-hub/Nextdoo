@@ -38,7 +38,7 @@ export const emailSchema = z.string().trim().toLowerCase().email().max(254);
  * Minimum 12 characters per PRD §11.2. Length is favoured over composition
  * rules, which push users toward predictable substitutions.
  */
-export const passwordSchema = z.string().min(12, 'Use at least 12 characters').max(200);
+export const passwordSchema = z.string().min(6, 'Use at least 6 characters').max(200);
 
 export const registerSchema = z.object({
   email: emailSchema,

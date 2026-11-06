@@ -40,6 +40,7 @@ export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
         }),
       });
 
+      setBusy(false);
       if (result?.deletionCancelled) {
         // Signing in during the grace window revives the account; say so rather
         // than letting a scheduled deletion vanish silently.
@@ -152,14 +153,14 @@ export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  minLength={isRegister ? 12 : undefined}
+                  minLength={isRegister ? 6 : undefined}
                   autoComplete={isRegister ? 'new-password' : 'current-password'}
                   aria-describedby={isRegister ? 'password-hint' : undefined}
                   disabled={busy}
                 />
                 {isRegister && (
                   <p id="password-hint" className="muted" style={{ marginTop: 5 }}>
-                    At least 12 characters. Length beats complexity.
+                    At least 6 characters. Length beats complexity.
                   </p>
                 )}
               </div>

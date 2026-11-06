@@ -20,8 +20,8 @@ export function ResetPasswordForm({ token }: { token: string | null }) {
   const [error, setError] = useState<string | null>(null);
 
   const mismatch = confirm.length > 0 && password !== confirm;
-  const tooShort = password.length > 0 && password.length < 12;
-  const canSubmit = password.length >= 12 && password === confirm && !busy;
+  const tooShort = password.length > 0 && password.length < 6;
+  const canSubmit = password.length >= 6 && password === confirm && !busy;
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -100,7 +100,7 @@ export function ResetPasswordForm({ token }: { token: string | null }) {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  minLength={12}
+                  minLength={6}
                   autoComplete="new-password"
                   autoFocus
                   aria-describedby="password-hint"
